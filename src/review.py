@@ -1,0 +1,240 @@
+"""Skeptical performance review — `python src/review.py`.
+
+Reads the ledger and learnings and prints an honest report card against the
+go-live gate (GUIDE.md §9): 2-3 months of paper history, >=30 closed trades,
+and beating SPY buy-and-hold over the same window. Built to talk you OUT of
+going live until the evidence is there.
+
+Pure file reads; the SPY benchmark uses the read-only data API and degrades
+gracefully when keys are absent.
+"""
+import os
+import sys
+from datetime import datetime, timezone
+
+import yaml
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from ledger import Ledger
+from lessons import LessonStore
+from judgments import JudgmentStore, calibration_metrics, calibration_line
+
+GATE_MIN_DAYS = 60          # "2-3 months" — use the low end as the floor
+GATE_MIN_CLOSED = 30
+STALE_LESSON_DAYS = 21
+
+
+def per_strategy_breakdown(closed: list[dict]) -> dict:
+    """Pure: closed trades grouped by owning strategy (legacy -> ma_crossover)."""
+    groups: dict = {}
+    for t in closed:
+        groups.setdefault(t.get("strategy") or "ma_crossover", []).append(t)
+    out = {}
+    for name, trades in groups.items():
+        wins = sum(t["pnl"] for t in trades if t["pnl"] > 0)
+        losses = -sum(t["pnl"] for t in trades if t["pnl"] < 0)
+        out[name] = {
+            "n_closed": len(trades),
+            "win_rate": sum(1 for t in trades if t["result"] == "win") / len(trades),
+            "profit_factor": (wins / losses if losses > 0
+                              else (float("inf") if wins > 0 else None)),
+            "realized_pnl": round(sum(t["pnl"] for t in trades), 2),
+        }
+    return out
+
+
+def lesson_book_summary(states: dict) -> dict:
+    """Pure: counts by status + oldest active hypothesis."""
+    counts = {st: 0 for st in ("candidate", "active", "refuted", "retired")}
+    oldest_active = None
+    for s in states.values():
+        counts[s["status"]] = counts.get(s["status"], 0) + 1
+        if s["status"] == "active" and (oldest_active is None
+                                        or s["created_ts"] < oldest_active["created_ts"]):
+            oldest_active = s
+    return {"counts": counts, "oldest_active": oldest_active}
+
+
+def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
+    """Pure aggregation over ledger records — unit-testable, no I/O."""
+    decisions = [r for r in records if r["type"] == "decision"]
+    executed = [r for r in decisions if r.get("executed")]
+    outcomes = {r["trade_id"]: r for r in records if r["type"] == "outcome"}
+    by_id = {r["trade_id"]: r for r in decisions if r.get("trade_id")}
+    closed = [{**by_id[tid], **o} for tid, o in outcomes.items() if tid in by_id]
+
+    wins = [t for t in closed if t["result"] == "win"]
+    gross_win = sum(t["pnl"] for t in closed if t["pnl"] > 0)
+    gross_loss = -sum(t["pnl"] for t in closed if t["pnl"] < 0)
+
+    first_ts = min((r["ts"] for r in records), default=None)
+    days = ((now - datetime.fromisoformat(first_ts)).days if first_ts else 0)
+
+    vetoes = [r for r in decisions
+              if (r.get("llm_review") or {}).get("verdict") == "veto"]
+    rejections = [r for r in decisions
+                  if not r.get("executed") and "risk rejection" in (r.get("detail") or "")]
+    exit_reasons: dict = {}
+    for t in closed:
+        key = t.get("exit_reason") or "unknown"
+        exit_reasons[key] = exit_reasons.get(key, 0) + 1
+
+    last_lesson_ts = None
+    for line in reversed(learnings_lines):
+        if line.startswith("- **"):
+            last_lesson_ts = line[4:14]  # the YYYY-MM-DD stamp
+            break
+
+    slips = sorted(r["slippage_bps"] for r in records
+                   if r["type"] == "fill_quality")
+    slippage = None
+    if slips:
+        mid = len(slips) // 2
+        median = (slips[mid] if len(slips) % 2
+                  else (slips[mid - 1] + slips[mid]) / 2)
+        slippage = {"n_fills": len(slips),
+                    "median_bps": round(median, 2),
+                    "mean_bps": round(sum(slips) / len(slips), 2)}
+
+    return {
+        "slippage": slippage,
+        "history_days": days,
+        "n_decisions": len(decisions),
+        "n_executed": len(executed),
+        "n_closed": len(closed),
+        "n_open": len(executed) - len(closed) if executed else 0,
+        "win_rate": len(wins) / len(closed) if closed else None,
+        "profit_factor": (gross_win / gross_loss if gross_loss > 0
+                          else (float("inf") if gross_win > 0 else None)),
+        "realized_pnl": sum(t["pnl"] for t in closed),
+        "n_vetoes": len(vetoes),
+        "n_risk_rejections": len(rejections),
+        "exit_reasons": exit_reasons,
+        "last_lesson_date": last_lesson_ts,
+    }
+
+
+def spy_benchmark_pct(days: int) -> float | None:
+    """SPY buy-and-hold % over the review window. None when unavailable."""
+    if days < 1:
+        return None
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), ".env"))
+        from broker import Broker
+        with open("config.yaml") as f:
+            cfg = yaml.safe_load(f)
+        bars = Broker(cfg).bars("SPY", "1Day", max(days, 2))
+        if len(bars) < 2:
+            return None
+        return (bars[-1]["close"] - bars[0]["close"]) / bars[0]["close"] * 100
+    except Exception:  # noqa: BLE001 — benchmark is optional, never crash the report
+        return None
+
+
+def _fmt_gate(ok: bool | None, label: str) -> str:
+    mark = "?" if ok is None else ("PASS" if ok else "FAIL")
+    return f"  [{mark:>4}] {label}"
+
+
+def main():
+    with open("config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    ledger = Ledger(cfg["memory"]["ledger_path"])
+    try:
+        with open(cfg["memory"]["learnings_path"]) as f:
+            learnings = f.readlines()
+    except FileNotFoundError:
+        learnings = []
+
+    now = datetime.now(timezone.utc)
+    r = build_report(ledger.all_records(), learnings, now)
+
+    print("=" * 62)
+    print("PAPER TRADING REVIEW — skeptical by design")
+    print("=" * 62)
+    print(f"History: {r['history_days']} days | decisions: {r['n_decisions']} "
+          f"| executed: {r['n_executed']} | closed: {r['n_closed']} "
+          f"| open: {r['n_open']}")
+    wr = f"{r['win_rate']:.0%}" if r["win_rate"] is not None else "n/a"
+    pf = ("n/a" if r["profit_factor"] is None
+          else "inf (no losses yet — too early to mean anything)"
+          if r["profit_factor"] == float("inf") else f"{r['profit_factor']:.2f}")
+    print(f"Win rate: {wr} | profit factor: {pf} "
+          f"| realized P&L: ${r['realized_pnl']:,.2f}")
+    print(f"LLM vetoes: {r['n_vetoes']} | risk-rail rejections: {r['n_risk_rejections']}")
+    if r["slippage"]:
+        s = r["slippage"]
+        print(f"Measured slippage ({s['n_fills']} fills): median "
+              f"{s['median_bps']:+.1f} bps | mean {s['mean_bps']:+.1f} bps "
+              f"(positive = fills worse than signal price)")
+    if r["exit_reasons"]:
+        print("Exits:", ", ".join(f"{k}={v}" for k, v in sorted(r["exit_reasons"].items())))
+
+    spy = spy_benchmark_pct(r["history_days"])
+    bot_pct = r["realized_pnl"] / 100_000 * 100  # vs the $100k paper account
+
+    print("\nGO-LIVE GATE (GUIDE.md §9) — all three must pass:")
+    print(_fmt_gate(r["history_days"] >= GATE_MIN_DAYS,
+                    f"{GATE_MIN_DAYS}+ days of paper history "
+                    f"(have {r['history_days']})"))
+    print(_fmt_gate(r["n_closed"] >= GATE_MIN_CLOSED,
+                    f"{GATE_MIN_CLOSED}+ closed trades (have {r['n_closed']})"))
+    if spy is None:
+        print(_fmt_gate(None, "beats SPY buy-and-hold (benchmark unavailable)"))
+    else:
+        print(_fmt_gate(bot_pct > spy,
+                        f"beats SPY buy-and-hold ({bot_pct:+.2f}% vs SPY {spy:+.2f}%)"))
+
+    # --- Per-strategy breakdown ---
+    per_strat = per_strategy_breakdown(ledger.closed_trades())
+    if per_strat:
+        print("\nPER-STRATEGY (closed trades):")
+        for name, s in sorted(per_strat.items()):
+            pf = ("inf" if s["profit_factor"] == float("inf")
+                  else "n/a" if s["profit_factor"] is None
+                  else f"{s['profit_factor']:.2f}")
+            print(f"  {name:<14} n={s['n_closed']:<3} win {s['win_rate']:.0%}  "
+                  f"PF {pf}  P&L ${s['realized_pnl']:,.2f}")
+
+    # --- Learning loop ---
+    lcfg = cfg.get("learning", {})
+    states = LessonStore(lcfg.get("lessons_path", "memory/lessons.jsonl")).replay()
+    book = lesson_book_summary(states)
+    c = book["counts"]
+    print(f"\nHYPOTHESIS BOOK: {c['active']} active | {c['candidate']} candidate "
+          f"| {c['refuted']} refuted | {c['retired']} retired")
+    if book["oldest_active"]:
+        oa = book["oldest_active"]
+        print(f"  Oldest active ({oa['created_ts'][:10]}, "
+              f"n={len(oa['supports'])}/{len(oa['contradicts'])}): "
+              f"{oa['hypothesis'][:100]}")
+    elif not states:
+        print("  (empty — hypotheses generate from closed trades, LLM key required)")
+
+    jstore = JudgmentStore(lcfg.get("judgments_path", "memory/judgments.jsonl"))
+    print(calibration_line(calibration_metrics(jstore.replay())))
+    n_pending = len(jstore.unresolved())
+    if n_pending:
+        print(f"  ({n_pending} judgments awaiting resolution — embargo/horizon)")
+
+    if r["last_lesson_date"]:
+        age = (now - datetime.fromisoformat(r["last_lesson_date"] + "T00:00:00+00:00")).days
+        stale = " — STALE, regime may have moved" if age > STALE_LESSON_DAYS else ""
+        print(f"Last lesson: {r['last_lesson_date']} ({age}d ago){stale}")
+
+    if r["n_closed"] < GATE_MIN_CLOSED:
+        print(f"\nVerdict: not enough evidence to conclude ANYTHING yet "
+              f"({r['n_closed']}/{GATE_MIN_CLOSED} closed trades). Keep paper trading.")
+    elif spy is not None and bot_pct <= spy:
+        print("\nVerdict: the strategy is NOT beating buy-and-hold. "
+              "Do not go live; improve the strategy instead.")
+    else:
+        print("\nVerdict: gate metrics look satisfied — re-run the backtest and "
+              "review the trials log before even considering the live switch.")
+
+
+if __name__ == "__main__":
+    main()

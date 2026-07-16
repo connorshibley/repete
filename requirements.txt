@@ -1,0 +1,6 @@
+alpaca-py>=0.30
+anthropic>=0.40
+tweepy>=4.14
+pyyaml>=6.0
+python-dotenv>=1.0
+pandas>=2.0

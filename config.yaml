@@ -1,0 +1,151 @@
+# ============================================================
+# Trading Agent Configuration
+# Edit freely — every risk rail here is enforced in code
+# (src/risk.py) and CANNOT be overridden by the LLM.
+# ============================================================
+
+mode: paper            # paper | live   (live requires you to also flip LIVE_TRADING_CONFIRMED in .env)
+
+symbols:               # what the bot is allowed to trade — liquid large-caps + index/sector
+                       # ETFs across sectors. Exposure is still capped by the risk rails
+                       # below (max_open_positions, max_trades_per_day), not by list size.
+  - SPY                # broad market
+  - QQQ                # nasdaq 100
+  - DIA                # dow
+  - IWM                # small caps
+  - XLK                # tech sector
+  - XLF                # financials
+  - XLE                # energy
+  - XLV                # healthcare
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - TSLA
+  - AMD
+  - JPM
+  - V
+  - UNH
+  - JNJ
+  - XOM
+  - PG
+  - HD
+  - KO
+  - DIS
+
+strategy:              # execution globals (per-strategy params live in strategies:)
+  name: ma_crossover   # legacy field, kept for compatibility
+  fast_period: 10      # legacy ma_crossover params (strategies: section wins)
+  slow_period: 30
+  timeframe: 1Day      # SWING BOT: keep this on 1Day. Intraday timeframes = day trading.
+  lookback_bars: 100   # FLOOR on bars fetched; ensemble raises it to its max need
+
+strategies:            # the ensemble — deterministic signals only, LLM never generates them.
+                       # `enabled` gates ENTRIES; exits always route to the strategy that
+                       # opened the position (ownership), even if since disabled.
+                       # A strategy may only be enabled after passing the walk-forward
+                       # OOS gate (python src/backtest.py --strategy NAME ...).
+  ma_crossover:
+    enabled: true      # baseline / teaching device; the ensemble must beat it
+    priority: 1
+    fast_period: 10
+    slow_period: 30
+  tsmom:               # time-series momentum (Moskowitz/Ooi/Pedersen)
+    enabled: true      # PASSED gate 2026-07-15: OOS +1.45%, PF 2.56, 51 trades
+    priority: 2        # (exposure-matched benchmark; see memory/backtest_trials.jsonl)
+    momentum_bars: 63  # in-sample grid winner — never re-picked after OOS
+    skip_bars: 0
+    trend_sma_period: 200
+    index_sma_period: 50  # entries blocked while SPY < SMA50. PASSED gate
+                          # 2026-07-16: won IS (+4.10% PF 3.46 vs ungated
+                          # +3.51% PF 2.27), OOS neutral (+1.453% vs +1.45% —
+                          # the 2024-26 OOS window had no down regime to test
+                          # it in). Protective in bears, free otherwise.
+  xsmom:               # cross-sectional momentum (Jegadeesh/Titman 12-1)
+    enabled: false     # FAILED gate 2026-07-15 (OOS below exposure-matched benchmark)
+    priority: 3
+    rank_lookback_bars: 231   # ~11 months, with skip -> classic 12-1 formation
+    skip_bars: 21             # skip most recent month (short-term reversal)
+    buy_top_fraction: 0.25
+    exit_below_fraction: 0.50
+  meanrev:             # Connors RSI-2 dip-buying, SMA200-filtered
+    enabled: true      # PASSED gate 2026-07-15: OOS +1.40%, PF 2.19, 71% win, 171 trades
+    priority: 4
+    rsi_period: 2
+    rsi_buy_below: 10  # in-sample grid winner — never re-picked after OOS
+    trend_sma_period: 200
+    exit_sma_period: 5
+    max_hold_days: 7
+
+risk:                  # ---- HARD RAILS: enforced in deterministic code ----
+  risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
+  max_position_pct: 10.0         # no single position may exceed this % of equity
+  max_order_value_usd: 2000      # absolute per-order dollar cap
+  max_trades_per_day: 3          # circuit breaker on order rate (swing bot: entries are rare)
+  daily_loss_limit_pct: 3.0      # if daily P&L drops below -3%, flatten + HALT
+  max_open_positions: 5
+  max_bar_age_days: 4            # FRESHNESS GUARD: refuse to trade if the newest bar is
+                                 # older than this many calendar days (covers weekends +
+                                 # a holiday). 0 disables. Guards against the stale-data
+                                 # API failure mode observed 2026-07-16.
+  min_holding_days: 2            # SWING GUARD: exits blocked until a position is at least
+                                 # this many calendar days old — makes day trading impossible.
+                                 # (The daily-loss kill switch is exempt: safety wins.
+                                 # Broker-side bracket legs below are also exempt — they are
+                                 # protective orders set deterministically at entry.)
+  brackets:                      # protective stop-loss / take-profit legs on every entry
+    enabled: true                # verified via paper cycle 2026-07-14
+    atr_period: 14               # ATR lookback (daily bars)
+    stop_atr_mult: 2.0           # stop  = entry − 2.0 · ATR
+    take_profit_atr_mult: 0      # stop-only (OTO): every walk-forward winner chose no
+                                 # TP leg — capping winners hurt in and out of sample
+    time_in_force: gtc           # legs must survive across days (DAY would expire overnight)
+
+llm:                   # optional judgment layer (Anthropic API)
+  enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
+  model: claude-fable-5   # most capable generally available model for the veto/downsize review
+  max_tokens: 4000        # Fable 5 thinks before answering and thinking counts
+                          # against max_tokens — keep this roomy or replies truncate
+  knowledge_path: knowledge/principles.md  # curated external principles fed to the
+                          # review prompt, labeled unverified; comment out to disable
+  # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
+
+x_posting:
+  enabled: true
+  dry_run: false       # LIVE posting (owner-authorized 2026-07-16). true = print instead.
+  post_style: recap    # recap = per-trade post with reasoning
+  hashtags: "#papertrading #tradingbot"
+  disclose_paper: true # always disclose paper trading in posts (keep this true — honesty matters)
+
+backtest:               # offline harness (src/backtest.py) — never touches the live ledger
+  slippage_bps: 5       # applied against you on every simulated fill
+  fee_per_trade_usd: 0.0
+  walk_forward_split: 0.7          # in-sample fraction; the rest is out-of-sample
+  trials_path: memory/backtest_trials.jsonl  # append-only log of EVERY variant tried
+
+learning:                # the learning loop: hypothesis book + judge calibration
+  lessons_path: memory/lessons.jsonl        # append-only hypothesis events
+  judgments_path: memory/judgments.jsonl    # every LLM verdict + its later resolution
+  promotion_min_supports: 3       # candidate->active: >=3 supports AND supports >= 2x contradicts
+  promotion_support_ratio: 2.0
+  refutation_min_evidence: 3      # refuted: contradicts >= supports with total evidence >= 3
+  staleness_days: 45              # no new evidence in N days -> retired (kept, out of retrieval)
+  counterfactual_extra_days: 5    # vetoed buys resolve after min_holding_days + this
+  counterfactual_max_per_run: 10  # bars() calls bounded per learn run
+  evaluator_batch_size: 5         # closed trades evaluated per learn.py run
+  max_llm_calls_per_cycle: 2      # hard cap on learning LLM calls inside a trading cycle
+  top_k_lessons: 8                # lessons injected into the review prompt
+  max_context_chars: 4000         # hard cap on the whole memory block
+  regime:                         # deterministic market-regime tagging from SPY bars
+    sma_period: 50                # trend: SPY close vs SMA50
+    vol_period: 20                # 20-day realized vol, annualized
+    vol_low: 0.15                 # below -> "low"; above vol_high -> "high"
+    vol_high: 0.25
+
+memory:
+  ledger_path: memory/ledger.jsonl
+  learnings_path: memory/learnings.md
+  negative_example_quota: 0.20   # ≥20% of retrieved past trades must be losers (anti-resonance)
+  review_lookback_trades: 25     # how many recent CLOSED trades feed the weekly review

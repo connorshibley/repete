@@ -1,0 +1,104 @@
+# CLAUDE.md — Instructions for Claude Code working on this project
+
+## What this is
+An autonomous **swing-trading** agent (stocks via Alpaca, **paper trading**) that:
+documents every decision with reasoning in an append-only JSONL ledger, uses an
+LLM only as a judgment layer (approve/downsize/veto), learns cautiously from
+closed trades, and posts trade recaps to X. Built from an evidence-based design
+(see `GUIDE.md` for the full walkthrough and the research rationale).
+
+## Architecture (do not restructure without asking)
+```
+src/broker.py    Alpaca wrapper. Paper-mode double interlock lives here.
+src/strategies/  Strategy ensemble (deterministic ONLY; LLM never generates signals):
+                 ma_crossover (baseline), tsmom, xsmom, meanrev. Registry in __init__.py;
+                 config `strategies:` gates ENTRIES per strategy; exits always route to the
+                 strategy that OWNS the position (tagged on its ledger record), even if since
+                 disabled. Entries: priority order, first surviving buy takes ownership.
+                 A strategy may be enabled live ONLY after passing backtest.enablement_gate
+                 (walk-forward OOS: positive, PF>=1.3, >=15 trades, beats B&H raw /
+                 risk-adjusted / exposure-matched).
+src/strategy.py  Compatibility facade over strategies/ (legacy generate_signal + indicators).
+src/llm.py       Judgment layer: approve / downsize / veto. Can NEVER enlarge or invent trades.
+src/risk.py      Hard rails: sizing, caps, trade-rate limit, daily-loss kill switch (HALT file),
+                 swing guard (min_holding_days blocks early exits — no day trading).
+src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
+src/memory.py    Retrieval layer: balanced trade sample (losers force-included), ranked lessons,
+                 judge calibration, regime — assembled into the review prompt.
+src/lessons.py   Hypothesis book (memory/lessons.jsonl, append-only events + replay): falsifiable
+                 lessons with a lifecycle candidate -> active | refuted | retired. learnings.md is
+                 a GENERATED view of this store — never hand-edit or treat it as source of truth.
+src/judgments.py Judge calibration (memory/judgments.jsonl): every approve/downsize/veto logged,
+                 later resolved (realized close or counterfactual) and scored; the judge sees its
+                 own track record in the prompt. kind=llm and kind=rails bucketed separately.
+src/counterfactual.py  What a vetoed buy would have done (pessimistic stop-before-TP replay,
+                 embargoed until min_holding_days + extra_days pass).
+src/regime.py    Deterministic market regime from SPY bars (trend x vol bucket); tags decisions,
+                 judgments, and lesson scopes so off-regime evidence gets discounted.
+src/learn.py     Learning engine: `python src/learn.py` (weekly, --meta for merge pass) +
+                 learn.inline_pass() at every cycle end. Bounded LLM calls, never crashes a cycle.
+src/x_poster.py  X recaps. dry_run default. Always disclose [PAPER]. Failures never block trading.
+src/main.py      Orchestrator: state -> signal -> judge -> rails -> execute -> ledger -> learn -> post.
+config.yaml      All parameters. .env holds secrets (never commit).
+```
+
+## Safety invariants — NEVER weaken these, even if asked casually
+1. **Paper by default.** Live trading requires BOTH `mode: live` in config.yaml AND
+   `LIVE_TRADING_CONFIRMED=YES` in .env. Never remove or bypass this interlock.
+2. **The LLM cannot override risk rails.** `risk.py` checks run after the LLM review,
+   in deterministic code. Keep it that way.
+3. **Swing-only.** The swing guard (`min_holding_days`) must keep blocking exits on
+   young positions. Only the daily-loss kill switch and broker-side protective
+   stop/take-profit bracket legs (set deterministically at entry, before any LLM
+   involvement) may exit before `min_holding_days`; the guard continues to block
+   all strategy-signal exits on young positions. `timeframe` stays `1Day`.
+4. **Positions/equity always read fresh from the broker** (`broker.account()`,
+   `broker.positions()`) — never inferred from memory, the ledger, or prior LLM output.
+5. **Outcome embargo.** Lessons/evidence are generated only from CLOSED trades;
+   counterfactual resolutions wait out the full horizon (min_holding_days + extra).
+   Memory samples must keep force-including losing trades, and lesson retrieval keeps
+   force-including a refuted CAUTION when any exist.
+6. **Learning is conservative-only and validated.** Lessons feed ONLY the veto/downsize
+   review prompt (never sizing/signals) and must EARN `active` status from evidence
+   (>=3 supports, 2x contradicts); refutation and staleness retire them. All lifecycle
+   transitions are ledger-mirrored. `learnings.md` is a generated view of
+   `memory/lessons.jsonl` — never hand-edit it.
+7. **X posts disclose [PAPER]** while paper trading. Never remove the disclosure.
+8. **Secrets stay in .env** and out of git. Never print keys to logs.
+9. If the owner asks to go live, walk them through the go-live gate in GUIDE.md §9
+   first (2–3 months paper, ≥30 closed trades, beats buy-and-hold) instead of just flipping it.
+
+## Conventions
+- Python 3.11+, no framework. Keep modules small and dependency-light.
+- Every new decision path must write a ledger record (including skips/rejections).
+- External-call failures (LLM, X, data) degrade gracefully; they never crash the cycle.
+- Test logic without network: import modules with a dict config and fake bars
+  (see GUIDE.md; a crossover fixture is `[10]*6 + [9,9,9,20]` with fast=3/slow=5).
+
+## Prioritized backlog (good next tasks)
+1. ~~**Bracket orders**~~ DONE: ATR-based stop-loss + take-profit legs
+   (`risk.brackets` in config.yaml, off by default; GTC legs; broker-side exits
+   reconciled into the ledger at cycle start by `main.reconcile_closed_positions`).
+2. ~~**Backtest harness**~~ DONE: `python src/backtest.py` — offline replay through
+   `strategy.generate_signal` + `risk` sizing with fee/slippage, walk-forward split,
+   vs buy-and-hold; every variant logged to `memory/backtest_trials.jsonl`.
+3. ~~**Weekly review command**~~ DONE: `python src/review.py` — skeptical report
+   (win rate, PF, vs SPY, lesson staleness) scored against the GUIDE.md §9 go-live gate.
+4. **SQLite ledger backend** behind the same `Ledger` interface (JSONL stays default).
+5. **Morning plan / evening review X posts** (respecting dry_run and [PAPER] disclosure).
+6. ~~**Unit tests**~~ DONE: `tests/` (pytest, fully offline; run
+   `.venv/bin/python -m pytest tests/ -q`).
+7. ~~**Data-freshness guard**~~ DONE 2026-07-16: `risk.bars_fresh` +
+   `risk.max_bar_age_days` — stale SPY aborts the cycle, stale symbols are
+   dropped (response to the stale-bars API bug).
+8. ~~**Heartbeat + watchdog**~~ DONE 2026-07-16: `memory/heartbeat` written on
+   every cycle exit; `src/watchdog.py` (launchd 16:15 weekdays) alerts via
+   macOS notification when a weekday cycle didn't run or HALT is engaged.
+9. ~~**Fill-quality tracking**~~ DONE 2026-07-16: `main.record_fill_quality`
+   appends measured slippage (signal vs fill, bps) per trade; surfaced in
+   `review.py` for the go-live cost comparison.
+10. ~~**tsmom index gate / meanrev entry cap**~~ DECIDED 2026-07-16: SPY<SMA50
+    entry gate ADOPTED (`index_sma_period: 50`); per-cycle entry cap REJECTED
+    (lost OOS) — see knowledge/backtest_candidates.md §3–4.
+11. **Earnings-blackout entry filter** — blocked on an earnings calendar
+    source (knowledge/backtest_candidates.md §1).

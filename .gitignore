@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+HALT
+logs/
+.venv/
+# ALL runtime state stays local: ledger, lessons, judgments, heartbeat,
+# trade counts, backtest trials
+memory/
+.pytest_cache/

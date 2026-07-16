@@ -1,0 +1,484 @@
+"""Orchestrator — one full decision cycle per run.
+
+Pipeline per symbol:
+    broker state (source of truth) -> deterministic signal -> LLM review
+    (approve/downsize/veto only) -> hard risk rails -> execute -> ledger
+    -> lesson (on close) -> X recap
+
+Run once per bar via cron/Task Scheduler (see GUIDE.md §6), e.g. daily:
+    python src/main.py
+"""
+import logging
+import os
+import sys
+from datetime import datetime, timezone
+
+import yaml
+from dotenv import load_dotenv
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from broker import Broker
+from ledger import Ledger
+from memory import Memory
+import learn
+import llm
+import regime as regime_mod
+import risk
+import strategies
+import strategy
+import x_poster
+
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+    handlers=[logging.StreamHandler(),
+              logging.FileHandler("logs/agent.log", mode="a")],
+)
+log = logging.getLogger("main")
+
+
+def handle_close(trade_id: str, open_rec: dict, exit_price: float,
+                 ledger: Ledger, memory: Memory, cfg: dict,
+                 exit_reason: str = "strategy_sell"):
+    """A position was exited: record outcome, learn, post."""
+    entry = open_rec.get("entry_price") or exit_price
+    qty = open_rec.get("qty") or 0
+    pnl = (exit_price - entry) * qty
+    pnl_pct = (exit_price - entry) / entry * 100 if entry else 0.0
+    ledger.close_trade(trade_id, exit_price, pnl, pnl_pct, exit_reason=exit_reason)
+    log.info("Closed trade %s (%s): P&L $%.2f (%.2f%%)",
+             trade_id, exit_reason, pnl, pnl_pct)
+
+    closed = {**open_rec, "exit_price": exit_price, "pnl": round(pnl, 2),
+              "pnl_pct": round(pnl_pct, 2), "result": "win" if pnl > 0 else "loss",
+              "exit_reason": exit_reason}
+    lesson = llm.generate_lesson_structured(closed, memory.context_for_llm(), cfg)
+    if lesson:
+        lid = memory.lessons.add_lesson(lesson["hypothesis"], lesson["scope"],
+                                        source=trade_id)
+        ledger.log_event("lesson_created", f"{lid} from trade {trade_id}")
+
+    recap = {**closed, "action": "sell"}
+    if lesson:  # close recaps carry what the bot learned
+        recap["lesson_hypothesis"] = lesson["hypothesis"]
+    x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg))
+
+
+def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
+    """Best-effort exit fill for a ledger-open trade whose symbol left the
+    broker's positions. Preference: filled bracket leg -> recent closed SELL
+    order -> latest daily close (flagged as an estimate)."""
+    symbol = open_rec["symbol"]
+    order = open_rec.get("order") or {}
+
+    for leg_id in order.get("leg_ids", []):
+        try:
+            leg = broker.get_order(leg_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Leg lookup failed for %s: %s", leg_id, e)
+            continue
+        if "filled" in leg["status"].lower() and leg["filled_avg_price"]:
+            reason = "stop_loss" if "stop" in str(leg.get("type", "")).lower() else "take_profit"
+            return leg["filled_avg_price"], reason
+        for sub in leg.get("legs", []):
+            if "filled" in sub["status"].lower() and sub["filled_avg_price"]:
+                reason = "stop_loss" if "stop" in sub["type"].lower() else "take_profit"
+                return sub["filled_avg_price"], reason
+
+    try:
+        for o in broker.closed_orders(symbol):
+            if o["side"].lower().endswith("sell") and o["filled_avg_price"]:
+                reason = ("stop_loss" if "stop" in o["type"].lower()
+                          else "take_profit" if "limit" in o["type"].lower()
+                          else "closed_order")
+                return o["filled_avg_price"], reason
+    except Exception as e:  # noqa: BLE001
+        log.warning("Closed-order lookup failed for %s: %s", symbol, e)
+
+    try:
+        price = broker.last_price(symbol)
+        if price:
+            return price, "last_price_estimate"
+    except Exception as e:  # noqa: BLE001
+        log.warning("Last-price fallback failed for %s: %s", symbol, e)
+    return None, "unknown"
+
+
+def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict,
+                               positions: dict):
+    """Cycle-start sync: ledger-open trades whose symbol is gone from the broker
+    were exited broker-side (bracket leg fill, kill-switch flatten, or a manual
+    close in the dashboard). Write their outcomes so open_buys() never desyncs.
+    Every path writes a ledger record; errors never crash the cycle."""
+    for tid, rec in ledger.open_buys().items():
+        symbol = rec["symbol"]
+        if symbol in positions:
+            continue
+        try:
+            entry_order = rec.get("order") or {}
+            if entry_order.get("id"):
+                try:
+                    o = broker.get_order(entry_order["id"])
+                    if o["filled_qty"] == 0 and "filled" not in o["status"].lower():
+                        ledger.close_trade(tid, rec.get("entry_price") or 0.0, 0.0, 0.0,
+                                           exit_reason="entry_unfilled")
+                        ledger.log_event("reconcile", f"{symbol} trade {tid}: entry never filled")
+                        continue
+                except Exception as e:  # noqa: BLE001
+                    log.warning("Entry-order lookup failed for %s: %s", tid, e)
+
+            price, reason = resolve_exit_price(broker, rec)
+            if price is None:
+                ledger.log_event("reconcile_error",
+                                 f"{symbol} trade {tid}: no exit price resolvable")
+                continue
+            log.info("Reconciling %s trade %s: closed broker-side (%s @ $%.2f)",
+                     symbol, tid, reason, price)
+            handle_close(tid, rec, price, ledger, memory, cfg, exit_reason=reason)
+        except Exception as e:  # noqa: BLE001 — reconciliation must never kill the cycle
+            log.error("Reconcile failed for %s trade %s: %s", symbol, tid, e)
+            ledger.log_event("reconcile_error", f"{symbol} trade {tid}: {e}")
+
+
+HEARTBEAT_FILE = "memory/heartbeat"
+
+
+def write_heartbeat():
+    """Proof-of-life for the watchdog: written on EVERY cycle exit path
+    (normal, halted, stale-data abort, crash) — it means 'the process ran',
+    not 'trading happened'."""
+    try:
+        os.makedirs(os.path.dirname(HEARTBEAT_FILE), exist_ok=True)
+        with open(HEARTBEAT_FILE, "w") as f:
+            f.write(datetime.now(timezone.utc).isoformat() + "\n")
+    except OSError as e:
+        log.warning("heartbeat write failed: %s", e)
+
+
+def record_fill_quality(broker, ledger: Ledger, max_checks: int = 20):
+    """Measured slippage: the price the signal saw vs the broker's actual
+    fill, appended once per trade as a fill_quality record. GUIDE §9's
+    go-live comparison should use measured costs, not estimates.
+    Bounded, idempotent, never raises."""
+    try:
+        records = ledger.all_records()
+        have = {r["trade_id"] for r in records if r["type"] == "fill_quality"}
+        candidates = [r for r in records
+                      if r["type"] == "decision" and r.get("executed")
+                      and (r.get("order") or {}).get("id")
+                      and r.get("entry_price")
+                      and r["trade_id"] not in have]
+        for rec in candidates[-max_checks:]:
+            try:
+                o = broker.get_order(rec["order"]["id"])
+            except Exception as e:  # noqa: BLE001
+                log.warning("fill lookup failed for %s: %s", rec["trade_id"], e)
+                continue
+            fill = o.get("filled_avg_price")
+            if not fill:
+                continue  # not filled yet — retried next cycle
+            signal = rec["entry_price"]
+            sign = 1 if rec["action"] == "buy" else -1  # worse-than-signal is +
+            bps = sign * (fill - signal) / signal * 1e4
+            ledger.log_fill_quality(rec["trade_id"], rec["symbol"],
+                                    rec["action"], signal, fill, bps)
+    except Exception as e:  # noqa: BLE001 — instrumentation never kills a cycle
+        log.error("fill-quality pass failed: %s", e)
+
+
+def run_cycle():
+    try:
+        _run_cycle()
+    finally:
+        write_heartbeat()
+
+
+def _run_cycle():
+    load_dotenv()
+    with open("config.yaml") as f:
+        cfg = yaml.safe_load(f)
+
+    ledger = Ledger(cfg["memory"]["ledger_path"])
+    memory = Memory(cfg, ledger)
+
+    if risk.check_halt():
+        log.critical("HALT file present — refusing to trade. Delete HALT to resume.")
+        ledger.log_event("halted_cycle_skipped")
+        return
+
+    broker = Broker(cfg)
+    account = broker.account()          # deterministic state: always from the broker,
+    positions = broker.positions()      # never from memory or prior LLM output.
+    log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
+
+    # --- Kill switch: daily loss limit ---
+    if risk.daily_loss_breached(account, cfg):
+        broker.flatten_all()
+        risk.engage_halt("daily loss limit breached — all positions flattened")
+        ledger.log_event("kill_switch", "daily loss limit breached; flattened; HALT engaged")
+        return
+
+    # Sync broker-side exits (bracket leg fills, flattens, manual closes)
+    # into the ledger BEFORE reading open trades.
+    reconcile_closed_positions(broker, ledger, memory, cfg, positions)
+    record_fill_quality(broker, ledger)
+
+    open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
+
+    market_regime = None   # computed after the ensemble bar fetch (from SPY bars)
+    regime_label = None
+
+    def _would_be_brackets(sig, bars, price):
+        """Deterministic bracket snapshot for blocked buys, so the
+        counterfactual later replays the same protective exits."""
+        if sig.action != "buy":
+            return None, None
+        bcfg = cfg["risk"].get("brackets", {})
+        prices = risk.bracket_prices(
+            price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg)
+        return prices if prices else (None, None)
+
+    def _process_signal(sig, symbol, bars, price, entry_ts, open_rec) -> str:
+        """One actionable signal through the unchanged pipeline:
+        LLM review -> rails -> leg cancel -> execute -> ledger/judgment/recap.
+        Returns 'executed' or 'blocked'."""
+        review = llm.review_signal(
+            sig, memory.context_for_llm(symbol=symbol, regime=market_regime,
+                                        strategy=sig.strategy), cfg)
+        if review["verdict"] == "veto":
+            tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
+                                      review, executed=False, detail="LLM veto",
+                                      regime=regime_label, strategy=sig.strategy)
+            stop, tp = _would_be_brackets(sig, bars, price)
+            memory.judgments.log_judgment(
+                tid, symbol, sig.action, "veto", review.get("scale", 1.0),
+                price, regime_label, kind="llm", executed=False,
+                reasoning=review.get("reasoning", ""),
+                stop_price=stop, tp_price=tp, strategy=sig.strategy)
+            log.info("%s: %s VETOED — %s", symbol, sig.action, review["reasoning"])
+            return "blocked"
+
+        # --- Hard risk rails (not overridable) ---
+        if sig.action == "buy":
+            qty = risk.size_order(account, price, cfg)
+            qty = int(qty * review["scale"])
+        else:
+            qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
+
+        try:
+            risk.pre_trade_checks(sig.action, symbol, qty, price, account,
+                                  positions, cfg, entry_ts=entry_ts)
+        except risk.RiskRejection as e:
+            tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
+                                      review, executed=False,
+                                      detail=f"risk rejection: {e}",
+                                      regime=regime_label, strategy=sig.strategy)
+            stop, tp = _would_be_brackets(sig, bars, price)
+            memory.judgments.log_judgment(
+                tid, symbol, sig.action, "rails_reject", 1.0, price,
+                regime_label, kind="rails", executed=False, reasoning=str(e),
+                stop_price=stop, tp_price=tp, strategy=sig.strategy)
+            log.warning("%s: %s REJECTED by risk rails — %s", symbol, sig.action, e)
+            return "blocked"
+
+        # A strategy sell of a bracketed position must first cancel the
+        # surviving protective legs (they reserve the shares).
+        if sig.action == "sell" and open_rec and \
+                (open_rec.get("order") or {}).get("order_class") in ("bracket", "oto"):
+            try:
+                broker.cancel_open_orders(symbol)
+            except Exception as e:  # noqa: BLE001 — never risk a double-sell
+                ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
+                                    review, executed=False,
+                                    detail=f"leg cancel failed, sell skipped: {e}",
+                                    regime=regime_label, strategy=sig.strategy)
+                log.error("%s: leg cancel failed, skipping sell this cycle — %s",
+                          symbol, e)
+                return "blocked"
+
+        # --- Execute ---
+        try:
+            order = None
+            if sig.action == "buy":
+                # Protective bracket legs: deterministic (ATR + config), computed
+                # after the LLM review and the rails — the LLM never sees them.
+                bcfg = cfg["risk"].get("brackets", {})
+                prices = risk.bracket_prices(
+                    price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg)
+                if prices:
+                    try:
+                        order = broker.bracket_market_order(symbol, qty, *prices)
+                    except Exception as e:  # noqa: BLE001 — degrade to plain order
+                        log.warning("%s: bracket order failed (%s) — falling back "
+                                    "to plain market order", symbol, e)
+            if order is None:
+                order = broker.market_order(symbol, qty, sig.action)
+        except Exception as e:  # noqa: BLE001
+            ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
+                                review, executed=False, detail=f"order error: {e}",
+                                regime=regime_label, strategy=sig.strategy)
+            log.error("%s: order failed — %s", symbol, e)
+            return "blocked"
+
+        risk.record_trade()
+        # Keep the in-cycle position view current so max_open_positions and
+        # the concentration cap see THIS cycle's entries/exits too.
+        if sig.action == "buy":
+            positions[symbol] = {"qty": qty, "market_value": qty * price,
+                                 "avg_entry": price, "unrealized_pl": 0.0}
+        else:
+            positions.pop(symbol, None)
+        trade_id = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
+                                       review, executed=True, order=order,
+                                       entry_price=price, qty=qty,
+                                       regime=regime_label, strategy=sig.strategy)
+        if sig.action == "buy":  # judge accountability: approvals get scored on close
+            memory.judgments.log_judgment(
+                trade_id, symbol, "buy", review["verdict"], review.get("scale", 1.0),
+                price, regime_label, kind="llm", executed=True,
+                reasoning=review.get("reasoning", ""),
+                stop_price=order.get("stop_price"),
+                tp_price=order.get("take_profit_price"), strategy=sig.strategy)
+        log.info("%s: EXECUTED %s x%d @ ~$%.2f (trade %s, %s)",
+                 symbol, sig.action.upper(), qty, price, trade_id, sig.strategy)
+
+        if sig.action == "buy":
+            recap = {"symbol": symbol, "action": "buy", "qty": qty,
+                     "entry_price": price, "strategy_reason": sig.reason,
+                     "strategy": sig.strategy, "llm_reasoning": review["reasoning"]}
+            x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg))
+        else:
+            # find the open buy this sell closes
+            for tid, rec in list(open_trades.items()):
+                if rec["symbol"] == symbol:
+                    handle_close(tid, rec, price, ledger, memory, cfg)
+                    open_trades.pop(tid)
+                    break
+        return "executed"
+
+    # --- Phase 1: fetch all bars up front (ensemble needs the full
+    # cross-section; lookback sized to the most demanding strategy) ---
+    lookback = strategies.max_lookback_bars(cfg)
+    all_bars: dict = {}
+    for symbol in cfg["symbols"]:
+        try:
+            fetched = broker.bars(symbol, cfg["strategy"]["timeframe"], lookback)
+            if fetched:
+                all_bars[symbol] = fetched
+        except Exception as e:  # noqa: BLE001 — data failure: skip symbol, log it
+            log.error("Data fetch failed for %s: %s", symbol, e)
+            ledger.log_event("data_error", f"{symbol}: {e}")
+
+    # --- Freshness guard: never trade on stale data (deterministic rail).
+    # SPY stale => the whole feed is suspect: abort the cycle. A single
+    # stale symbol => drop just that symbol. ---
+    max_age = cfg["risk"].get("max_bar_age_days", 4)
+    if not risk.bars_fresh(all_bars.get("SPY", []), max_age):
+        last_ts = all_bars["SPY"][-1]["ts"] if all_bars.get("SPY") else "none"
+        log.critical("STALE DATA — newest SPY bar is %s (max age %dd). "
+                     "Refusing to trade this cycle.", last_ts, max_age)
+        ledger.log_event("stale_data_abort",
+                         f"newest SPY bar {last_ts}, max_bar_age_days={max_age}")
+        return
+    for symbol in list(all_bars):
+        if not risk.bars_fresh(all_bars[symbol], max_age):
+            ledger.log_event("data_stale",
+                             f"{symbol}: newest bar {all_bars[symbol][-1]['ts']}")
+            log.warning("%s: stale bars — symbol skipped this cycle", symbol)
+            del all_bars[symbol]
+
+    # Market regime (deterministic, from SPY bars already fetched): tagged onto
+    # every decision/judgment so the learning loop can discount off-regime evidence.
+    market_regime = regime_mod.compute_regime(all_bars.get("SPY", []),
+                                              cfg["learning"]["regime"])
+    regime_label = market_regime["label"] if market_regime else None
+    log.info("Regime: %s", regime_mod.describe(market_regime))
+
+    # --- Phase 2: once-per-cycle cross-sectional precompute (includes
+    # disabled strategies that still own open positions — exits must work) ---
+    open_owners = {rec.get("strategy") or strategies.DEFAULT_OWNER
+                   for rec in open_trades.values()}
+    xs_ctx = strategies.prepare_cross_sections(cfg, all_bars,
+                                               extra_owners=open_owners)
+
+    # --- Phase 3: per-symbol ensemble loop with position ownership ---
+    entries_this_cycle: dict = {}   # strategy -> executed entries this cycle,
+                                    # for per-strategy max_entries_per_cycle
+                                    # (dip signals cluster on market-wide down
+                                    # days; the cap stops correlated pile-ins)
+    for symbol in cfg["symbols"]:
+        bars = all_bars.get(symbol)
+        if not bars:
+            continue
+        price = bars[-1]["close"]
+        holding = symbol in positions
+
+        if holding:
+            # Exits are OWNER-ONLY: the strategy that opened the position
+            # decides when to leave it (even if since disabled); everyone
+            # else keeps their hands off.
+            entry_ts, open_rec = None, None
+            for rec in open_trades.values():
+                if rec["symbol"] == symbol:
+                    entry_ts, open_rec = rec.get("ts"), rec
+                    break
+            owner = ((open_rec or {}).get("strategy")
+                     or strategies.DEFAULT_OWNER)
+            if owner not in strategies.REGISTRY:
+                ledger.log_event("ensemble_orphan",
+                                 f"{symbol}: unknown owner {owner}; bracket legs remain")
+                continue
+            sig = strategies.generate(owner, symbol, bars, cfg, True,
+                                      cross_section=xs_ctx.get(owner),
+                                      entry_ts=entry_ts)
+            if sig.action == "sell":
+                _process_signal(sig, symbol, bars, price, entry_ts, open_rec)
+            else:
+                ledger.log_decision(symbol, "hold", sig.reason, sig.indicators,
+                                    None, executed=False, regime=regime_label,
+                                    strategy=owner)
+                log.info("%s: HOLD (%s) — %s", symbol, owner, sig.reason)
+            continue
+
+        # Flat symbol: consult enabled strategies in priority order; the
+        # first buy that survives review + rails takes ownership.
+        hold_reasons: dict = {}
+        entered = False
+        for name, params in strategies.enabled(cfg):
+            cap = params.get("max_entries_per_cycle", 0)
+            if cap and entries_this_cycle.get(name, 0) >= cap:
+                hold_reasons[name] = {"reason": f"max_entries_per_cycle "
+                                                f"({cap}) reached this cycle"}
+                continue
+            sig = strategies.generate(name, symbol, bars, cfg, False,
+                                      cross_section=xs_ctx.get(name))
+            if sig.action != "buy":
+                hold_reasons[name] = {"reason": sig.reason, **sig.indicators}
+                continue
+            if _process_signal(sig, symbol, bars, price, None, None) == "executed":
+                entered = True
+                entries_this_cycle[name] = entries_this_cycle.get(name, 0) + 1
+                break  # ownership taken; lower priorities not consulted
+        if not entered and hold_reasons:
+            # one consolidated hold record per symbol per cycle
+            ledger.log_decision(symbol, "hold",
+                                f"no entry from {len(hold_reasons)} strategies",
+                                hold_reasons, None, executed=False,
+                                regime=regime_label)
+            log.info("%s: HOLD — %d strategies, no entry", symbol, len(hold_reasons))
+
+    # --- Learning pass: evaluate fresh closes, resolve due judgments,
+    # apply lifecycle transitions. Bounded, embargoed, never raises. ---
+    summary = learn.inline_pass(ledger, memory.lessons, memory.judgments, cfg,
+                                broker=broker)
+    if any(summary.values()):
+        log.info("Learning: %s", summary)
+
+    ledger.log_event("cycle_complete")
+    log.info("Cycle complete.")
+
+
+if __name__ == "__main__":
+    run_cycle()
