@@ -191,11 +191,13 @@ def run(mode: str):
     x_poster.post_text(text, cfg)
     ledger.log_event(event, text)
 
-    try:  # keep the dashboard current at every scheduled touchpoint
+    try:  # keep the dashboard + blog current at every scheduled touchpoint
+        import blog
         import dashboard
         dashboard.render(cfg)
+        blog.render(cfg)
     except Exception as e:  # noqa: BLE001 — cosmetic, never blocks
-        log.warning("dashboard render failed: %s", e)
+        log.warning("dashboard/blog render failed: %s", e)
 
 
 if __name__ == "__main__":

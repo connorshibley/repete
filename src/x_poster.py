@@ -4,11 +4,29 @@ Safety defaults:
   - dry_run: true in config prints the post instead of publishing.
   - Posts always disclose paper trading when disclose_paper is true.
   - Posting failures never interrupt trading — they're logged and skipped.
+
+Every outbound post is also archived to memory/posts.jsonl (append-only) —
+the source of truth for the public blog page. Archiving never breaks posting.
 """
+import json
 import logging
 import os
+from datetime import datetime, timezone
 
 log = logging.getLogger("x")
+
+
+def _archive(text: str, link: str | None, status: str, cfg: dict):
+    """Append the post to the archive; failures are logged, never raised."""
+    try:
+        path = cfg["x_posting"].get("posts_log_path", "memory/posts.jsonl")
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a") as f:
+            f.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "text": text, "link": link, "status": status}) + "\n")
+    except Exception as e:  # noqa: BLE001
+        log.warning("post archive failed: %s", e)
 
 
 def _client():
@@ -61,12 +79,15 @@ def post_text(text: str, cfg: dict, link: str | None = None):
     if xc.get("dry_run", True):
         log.info("X DRY RUN (not posted): %s", text)
         print(f"\n--- X post (dry run) ---\n{text}\n------------------------\n")
+        _archive(text, link, "dry_run", cfg)
         return
     try:
         resp = _client().create_tweet(text=text)
         log.info("Posted to X: tweet id %s", resp.data["id"])
+        _archive(text, link, "posted", cfg)
     except Exception as e:  # noqa: BLE001
         log.warning("X post failed (%s) — continuing", e)
+        _archive(text, link, "failed", cfg)
 
 
 def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None,

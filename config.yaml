@@ -141,6 +141,8 @@ x_posting:
   hashtags: "#papertrading #tradingbot"
   disclose_paper: true # always disclose paper trading in posts (keep this true — honesty matters)
   journal_path: memory/journal.jsonl   # append-only 500-word trade write-ups
+  posts_log_path: memory/posts.jsonl   # append-only archive of every outbound
+                                       # post -> rendered into the public blog
   journal_url_base: https://connorshibley.github.io/trading-agent-dashboard/journal.html
                        # public journal page; trade tweets link to #<trade_id>
 

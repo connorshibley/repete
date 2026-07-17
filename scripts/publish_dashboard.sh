@@ -17,6 +17,11 @@ if [ -f journal.html ] && ! cmp -s journal.html .site/journal.html; then
   git -C .site add journal.html
   changed=1
 fi
+if [ -f blog.html ] && ! cmp -s blog.html .site/blog.html; then
+  cp blog.html .site/blog.html
+  git -C .site add blog.html
+  changed=1
+fi
 
 if [ "$changed" -eq 1 ]; then
   git -C .site commit -q -m "site update $(date -u +%Y-%m-%dT%H:%MZ)" \

@@ -279,7 +279,8 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>
 &nbsp; <a class=x href="https://x.com/Repete2026" target="_blank"
 rel="noopener">@Repete2026 on X ↗</a>
-&nbsp; <a class=x href="journal.html">trade journal →</a></h1>
+&nbsp; <a class=x href="journal.html">trade journal →</a>
+&nbsp; <a class=x href="blog.html">blog →</a></h1>
 <div class=cards>{cards}</div>
 <h2>Equity</h2>{chart}{chart_note}
 <h2>Open positions</h2>{_positions_rows(ledger.open_buys(), now)}

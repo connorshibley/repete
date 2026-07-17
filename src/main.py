@@ -574,11 +574,13 @@ def _run_cycle():
                      _json.dumps({"equity": account["equity"],
                                   "n_positions": len(positions),
                                   "regime": regime_label}))
-    try:  # dashboard regeneration is cosmetic — never let it touch the cycle
+    try:  # dashboard/blog regeneration is cosmetic — never touches the cycle
+        import blog
         import dashboard
         dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
+        blog.render(cfg)
     except Exception as e:  # noqa: BLE001
-        log.warning("dashboard render failed: %s", e)
+        log.warning("dashboard/blog render failed: %s", e)
     log.info("Cycle complete.")
 
 
