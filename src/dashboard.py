@@ -270,6 +270,7 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="300">
 <title>trading-agent dashboard</title><style>{CSS}</style></head><body>
 <div class=wrap>
 <h1>trading-agent <span class=small>[PAPER] — generated

@@ -172,6 +172,12 @@ def run(mode: str):
     x_poster.post_text(text, cfg)
     ledger.log_event(event, text)
 
+    try:  # keep the dashboard current at every scheduled touchpoint
+        import dashboard
+        dashboard.render(cfg)
+    except Exception as e:  # noqa: BLE001 — cosmetic, never blocks
+        log.warning("dashboard render failed: %s", e)
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Morning plan / evening review post")
