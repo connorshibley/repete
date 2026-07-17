@@ -120,6 +120,16 @@ llm:                   # optional judgment layer (Anthropic API)
                           # review prompt, labeled unverified; comment out to disable
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
 
+news:                  # morning market awareness (Alpaca News API + LLM distill)
+  enabled: true
+  max_headlines: 50    # raw headlines fed to the distiller (last 24h)
+  max_nominations: 3   # watchlist symbols the news may point the scanners at.
+                       # NOMINATION != TRADE: entries still require a real
+                       # deterministic strategy signal + judge (extra
+                       # skepticism, outside backtested universe) + all rails.
+  max_news_entries_per_cycle: 1   # hard cap on executed news-nominated entries
+  context_path: memory/market_context.json  # today-only; stale context ignored
+
 x_posting:
   enabled: true
   dry_run: false       # LIVE posting (owner-authorized 2026-07-16). true = print instead.

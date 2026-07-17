@@ -227,6 +227,24 @@ def _run_cycle():
 
     open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
 
+    # --- Today's market context (news): judge context + validated watchlist
+    # nominations. NOMINATION != TRADE: entries still need a deterministic
+    # strategy signal + judge + rails. Stale/missing context = feature off. ---
+    import market_context as market_context_mod
+    news_ctx = market_context_mod.load(cfg) or {}
+    nominated = {n["symbol"]: n.get("reason", "")
+                 for n in news_ctx.get("nominations", [])
+                 if n["symbol"] not in cfg["symbols"]}
+    if nominated:
+        log.info("News-nominated watchlist today: %s", sorted(nominated))
+
+    # Scan universe: config symbols + today's nominations + any open-position
+    # symbol not otherwise covered (exits must always be scanned, even for
+    # symbols since removed from config or entered via a past nomination).
+    scan_symbols = list(cfg["symbols"])
+    scan_symbols += [s for s in nominated if s not in scan_symbols]
+    scan_symbols += [s for s in positions if s not in scan_symbols]
+
     market_regime = None   # computed after the ensemble bar fetch (from SPY bars)
     regime_label = None
 
@@ -241,13 +259,15 @@ def _run_cycle():
             vol_bucket=(market_regime or {}).get("vol"))
         return prices if prices else (None, None)
 
-    def _process_signal(sig, symbol, bars, price, entry_ts, open_rec) -> str:
+    def _process_signal(sig, symbol, bars, price, entry_ts, open_rec,
+                        extra_context: str = "", detail_tag: str = "") -> str:
         """One actionable signal through the unchanged pipeline:
         LLM review -> rails -> leg cancel -> execute -> ledger/judgment/recap.
         Returns 'executed' or 'blocked'."""
         review = llm.review_signal(
             sig, memory.context_for_llm(symbol=symbol, regime=market_regime,
-                                        strategy=sig.strategy), cfg)
+                                        strategy=sig.strategy)
+            + (f"\n\n{extra_context}" if extra_context else ""), cfg)
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False, detail="LLM veto",
@@ -334,7 +354,7 @@ def _run_cycle():
             positions.pop(symbol, None)
         trade_id = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                        review, executed=True, order=order,
-                                       entry_price=price, qty=qty,
+                                       entry_price=price, qty=qty, detail=detail_tag,
                                        regime=regime_label, strategy=sig.strategy)
         if sig.action == "buy":  # judge accountability: approvals get scored on close
             memory.judgments.log_judgment(
@@ -364,7 +384,7 @@ def _run_cycle():
     # cross-section; lookback sized to the most demanding strategy) ---
     lookback = strategies.max_lookback_bars(cfg)
     all_bars: dict = {}
-    for symbol in cfg["symbols"]:
+    for symbol in scan_symbols:
         try:
             fetched = broker.bars(symbol, cfg["strategy"]["timeframe"], lookback)
             if fetched:
@@ -432,7 +452,8 @@ def _run_cycle():
                                     # for per-strategy max_entries_per_cycle
                                     # (dip signals cluster on market-wide down
                                     # days; the cap stops correlated pile-ins)
-    for symbol in cfg["symbols"]:
+    news_entries = 0                # executed news-nominated entries (hard cap)
+    for symbol in scan_symbols:
         bars = all_bars.get(symbol)
         if not bars:
             continue
@@ -468,6 +489,20 @@ def _run_cycle():
 
         # Flat symbol: consult enabled strategies in priority order; the
         # first buy that survives review + rails takes ownership.
+        is_nominated = symbol in nominated
+        if is_nominated and news_entries >= cfg.get("news", {}).get(
+                "max_news_entries_per_cycle", 1):
+            ledger.log_decision(symbol, "hold",
+                                "news-nominated entry cap reached this cycle",
+                                {}, None, executed=False, regime=regime_label,
+                                detail="news-nominated")
+            continue
+        news_note = ""
+        if is_nominated:
+            news_note = ("NEWS-NOMINATED SYMBOL — outside the backtested "
+                         "universe; nominated because: "
+                         f"{nominated[symbol]}. Extra skepticism warranted: "
+                         "veto is the default unless the setup is clean.")
         hold_reasons: dict = {}
         entered = False
         for name, params in strategies.enabled(cfg):
@@ -486,9 +521,15 @@ def _run_cycle():
             if sig.action != "buy":
                 hold_reasons[name] = {"reason": sig.reason, **sig.indicators}
                 continue
-            if _process_signal(sig, symbol, bars, price, None, None) == "executed":
+            if _process_signal(
+                    sig, symbol, bars, price, None, None,
+                    extra_context=news_note,
+                    detail_tag="news-nominated" if is_nominated else "",
+            ) == "executed":
                 entered = True
                 entries_this_cycle[name] = entries_this_cycle.get(name, 0) + 1
+                if is_nominated:
+                    news_entries += 1
                 break  # ownership taken; lower priorities not consulted
         if not entered and hold_reasons:
             # one consolidated hold record per symbol per cycle

@@ -117,7 +117,10 @@ def plan_template(f: dict) -> str:
         head = f"Pre-market scan: watching {watch}."
     else:
         head = "Pre-market scan: no fresh setups."
-    return (f"[PAPER] {head} Holding {f['n_positions']} position"
+    ctx = ""
+    if f.get("market_summary"):
+        ctx = f" Context: {f['market_summary'][:100].rstrip('. ')}."
+    return (f"[PAPER] {head}{ctx} Holding {f['n_positions']} position"
             f"{'s' if f['n_positions'] != 1 else ''}. "
             f"Regime {f['regime']}. Decisions at the 3:45 PM ET cycle.")[:275]
 
@@ -153,6 +156,15 @@ def run(mode: str):
     broker = Broker(cfg)
 
     if mode == "plan":
+        # Morning market awareness: build today's news context FIRST so the
+        # plan post can narrate it and the 3:45 judge can read it.
+        try:
+            import market_context
+            news_ctx = market_context.refresh(cfg, broker, ledger=ledger)
+        except Exception as e:  # noqa: BLE001 — a quiet morning, not a crash
+            log.warning("market context refresh failed: %s", e)
+            news_ctx = None
+
         if risk.check_halt():
             log.warning("HALT present — skipping the plan post")
             ledger.log_event("plan_post_skipped", "HALT present")
@@ -161,6 +173,11 @@ def run(mode: str):
         if facts is None:
             ledger.log_event("plan_post_skipped", "stale or missing data")
             return
+        if news_ctx:
+            facts["market_summary"] = news_ctx["summary"]
+            facts["events_today"] = news_ctx.get("events_today", [])
+            facts["news_watchlist"] = [n["symbol"]
+                                       for n in news_ctx.get("nominations", [])]
         text = llm.write_daily_post("plan", facts, cfg) or plan_template(facts)
         event = "plan_post"
     else:

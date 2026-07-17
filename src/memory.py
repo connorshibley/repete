@@ -35,6 +35,7 @@ class Memory:
                                                      "memory/judgments.jsonl"))
         self.path = self.cfg["learnings_path"]  # rendered view, kept for compat
         self.knowledge_path = cfg.get("llm", {}).get("knowledge_path")
+        self.news_cfg = cfg.get("news", {})
 
     # ---- write ----
 
@@ -86,6 +87,23 @@ class Memory:
         return ("KNOWLEDGE (external, unverified — weigh below realized "
                 "evidence):\n" + text[:cap])
 
+    def market_context_block(self, symbol: str | None = None) -> str:
+        """Today's news context (memory/market_context.json), labeled as
+        unverified. Stale/missing context degrades to empty — yesterday's
+        news never leaks into today's judgment."""
+        import market_context
+        ctx = market_context.load({"news": self.news_cfg})
+        if not ctx:
+            return ""
+        parts = [f"TODAY'S MARKET CONTEXT (news, unverified): {ctx['summary']}"]
+        if ctx.get("events_today"):
+            parts.append("Events today: " + "; ".join(ctx["events_today"]))
+        flag = (ctx.get("symbol_flags") or {}).get(symbol or "")
+        if flag:
+            parts.append(f"{symbol} news: {flag}")
+        cap = self.lcfg.get("max_context_chars", 4000) // 4
+        return "\n".join(parts)[:cap]
+
     def context_for_llm(self, symbol: str | None = None,
                         regime: dict | None = None,
                         strategy: str | None = None) -> str:
@@ -111,11 +129,13 @@ class Memory:
         calib = calibration_line(calibration_metrics(self.judgments.replay()))
 
         knowledge = self.knowledge_block()
+        news = self.market_context_block(symbol)
         ctx = (f"RECENT CLOSED TRADES (balanced sample — losses included on purpose):\n"
                f"{trade_block}\n\n"
                f"VALIDATED LESSONS (hypotheses with evidence counts n=supports/contradicts):\n"
                f"{lesson_block}\n\n"
                + (f"{knowledge}\n\n" if knowledge else "")
+               + (f"{news}\n\n" if news else "")
                + f"{calib}\n"
                f"CURRENT REGIME: {regime_mod.describe(regime)}")
         return ctx[:self.lcfg.get("max_context_chars", 4000)]

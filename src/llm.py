@@ -142,6 +142,37 @@ def _json_call(cfg: dict, max_tokens: int, system: str, user: str):
         return None
 
 
+_MARKET_CONTEXT_SYSTEM = """You are the morning news-analysis layer of an automated PAPER
+swing-trading bot. Given raw headlines from the last 24 hours and the bot's trading
+universe, distill an honest market context. Strict JSON only:
+{"summary": "<2-3 plain sentences: what is actually driving markets right now>",
+ "events_today": ["<scheduled event that can move markets today, e.g. 'FOMC decision 2pm ET'>", ...],
+ "symbol_flags": {"<SYM in universe>": "<one-line news note for that symbol>", ...},
+ "nominations": [{"symbol": "<liquid US-listed ticker NOT in the universe>",
+                  "reason": "<one line: why this symbol deserves a scan today>"}, ...]}
+
+Rules:
+- You are NOT picking trades. Nominations only point the bot's deterministic
+  strategy scanners at a symbol; math decides everything after that.
+- At most 3 nominations, only liquid large/mid-cap US equities, never symbols
+  already in the universe, never crypto/OTC/leveraged ETFs.
+- No predictions, no price targets, no sentiment hype. If the news is genuinely
+  quiet, say so in the summary and return [] for nominations.
+- symbol_flags: only symbols with REAL, specific news (earnings, guidance,
+  litigation, product events). No generic "stock moved" flags."""
+
+
+def summarize_market_context(headlines: list[dict], universe: list[str],
+                             cfg: dict) -> dict | None:
+    """Distill raw headlines into the structured morning context, or None."""
+    out = _json_call(cfg, 3000, _MARKET_CONTEXT_SYSTEM,
+                     f"UNIVERSE: {json.dumps(universe)}\n\n"
+                     f"HEADLINES (last 24h): {json.dumps(headlines)}")
+    if not isinstance(out, dict) or not out.get("summary"):
+        return None
+    return out
+
+
 _LESSON_SYSTEM = """You review closed trades for an automated PAPER trading strategy.
 From ONE closed trade, write ONE cautious, FALSIFIABLE hypothesis to watch. Strict JSON:
 {"hypothesis": "<one sentence, phrased as 'possible pattern (n=1): ...'>",

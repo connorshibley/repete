@@ -35,6 +35,15 @@ src/counterfactual.py  What a vetoed buy would have done (pessimistic stop-befor
                  embargoed until min_holding_days + extra_days pass).
 src/regime.py    Deterministic market regime from SPY bars (trend x vol bucket); tags decisions,
                  judgments, and lesson scopes so off-regime evidence gets discounted.
+src/market_context.py  Morning news awareness (Alpaca News API + LLM distill, 9:35 job):
+                 today-only context for the judge/plan post + validated watchlist
+                 NOMINATIONS. The LLM may summarize news and nominate scan symbols;
+                 it still cannot generate, enlarge, or execute trades — a nominated
+                 entry needs a deterministic strategy signal + judge review (told
+                 "outside backtested universe, extra skepticism") + all rails, and
+                 is capped at news.max_news_entries_per_cycle (1). Nominations are
+                 validated deterministically (ticker shape, fresh bars, history).
+                 Stale context is ignored; every failure = no context, normal trading.
 src/learn.py     Learning engine: `python src/learn.py` (weekly, --meta for merge pass) +
                  learn.inline_pass() at every cycle end. Bounded LLM calls, never crashes a cycle.
 src/x_poster.py  X recaps. dry_run default. Always disclose [PAPER]. Failures never block trading.
