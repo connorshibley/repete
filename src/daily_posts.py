@@ -156,11 +156,13 @@ def run(mode: str):
     broker = Broker(cfg)
 
     if mode == "plan":
-        # Morning market awareness: build today's news context FIRST so the
-        # plan post can narrate it and the 3:45 judge can read it.
+        # Market awareness for the plan post: the hourly newsbrain job
+        # (9:25) normally already built today's context — only refresh here
+        # when it's missing, to avoid double LLM spend minutes apart.
         try:
             import market_context
-            news_ctx = market_context.refresh(cfg, broker, ledger=ledger)
+            news_ctx = (market_context.load(cfg)
+                        or market_context.refresh(cfg, broker, ledger=ledger))
         except Exception as e:  # noqa: BLE001 — a quiet morning, not a crash
             log.warning("market context refresh failed: %s", e)
             news_ctx = None

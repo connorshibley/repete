@@ -152,3 +152,18 @@ def load(cfg: dict) -> dict | None:
     if ctx.get("date") != date.today().isoformat():
         return None
     return ctx
+
+
+if __name__ == "__main__":
+    # Hourly refresh entry point (com.trading-agent.newsbrain, 9:25-15:25 ET).
+    import yaml
+    from dotenv import load_dotenv
+    logging.basicConfig(level=logging.INFO)
+    load_dotenv()
+    with open("config.yaml") as f:
+        _cfg = yaml.safe_load(f)
+    from broker import Broker
+    from ledger import Ledger
+    ctx = refresh(_cfg, Broker(_cfg),
+                  ledger=Ledger(_cfg["memory"]["ledger_path"]))
+    print("refreshed" if ctx else "no context (quiet news or LLM unavailable)")

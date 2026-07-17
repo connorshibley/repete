@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from broker import Broker
 from ledger import Ledger
 from memory import Memory
+import journal
 import learn
 import llm
 import regime as regime_mod
@@ -28,6 +29,20 @@ import risk
 import strategies
 import strategy
 import x_poster
+
+
+def journal_and_link(trade: dict, cfg: dict) -> str | None:
+    """Write a public journal entry for a trade event and return the link
+    for the recap tweet. Cosmetic — never raises, never blocks trading."""
+    try:
+        entry = journal.add_entry(trade, cfg)
+        journal.render(cfg)
+        base = cfg.get("x_posting", {}).get("journal_url_base")
+        if entry and base:
+            return f"{base}#{entry['trade_id']}"
+    except Exception as e:  # noqa: BLE001
+        log.warning("journal failed: %s", e)
+    return None
 
 os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
@@ -63,7 +78,8 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
     recap = {**closed, "action": "sell"}
     if lesson:  # close recaps carry what the bot learned
         recap["lesson_hypothesis"] = lesson["hypothesis"]
-    x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg))
+    link = journal_and_link(recap, cfg)
+    x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg), link=link)
 
 
 def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
@@ -370,7 +386,14 @@ def _run_cycle():
             recap = {"symbol": symbol, "action": "buy", "qty": qty,
                      "entry_price": price, "strategy_reason": sig.reason,
                      "strategy": sig.strategy, "llm_reasoning": review["reasoning"]}
-            x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg))
+            link = journal_and_link(
+                {"trade_id": trade_id, "symbol": symbol, "action": "buy",
+                 "qty": qty, "entry_price": price, "strategy": sig.strategy,
+                 "strategy_reason": sig.reason, "indicators": sig.indicators,
+                 "llm_review": review, "order": order,
+                 "regime": regime_label}, cfg)
+            x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg),
+                                link=link)
         else:
             # find the open buy this sell closes
             for tid, rec in list(open_trades.items()):

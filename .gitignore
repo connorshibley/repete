@@ -10,3 +10,4 @@ memory/
 .pytest_cache/
 dashboard.html
 .site/
+journal.html

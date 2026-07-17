@@ -42,16 +42,21 @@ def _template_post(trade: dict, cfg: dict) -> str:
     return text[:275]
 
 
-def post_text(text: str, cfg: dict):
+def post_text(text: str, cfg: dict, link: str | None = None):
     """Publish (or dry-run print) one post. The single choke point every
     outbound post goes through: paper disclosure enforced, 275-char cap,
-    failures logged and swallowed — posting must never break trading."""
+    failures logged and swallowed — posting must never break trading.
+    `link` is appended after the cap: X wraps every URL to a fixed
+    23-character t.co link, so the raw URL length doesn't count."""
     xc = cfg["x_posting"]
     if not xc["enabled"] or not text:
         return
     if xc.get("disclose_paper", True) and "paper" not in text.lower():
         text = "[PAPER] " + text
-    text = text[:275]
+    if link:
+        text = text[:275 - 24] + "\n" + link  # 23 (t.co) + newline
+    else:
+        text = text[:275]
 
     if xc.get("dry_run", True):
         log.info("X DRY RUN (not posted): %s", text)
@@ -64,7 +69,8 @@ def post_text(text: str, cfg: dict):
         log.warning("X post failed (%s) — continuing", e)
 
 
-def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None):
+def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None,
+               link: str | None = None):
     if not cfg["x_posting"]["enabled"]:
         return
-    post_text(llm_draft or _template_post(trade, cfg), cfg)
+    post_text(llm_draft or _template_post(trade, cfg), cfg, link=link)

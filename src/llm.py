@@ -121,7 +121,44 @@ def write_daily_post(kind: str, facts: dict, cfg: dict) -> str | None:
         return None
 
 
-def _json_call(cfg: dict, max_tokens: int, system: str, user: str):
+_JOURNAL_SYSTEM = """You write the public trade journal of an automated PAPER
+swing-trading bot. For ONE trade event, write a ~500-word entry in plain
+markdown (no front matter, no headings deeper than ###) covering:
+1. The opportunity: what the deterministic strategy saw in the data (use the
+   actual indicator values given).
+2. The strategy's logic: why this class of setup is traded at all, and its
+   known failure modes.
+3. The judge's view: what the AI risk-review said and how that shaped size.
+4. The risk plan: stop placement, position size, what would prove the trade
+   wrong.
+For a CLOSE event, focus on what actually happened vs the plan, and what the
+outcome does and does not prove (one trade is n=1).
+Honest, specific, no hype, no predictions, no advice. It MUST state clearly
+that this is paper trading. Return ONLY the markdown body."""
+
+
+def write_journal_entry(trade: dict, cfg: dict) -> str | None:
+    """~500-word public journal entry for one trade event, or None (caller
+    falls back to a template)."""
+    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        msg = client.messages.create(
+            model=cfg["llm"]["model"], max_tokens=4000,
+            system=_JOURNAL_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps(trade)}],
+        )
+        text = _msg_text(msg)
+        return text if len(text) > 200 else None
+    except Exception as e:  # noqa: BLE001
+        log.warning("LLM journal entry failed (%s) — using template", e)
+        return None
+
+
+def _json_call(cfg: dict, max_tokens: int, system: str, user: str,
+               model: str | None = None):
     """Shared strict-JSON call: returns the parsed object/array or None."""
     if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
         return None
@@ -129,7 +166,7 @@ def _json_call(cfg: dict, max_tokens: int, system: str, user: str):
         import anthropic
         client = anthropic.Anthropic()
         msg = client.messages.create(
-            model=cfg["llm"]["model"], max_tokens=max_tokens,
+            model=model or cfg["llm"]["model"], max_tokens=max_tokens,
             system=system, messages=[{"role": "user", "content": user}],
         )
         text = _msg_text(msg)
@@ -164,10 +201,13 @@ Rules:
 
 def summarize_market_context(headlines: list[dict], universe: list[str],
                              cfg: dict) -> dict | None:
-    """Distill raw headlines into the structured morning context, or None."""
+    """Distill raw headlines into the structured market context, or None.
+    Runs on news.model (a cheaper model — this fires hourly) when set;
+    the trade judge itself always stays on llm.model."""
     out = _json_call(cfg, 3000, _MARKET_CONTEXT_SYSTEM,
                      f"UNIVERSE: {json.dumps(universe)}\n\n"
-                     f"HEADLINES (last 24h): {json.dumps(headlines)}")
+                     f"HEADLINES (last 24h): {json.dumps(headlines)}",
+                     model=cfg.get("news", {}).get("model"))
     if not isinstance(out, dict) or not out.get("summary"):
         return None
     return out

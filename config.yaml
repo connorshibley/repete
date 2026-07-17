@@ -120,8 +120,12 @@ llm:                   # optional judgment layer (Anthropic API)
                           # review prompt, labeled unverified; comment out to disable
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
 
-news:                  # morning market awareness (Alpaca News API + LLM distill)
+news:                  # market awareness (Alpaca News API + LLM distill),
+                       # refreshed hourly 9:25-15:25 ET (com.trading-agent.newsbrain)
+                       # plus on-demand at the 9:35 plan post when missing
   enabled: true
+  model: claude-haiku-4-5  # distillation-only override (hourly cadence, ~$3/mo);
+                       # the trade judge and post copy stay on llm.model
   max_headlines: 50    # raw headlines fed to the distiller (last 24h)
   max_nominations: 3   # watchlist symbols the news may point the scanners at.
                        # NOMINATION != TRADE: entries still require a real
@@ -136,6 +140,9 @@ x_posting:
   post_style: recap    # recap = per-trade post with reasoning
   hashtags: "#papertrading #tradingbot"
   disclose_paper: true # always disclose paper trading in posts (keep this true — honesty matters)
+  journal_path: memory/journal.jsonl   # append-only 500-word trade write-ups
+  journal_url_base: https://connorshibley.github.io/trading-agent-dashboard/journal.html
+                       # public journal page; trade tweets link to #<trade_id>
 
 backtest:               # offline harness (src/backtest.py) — never touches the live ledger
   slippage_bps: 5       # applied against you on every simulated fill

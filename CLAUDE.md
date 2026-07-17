@@ -46,7 +46,18 @@ src/market_context.py  Morning news awareness (Alpaca News API + LLM distill, 9:
                  Stale context is ignored; every failure = no context, normal trading.
 src/learn.py     Learning engine: `python src/learn.py` (weekly, --meta for merge pass) +
                  learn.inline_pass() at every cycle end. Bounded LLM calls, never crashes a cycle.
-src/x_poster.py  X recaps. dry_run default. Always disclose [PAPER]. Failures never block trading.
+src/x_poster.py  X recaps. dry_run default. Always disclose [PAPER]. Failures never block
+                 trading. post_text = single choke point (disclosure + 275 cap + t.co link math).
+src/journal.py   Public trade journal: ~500-word Fable-5 write-up per executed buy and per
+                 close (template fallback) -> memory/journal.jsonl (append-only) -> journal.html
+                 on the GitHub Pages site; recap tweets link to #<trade_id>. Cosmetic — never
+                 blocks trading. Engagement metrics are NEVER read; learning stays outcome-based.
+src/dashboard.py Self-contained dashboard.html (equity curve, positions, decisions + judge
+                 reasoning, lessons, calibration, slippage), regenerated at every scheduled
+                 touchpoint and published with journal.html via scripts/publish_dashboard.sh
+                 to https://connorshibley.github.io/trading-agent-dashboard/ (public repo).
+                 The news brain (market_context) refreshes hourly 9:25-15:25 ET on
+                 claude-haiku-4-5 (news.model) via com.trading-agent.newsbrain.
 src/main.py      Orchestrator: state -> signal -> judge -> rails -> execute -> ledger -> learn -> post.
 config.yaml      All parameters. .env holds secrets (never commit).
 ```
