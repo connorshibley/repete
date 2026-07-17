@@ -40,6 +40,8 @@ table{border-collapse:collapse;width:100%;background:#fff;font-size:13px}
 th,td{border:1px solid #e2e5ea;padding:6px 8px;text-align:left;
       vertical-align:top}
 th{background:#eef0f4;font-size:12px}
+a.x{color:#2463eb;text-decoration:none;font-weight:600;font-size:14px}
+a.x:hover{text-decoration:underline}
 .win{color:#0a7d33}.loss{color:#b3261e}
 .badge{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;
        background:#e8eaf0}
@@ -274,7 +276,9 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 <title>trading-agent dashboard</title><style>{CSS}</style></head><body>
 <div class=wrap>
 <h1>trading-agent <span class=small>[PAPER] — generated
-{now.strftime('%Y-%m-%d %H:%M UTC')}</span></h1>
+{now.strftime('%Y-%m-%d %H:%M UTC')}</span>
+&nbsp; <a class=x href="https://x.com/Repete2026" target="_blank"
+rel="noopener">@Repete2026 on X ↗</a></h1>
 <div class=cards>{cards}</div>
 <h2>Equity</h2>{chart}{chart_note}
 <h2>Open positions</h2>{_positions_rows(ledger.open_buys(), now)}
@@ -284,7 +288,10 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 <h2>Lesson book</h2>{_lessons_rows(states)}
 <p class=small>{_esc(calib)}</p>
 <p class=small>Paper trading. Generated from memory/ledger.jsonl — the
-append-only audit trail is the source of truth, this page is a view.</p>
+append-only audit trail is the source of truth, this page is a view.
+The bot narrates its trades and reasoning at
+<a class=x href="https://x.com/Repete2026" target="_blank"
+rel="noopener">x.com/Repete2026</a>.</p>
 </div></body></html>"""
     with open(out_path, "w") as f:
         f.write(doc)
