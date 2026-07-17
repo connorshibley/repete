@@ -4,3 +4,5 @@ tweepy>=4.14
 pyyaml>=6.0
 python-dotenv>=1.0
 pandas>=2.0
+yfinance>=0.2  # earnings calendar (earnings-blackout filter)
+lxml>=5  # yfinance get_earnings_dates dependency

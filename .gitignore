@@ -8,3 +8,4 @@ logs/
 # trade counts, backtest trials
 memory/
 .pytest_cache/
+dashboard.html

@@ -97,8 +97,19 @@ config.yaml      All parameters. .env holds secrets (never commit).
 9. ~~**Fill-quality tracking**~~ DONE 2026-07-16: `main.record_fill_quality`
    appends measured slippage (signal vs fill, bps) per trade; surfaced in
    `review.py` for the go-live cost comparison.
-10. ~~**tsmom index gate / meanrev entry cap**~~ DECIDED 2026-07-16: SPY<SMA50
-    entry gate ADOPTED (`index_sma_period: 50`); per-cycle entry cap REJECTED
-    (lost OOS) — see knowledge/backtest_candidates.md §3–4.
-11. **Earnings-blackout entry filter** — blocked on an earnings calendar
-    source (knowledge/backtest_candidates.md §1).
+10. ~~**tsmom index gate / meanrev entry cap / vol-regime stops**~~ DECIDED,
+    final 2026-07-17 on a FROZEN data snapshot: ALL REJECTED (index gate was
+    briefly adopted 07-16 on what turned out to be API re-fetch drift, then
+    reverted). Param-gated code paths remain. See
+    knowledge/backtest_candidates.md §2–4 + its METHOD NOTE: **all backtest
+    variant comparisons must use one frozen `--bars-file` snapshot** — live
+    re-fetches of the same window drift intraday.
+11. ~~**Earnings-blackout entry filter**~~ DECIDED 2026-07-17 (frozen
+    snapshot): ADOPTED for tsmom (N=3, `strategies.tsmom.earnings_blackout_days`),
+    REJECTED for meanrev (hurts the dip edge) — per-strategy param, yfinance
+    calendar via src/earnings.py (cached, fail-open). See
+    knowledge/backtest_candidates.md §1.
+12. **Dashboard + daily posts** DONE 2026-07-17: `src/dashboard.py` renders
+    dashboard.html each cycle; `src/daily_posts.py` posts a 9:35 plan and
+    4:20 review (launchd com.trading-agent.dailypost), read-only scans,
+    [PAPER] enforced.

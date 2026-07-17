@@ -33,6 +33,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import strategies
 import strategy
 import risk
+import regime as regime_mod
+import earnings as earnings_mod
 
 
 # ---------------------------------------------------------------- data models
@@ -202,15 +204,31 @@ def _cal_days(entry_ts: str, now_ts: str) -> int:
     return (datetime.fromisoformat(now_ts) - datetime.fromisoformat(entry_ts)).days
 
 
-BRACKET_KEYS = ("stop_atr_mult", "take_profit_atr_mult")
+BRACKET_KEYS = ("stop_atr_mult", "take_profit_atr_mult",
+                "stop_atr_mult_high_vol")
+
+
+def vol_bucket_series(spy_bars: list[dict], rcfg: dict) -> dict:
+    """ts -> "low"|"mid"|"high" from SPY history up to each bar (no
+    look-ahead). Empty dict when SPY isn't in the tested universe — the
+    vol-conditioned stop then fails open to the base multiplier."""
+    out = {}
+    for i in range(len(spy_bars)):
+        r = regime_mod.compute_regime(spy_bars[:i + 1], rcfg)
+        if r:
+            out[spy_bars[i]["ts"]] = r["vol"]
+    return out
 
 
 def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
              start_cash: float = 100_000.0,
-             strategy_name: str = "ma_crossover") -> Result:
+             strategy_name: str = "ma_crossover",
+             earnings: dict | None = None) -> Result:
     """Replay bars through the live strategy/risk code for ONE named strategy.
     `params` overlays that strategy's settings (plus bracket multipliers)
     onto a COPY of cfg — the real config is never mutated.
+    `earnings` maps symbol -> sorted ISO earnings dates; only consulted when
+    the earnings_blackout_days param/config is set (mirrors the live filter).
     """
     params = params or {}
     cfg = json.loads(json.dumps(cfg))  # deep copy — never mutate the caller's config
@@ -229,6 +247,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         bcfg.setdefault("atr_period", 14)
     if "take_profit_atr_mult" in params:
         bcfg["take_profit_atr_mult"] = params["take_profit_atr_mult"]
+    if "stop_atr_mult_high_vol" in params:
+        bcfg["stop_atr_mult_high_vol"] = params["stop_atr_mult_high_vol"]
 
     smod = strategies.REGISTRY[strategy_name]
     needs_xs = smod.NEEDS_CROSS_SECTION
@@ -237,6 +257,16 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     slip = bt.get("slippage_bps", 5)
     fee = bt.get("fee_per_trade_usd", 0.0)
     min_days = cfg["risk"].get("min_holding_days", 0)
+
+    # Per-date vol bucket from SPY (only needed for the vol-conditioned stop;
+    # empty => bracket_prices falls back to the base multiplier).
+    vol_series = (vol_bucket_series(sym_bars.get("SPY", []),
+                                    cfg.get("learning", {}).get(
+                                        "regime", {"sma_period": 50,
+                                                   "vol_period": 20,
+                                                   "vol_low": 0.15,
+                                                   "vol_high": 0.25}))
+                  if bcfg.get("stop_atr_mult_high_vol") else {})
 
     acct = SimAccount(cash=start_cash)
     closed: list = []
@@ -288,7 +318,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 i = idx[sym][ts]
                 hist = sym_bars[sym][:i + 1]
                 prices = risk.bracket_prices(
-                    fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg)
+                    fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
+                    vol_bucket=vol_series.get(ts))
                 stop, tp = prices if prices else (None, None)
                 acct.cash -= qty * fill + fee
                 acct.positions[sym] = {
@@ -318,6 +349,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                            for s in sym_bars if ts in idx[s]}
             xs_ctx = smod.prepare(hist_by_sym, sparams)
         entry_cap = sparams.get("max_entries_per_cycle", 0)
+        blackout_days = sparams.get("earnings_blackout_days", 0)
         buys_queued_today = 0
         for sym, bar in today.items():
             i = idx[sym][ts]
@@ -327,6 +359,10 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
             sig = strategies.generate(strategy_name, sym, hist, cfg, holding,
                                       cross_section=xs_ctx, entry_ts=entry_ts)
             if sig.action == "buy" and not holding:
+                # earnings blackout — same rule as the live filter in main.py
+                if blackout_days and earnings and earnings_mod.next_within(
+                        earnings.get(sym, []), ts, blackout_days):
+                    continue
                 # per-cycle entry cap, first-come in symbol order — the same
                 # semantics as the live loop in main.py
                 if entry_cap and buys_queued_today >= entry_cap:
@@ -380,7 +416,8 @@ def append_trial(path: str, record: dict):
 
 def walk_forward(sym_bars: dict, cfg: dict, grid: list, split: float,
                  trials_path: str, start_cash: float = 100_000.0,
-                 strategy_name: str = "ma_crossover") -> dict:
+                 strategy_name: str = "ma_crossover",
+                 earnings: dict | None = None) -> dict:
     """In-sample grid search, out-of-sample validation of the single winner.
     EVERY variant tried is appended to the trials log — the honest audit trail
     against the False Strategy Theorem (the more variants you try, the better
@@ -390,13 +427,15 @@ def walk_forward(sym_bars: dict, cfg: dict, grid: list, split: float,
 
     results = []
     for params in grid:
-        r = simulate(is_bars, cfg, params, start_cash, strategy_name)
+        r = simulate(is_bars, cfg, params, start_cash, strategy_name,
+                     earnings=earnings)
         results.append(r)
         append_trial(trials_path, {"phase": "in_sample", **r.summary()})
 
     best = max(results, key=lambda r: (r.total_return_pct, r.profit_factor))
     best_params = {k: v for k, v in best.params.items() if k != "strategy"}
-    oos = simulate(oos_bars, cfg, best_params, start_cash, strategy_name)
+    oos = simulate(oos_bars, cfg, best_params, start_cash, strategy_name,
+                   earnings=earnings)
     append_trial(trials_path, {"phase": "oos", **oos.summary()})
 
     return {"n_variants": len(grid), "best_params": best.params,
@@ -490,6 +529,10 @@ def main():
                         "--param momentum_bars 63 126 252 (repeatable)")
     p.add_argument("--symbols", nargs="+", default=cfg["symbols"])
     p.add_argument("--bars-file", help="JSON/CSV bars; skips all network access")
+    p.add_argument("--earnings-file",
+                   help="JSON {symbol: [iso dates]} — frozen earnings "
+                        "calendar for earnings_blackout_days variants "
+                        "(omit to fetch via yfinance, cached)")
     p.add_argument("--start"), p.add_argument("--end")
     p.add_argument("--fast", nargs="+", type=int,
                    default=[cfg["strategy"]["fast_period"]])
@@ -522,11 +565,29 @@ def main():
         grid = build_grid(args.fast, args.slow, args.stop_mult, args.tp_mult)
     else:
         grid = build_generic_grid(args.param, args.stop_mult, args.tp_mult)
+
+    # Earnings calendar: only needed when the grid varies the blackout.
+    earnings_data = None
+    if any(p.get("earnings_blackout_days") for p in grid):
+        if args.earnings_file:
+            with open(args.earnings_file) as f:
+                earnings_data = json.load(f)
+        else:
+            import earnings as earnings_mod_cli
+            earnings_data = {s: earnings_mod_cli.get_dates(s)
+                             for s in sym_bars}
+            frozen = "memory/earnings_snapshot.json"
+            with open(frozen, "w") as f:
+                json.dump(earnings_data, f)
+            print(f"(earnings calendar fetched + frozen to {frozen} — pass "
+                  f"--earnings-file {frozen} to reproduce)\n")
+
     print(f"Walk-forward [{args.strategy}]: {len(grid)} variant(s), split "
           f"{args.split:.0%} IS / {1 - args.split:.0%} OOS, "
           f"{len(sym_bars)} symbol(s)\n")
     out = walk_forward(sym_bars, cfg, grid, args.split, args.trials_path,
-                       args.cash, strategy_name=args.strategy)
+                       args.cash, strategy_name=args.strategy,
+                       earnings=earnings_data)
 
     is_r, oos_r = out["is_result"], out["oos_result"]
     print(f"Best in-sample params: {out['best_params']}")

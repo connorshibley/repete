@@ -42,13 +42,16 @@ def _template_post(trade: dict, cfg: dict) -> str:
     return text[:275]
 
 
-def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None):
+def post_text(text: str, cfg: dict):
+    """Publish (or dry-run print) one post. The single choke point every
+    outbound post goes through: paper disclosure enforced, 275-char cap,
+    failures logged and swallowed — posting must never break trading."""
     xc = cfg["x_posting"]
-    if not xc["enabled"]:
+    if not xc["enabled"] or not text:
         return
-    text = llm_draft or _template_post(trade, cfg)
     if xc.get("disclose_paper", True) and "paper" not in text.lower():
-        text = ("[PAPER] " + text)[:275]
+        text = "[PAPER] " + text
+    text = text[:275]
 
     if xc.get("dry_run", True):
         log.info("X DRY RUN (not posted): %s", text)
@@ -57,5 +60,11 @@ def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None):
     try:
         resp = _client().create_tweet(text=text)
         log.info("Posted to X: tweet id %s", resp.data["id"])
-    except Exception as e:  # noqa: BLE001 — posting must never break trading
+    except Exception as e:  # noqa: BLE001
         log.warning("X post failed (%s) — continuing", e)
+
+
+def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None):
+    if not cfg["x_posting"]["enabled"]:
+        return
+    post_text(llm_draft or _template_post(trade, cfg), cfg)

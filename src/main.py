@@ -237,7 +237,8 @@ def _run_cycle():
             return None, None
         bcfg = cfg["risk"].get("brackets", {})
         prices = risk.bracket_prices(
-            price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg)
+            price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
+            vol_bucket=(market_regime or {}).get("vol"))
         return prices if prices else (None, None)
 
     def _process_signal(sig, symbol, bars, price, entry_ts, open_rec) -> str:
@@ -306,7 +307,8 @@ def _run_cycle():
                 # after the LLM review and the rails — the LLM never sees them.
                 bcfg = cfg["risk"].get("brackets", {})
                 prices = risk.bracket_prices(
-                    price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg)
+                    price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
+                    vol_bucket=(market_regime or {}).get("vol"))
                 if prices:
                     try:
                         order = broker.bracket_market_order(symbol, qty, *prices)
@@ -403,6 +405,28 @@ def _run_cycle():
     xs_ctx = strategies.prepare_cross_sections(cfg, all_bars,
                                                extra_owners=open_owners)
 
+    # --- Earnings blackout (PER-STRATEGY param, off by default): block NEW
+    # entries in names reporting within that strategy's N days. Deterministic,
+    # computed before the loop; exits are never blocked; calendar failures
+    # fail open. Per-strategy because the gate evidence split: it helps
+    # trend entries (tsmom) and hurts dip-buying (meanrev). ---
+    earnings_blackouts: dict = {}   # strategy name -> set of blacked-out syms
+    ebd = {name: params.get("earnings_blackout_days", 0)
+           for name, params in strategies.enabled(cfg)}
+    if any(ebd.values()):
+        try:
+            import earnings
+            flat = [s for s in cfg["symbols"] if s not in positions]
+            for name, days in ebd.items():
+                if days:
+                    earnings_blackouts[name] = earnings.blackout_symbols(
+                        flat, days)
+                    if earnings_blackouts[name]:
+                        log.info("Earnings blackout [%s, %dd]: %s", name,
+                                 days, sorted(earnings_blackouts[name]))
+        except Exception as e:  # noqa: BLE001 — filter loss ≠ cycle loss
+            log.warning("earnings blackout unavailable (%s) — continuing", e)
+
     # --- Phase 3: per-symbol ensemble loop with position ownership ---
     entries_this_cycle: dict = {}   # strategy -> executed entries this cycle,
                                     # for per-strategy max_entries_per_cycle
@@ -447,6 +471,11 @@ def _run_cycle():
         hold_reasons: dict = {}
         entered = False
         for name, params in strategies.enabled(cfg):
+            if symbol in earnings_blackouts.get(name, ()):
+                hold_reasons[name] = {"reason": "earnings within "
+                                                f"{ebd[name]}d — entry "
+                                                "blackout"}
+                continue
             cap = params.get("max_entries_per_cycle", 0)
             if cap and entries_this_cycle.get(name, 0) >= cap:
                 hold_reasons[name] = {"reason": f"max_entries_per_cycle "
@@ -476,7 +505,16 @@ def _run_cycle():
     if any(summary.values()):
         log.info("Learning: %s", summary)
 
-    ledger.log_event("cycle_complete")
+    import json as _json
+    ledger.log_event("cycle_complete",
+                     _json.dumps({"equity": account["equity"],
+                                  "n_positions": len(positions),
+                                  "regime": regime_label}))
+    try:  # dashboard regeneration is cosmetic — never let it touch the cycle
+        import dashboard
+        dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
+    except Exception as e:  # noqa: BLE001
+        log.warning("dashboard render failed: %s", e)
     log.info("Cycle complete.")
 
 

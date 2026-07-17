@@ -88,6 +88,39 @@ def write_x_post(trade: dict, cfg: dict) -> str | None:
         return None
 
 
+_DAILY_SYSTEMS = {
+    "plan": ("Write a single tweet (<270 chars): a pre-market note from an "
+             "automated PAPER swing-trading bot. List the setups it is "
+             "watching (symbol + one-word reason) and the market regime. "
+             "Plain, honest, no hype, no emojis, no predictions, no advice. "
+             "MUST say it is paper trading and that decisions happen at the "
+             "3:45 PM ET cycle."),
+    "review": ("Write a single tweet (<270 chars): an end-of-day review from "
+               "an automated PAPER swing-trading bot. Summarize what it did "
+               "(trades, vetoes, holds) and current equity. Plain, honest, "
+               "no hype, no emojis, no advice. MUST say it is paper trading."),
+}
+
+
+def write_daily_post(kind: str, facts: dict, cfg: dict) -> str | None:
+    """Draft the morning-plan or evening-review post from a facts dict.
+    Returns None if the LLM is unavailable (caller uses its template)."""
+    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        msg = client.messages.create(
+            model=cfg["llm"]["model"], max_tokens=2000,
+            system=_DAILY_SYSTEMS[kind],
+            messages=[{"role": "user", "content": json.dumps(facts)}],
+        )
+        return _msg_text(msg).strip('"')[:275] or None
+    except Exception as e:  # noqa: BLE001
+        log.warning("LLM daily-post drafting failed (%s) — using template", e)
+        return None
+
+
 def _json_call(cfg: dict, max_tokens: int, system: str, user: str):
     """Shared strict-JSON call: returns the parsed object/array or None."""
     if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):

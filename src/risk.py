@@ -91,19 +91,27 @@ def size_order(account: dict, price: float, cfg: dict) -> int:
 
 
 def bracket_prices(entry_price: float, atr_value: float | None,
-                   cfg: dict) -> tuple[float, float | None] | None:
+                   cfg: dict,
+                   vol_bucket: str | None = None) -> tuple[float, float | None] | None:
     """Deterministic stop/take-profit prices for a bracket entry.
 
     stop = entry − stop_atr_mult·ATR; tp = entry + take_profit_atr_mult·ATR
-    (tp omitted when the multiplier is 0). Returns None — caller degrades to a
-    plain market order — when brackets are disabled, ATR is unavailable, or the
-    stop would be non-positive. Computed AFTER the LLM review and the pre-trade
-    rails; the LLM never sees or influences these numbers.
+    (tp omitted when the multiplier is 0). When `stop_atr_mult_high_vol` is
+    configured and the market vol regime at entry is "high", that wider
+    multiplier is used instead (fixed 2×ATR whipsaws in high-vol tape) —
+    absent/0 keeps the single fixed multiplier. Returns None — caller
+    degrades to a plain market order — when brackets are disabled, ATR is
+    unavailable, or the stop would be non-positive. Computed AFTER the LLM
+    review and the pre-trade rails; the LLM never sees these numbers.
     """
     b = cfg["risk"].get("brackets", {})
     if not b.get("enabled") or not atr_value or atr_value <= 0:
         return None
-    stop = round(entry_price - b["stop_atr_mult"] * atr_value, 2)
+    mult = b["stop_atr_mult"]
+    high_mult = b.get("stop_atr_mult_high_vol", 0)
+    if high_mult and vol_bucket == "high":
+        mult = high_mult
+    stop = round(entry_price - mult * atr_value, 2)
     if stop <= 0:
         log.warning("bracket stop would be non-positive (entry %.2f, ATR %.2f) "
                     "— falling back to plain market order", entry_price, atr_value)
