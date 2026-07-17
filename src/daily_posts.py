@@ -2,6 +2,9 @@
 
     python src/daily_posts.py --plan     (scheduled 9:35 AM ET weekdays)
     python src/daily_posts.py --review   (scheduled 4:20 PM ET weekdays)
+    python src/daily_posts.py --catchup  (hourly via the news brain: posts the
+                                          plan late if 9:35 was missed — e.g.
+                                          the Mac was asleep — else a no-op)
 
 STRICTLY READ-ONLY with respect to trading: the plan mode runs the strategy
 code to see what it WOULD watch but places no orders, writes no decision
@@ -15,6 +18,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import yaml
 from dotenv import load_dotenv
@@ -37,6 +41,51 @@ logging.basicConfig(
               logging.FileHandler("logs/agent.log", mode="a")],
 )
 log = logging.getLogger("daily")
+
+ET = ZoneInfo("America/New_York")
+PLAN_MARKER = "memory/last_plan_post"   # bare YYYY-MM-DD of the last attempt
+PLAN_TIME = (9, 35)                     # the scheduled plan-post slot (ET)
+
+
+# ---- plan-post catch-up (the 9:35 launchd slot is skipped if the Mac is
+#      asleep/off; the hourly news brain calls --catchup to post late) ----
+
+def should_catchup(now_et: datetime, marker_date: str | None) -> bool:
+    """Pure: is a plan post owed right now? Weekday, past 9:35 ET, and no
+    attempt recorded for today."""
+    if now_et.weekday() >= 5:
+        return False
+    if (now_et.hour, now_et.minute) < PLAN_TIME:
+        return False
+    return marker_date != now_et.date().isoformat()
+
+
+def read_plan_marker(path: str | None = None) -> str | None:
+    try:
+        with open(path or PLAN_MARKER) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def write_plan_marker(path: str | None = None) -> None:
+    """Record today's (ET) plan attempt — written BEFORE posting so a failed
+    X post can never turn the hourly catch-up into a retry storm."""
+    path = path or PLAN_MARKER
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w") as f:
+        f.write(datetime.now(ET).date().isoformat())
+
+
+def catchup() -> bool:
+    """Run the plan post late if today's 9:35 slot was missed. Returns True
+    if a plan run was triggered."""
+    if not should_catchup(datetime.now(ET), read_plan_marker()):
+        return False
+    log.info("plan post missed at 9:35 ET — catching up now")
+    write_plan_marker()
+    run("plan")
+    return True
 
 
 # ---- facts gathering (I/O) ----
@@ -156,6 +205,7 @@ def run(mode: str):
     broker = Broker(cfg)
 
     if mode == "plan":
+        write_plan_marker()  # attempt-time: at most one plan attempt per day
         # Market awareness for the plan post: the hourly newsbrain job
         # (9:25) normally already built today's context — only refresh here
         # when it's missing, to avoid double LLM spend minutes apart.
@@ -205,5 +255,10 @@ if __name__ == "__main__":
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--plan", action="store_true")
     g.add_argument("--review", action="store_true")
+    g.add_argument("--catchup", action="store_true",
+                   help="post the plan late if the 9:35 slot was missed")
     args = p.parse_args()
-    run("plan" if args.plan else "review")
+    if args.catchup:
+        catchup()
+    else:
+        run("plan" if args.plan else "review")

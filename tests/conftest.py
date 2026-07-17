@@ -10,8 +10,11 @@ import pytest
 
 
 @pytest.fixture
-def cfg():
-    """Minimal dict config mirroring config.yaml, network layers disabled."""
+def cfg(tmp_path):
+    """Minimal dict config mirroring config.yaml, network layers disabled.
+
+    Every writable store defaults to a pytest tmp path so no test can ever
+    touch the real memory/ files, even without an explicit override."""
     return {
         "mode": "paper",
         "symbols": ["SPY"],
@@ -42,16 +45,18 @@ def cfg():
         },
         "llm": {"enabled": False, "model": "claude-sonnet-4-5", "max_tokens": 1000},
         "x_posting": {"enabled": True, "dry_run": True, "post_style": "recap",
-                      "hashtags": "#papertrading #tradingbot", "disclose_paper": True},
+                      "hashtags": "#papertrading #tradingbot", "disclose_paper": True,
+                      "posts_log_path": str(tmp_path / "posts.jsonl"),
+                      "journal_path": str(tmp_path / "journal.jsonl")},
         "memory": {
-            "ledger_path": "memory/ledger.jsonl",
-            "learnings_path": "memory/learnings.md",
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "learnings_path": str(tmp_path / "learnings.md"),
             "negative_example_quota": 0.20,
             "review_lookback_trades": 25,
         },
         "learning": {
-            "lessons_path": "memory/lessons.jsonl",
-            "judgments_path": "memory/judgments.jsonl",
+            "lessons_path": str(tmp_path / "lessons.jsonl"),
+            "judgments_path": str(tmp_path / "judgments.jsonl"),
             "promotion_min_supports": 3,
             "promotion_support_ratio": 2.0,
             "refutation_min_evidence": 3,
@@ -69,7 +74,7 @@ def cfg():
             "slippage_bps": 5,
             "fee_per_trade_usd": 0.0,
             "walk_forward_split": 0.7,
-            "trials_path": "memory/backtest_trials.jsonl",
+            "trials_path": str(tmp_path / "backtest_trials.jsonl"),
         },
     }
 

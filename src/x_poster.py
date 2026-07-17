@@ -69,8 +69,9 @@ def post_text(text: str, cfg: dict, link: str | None = None):
     xc = cfg["x_posting"]
     if not xc["enabled"] or not text:
         return
-    if xc.get("disclose_paper", True) and "paper" not in text.lower():
-        text = "[PAPER] " + text
+    if xc.get("disclose_paper", True) and not text.startswith("[PAPER]"):
+        text = "[PAPER] " + text  # the literal tag, always — prose mentions
+        # of "paper" don't count as the machine-readable disclosure
     if link:
         text = text[:275 - 24] + "\n" + link  # 23 (t.co) + newline
     else:

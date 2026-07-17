@@ -120,3 +120,64 @@ def test_run_plan_posts_and_ledgers(cfg, tmp_path, monkeypatch, capsys):
     events = [r for r in led.all_records() if r["type"] == "event"]
     assert any(e["event"] == "plan_post" for e in events)
     assert not any(r["type"] == "decision" for r in led.all_records())
+
+
+# ---- plan-post catch-up (missed 9:35 slot) ----
+
+def test_should_catchup_pure_cases():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    fri_afternoon = datetime(2026, 7, 17, 11, 0, tzinfo=et)
+    assert daily_posts.should_catchup(fri_afternoon, None)
+    assert daily_posts.should_catchup(fri_afternoon, "2026-07-16")  # stale
+    assert not daily_posts.should_catchup(fri_afternoon, "2026-07-17")  # done
+    early = datetime(2026, 7, 17, 9, 34, tzinfo=et)
+    assert not daily_posts.should_catchup(early, None)   # before the slot
+    at_slot = datetime(2026, 7, 17, 9, 35, tzinfo=et)
+    assert daily_posts.should_catchup(at_slot, None)     # slot time counts
+    saturday = datetime(2026, 7, 18, 11, 0, tzinfo=et)
+    assert not daily_posts.should_catchup(saturday, None)
+
+
+def test_catchup_runs_plan_once_per_day(tmp_path, monkeypatch):
+    marker = tmp_path / "last_plan_post"
+    monkeypatch.setattr(daily_posts, "PLAN_MARKER", str(marker))
+    calls = []
+    monkeypatch.setattr(daily_posts, "run", lambda mode: calls.append(mode))
+    from datetime import datetime
+    afternoon = datetime(2026, 7, 17, 13, 0, tzinfo=daily_posts.ET)
+
+    class FakeDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return afternoon
+    monkeypatch.setattr(daily_posts, "datetime", FakeDT)
+
+    assert daily_posts.catchup() is True          # missed slot -> runs plan
+    assert calls == ["plan"]
+    assert marker.read_text() == "2026-07-17"     # marker written pre-post
+    assert daily_posts.catchup() is False         # same day -> no-op
+    assert calls == ["plan"]
+
+
+def test_marker_written_even_if_plan_run_fails(tmp_path, monkeypatch):
+    marker = tmp_path / "last_plan_post"
+    monkeypatch.setattr(daily_posts, "PLAN_MARKER", str(marker))
+
+    def boom(mode):
+        raise RuntimeError("X exploded")
+    monkeypatch.setattr(daily_posts, "run", boom)
+    from datetime import datetime
+    afternoon = datetime(2026, 7, 17, 13, 0, tzinfo=daily_posts.ET)
+
+    class FakeDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return afternoon
+    monkeypatch.setattr(daily_posts, "datetime", FakeDT)
+
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError):
+        daily_posts.catchup()
+    assert marker.read_text() == "2026-07-17"     # no hourly retry storm
