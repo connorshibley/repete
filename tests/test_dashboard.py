@@ -68,3 +68,64 @@ def test_spy_overlay_included_when_bars_given(tmp_path, cfg):
                            spy_bars=make_bars([100, 101, 102]))
     html = open(out).read()
     assert "SPY (scaled)" in html
+
+
+def test_hero_total_pl_from_snapshots(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    cfg["reporting"] = {"starting_equity": 100_000}
+    led = Ledger(cfg["memory"]["ledger_path"])
+    for eq in (100_000.0, 100_250.0):
+        led.log_event("cycle_complete", json.dumps({"equity": eq}))
+    out = dashboard.render(cfg, out_path=str(tmp_path / "dash.html"))
+    html = open(out).read()
+    assert "+$250.00" in html                 # hero total P/L, signed
+    assert 'data-count="250.00"' in html      # count-up target
+    assert "Total P/L" in html
+    assert 'data-tip="2026-' in html          # chart hover targets rendered
+
+
+def test_hero_negative_pl_gets_loss_class(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    cfg["reporting"] = {"starting_equity": 100_000}
+    led = Ledger(cfg["memory"]["ledger_path"])
+    for eq in (100_000.0, 99_400.0):
+        led.log_event("cycle_complete", json.dumps({"equity": eq}))
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert "-$600.00" in html
+    assert 'class="hv loss"' in html
+
+
+def test_trade_bars_one_rect_per_closed_trade(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    t1 = led.log_decision("NVDA", "buy", "dip", {}, None, executed=True,
+                          entry_price=100.0, qty=5, strategy="meanrev")
+    t2 = led.log_decision("AAPL", "buy", "trend", {}, None, executed=True,
+                          entry_price=200.0, qty=3, strategy="tsmom")
+    led.close_trade(t1, exit_price=104.0, pnl=20.0, pnl_pct=4.0,
+                    exit_reason="take_profit")
+    led.close_trade(t2, exit_price=195.0, pnl=-15.0, pnl_pct=-2.5,
+                    exit_reason="stop_loss")
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert '<rect class="win"' in html and '<rect class="loss"' in html
+    assert "NVDA · +$20.00 (+4.00%) · take_profit" in html
+    assert "AAPL · -$15.00 (-2.50%) · stop_loss" in html
+
+
+def test_filter_chips_and_row_classes(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    led.log_decision("NVDA", "buy", "dip", {},
+                     {"verdict": "veto", "scale": 0.0, "reasoning": "no"},
+                     executed=False, detail="LLM veto")
+    led.log_decision("AAPL", "buy", "trend", {},
+                     {"verdict": "approve", "scale": 1.0, "reasoning": "ok"},
+                     executed=True, entry_price=200.0, qty=3)
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    for chip in ("Executed", "Vetoed", "Downsized", "Skipped"):
+        assert f">{chip}</span>" in html
+    assert 'class="r-skip r-veto"' in html
+    assert 'class="r-exec r-approve"' in html

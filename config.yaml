@@ -171,6 +171,10 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     vol_low: 0.15                 # below -> "low"; above vol_high -> "high"
     vol_high: 0.25
 
+reporting:
+  starting_equity: 100000        # Alpaca paper account starting capital; the
+                                 # dashboard's total-P/L = equity - this
+
 memory:
   ledger_path: memory/ledger.jsonl
   learnings_path: memory/learnings.md

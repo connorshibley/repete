@@ -52,8 +52,11 @@ src/journal.py   Public trade journal: ~500-word Fable-5 write-up per executed b
                  close (template fallback) -> memory/journal.jsonl (append-only) -> journal.html
                  on the GitHub Pages site; recap tweets link to #<trade_id>. Cosmetic — never
                  blocks trading. Engagement metrics are NEVER read; learning stays outcome-based.
-src/dashboard.py Self-contained dashboard.html (equity curve, positions, decisions + judge
-                 reasoning, lessons, calibration, slippage), regenerated at every scheduled
+src/dashboard.py Self-contained dashboard.html — dark terminal theme, hero total-P/L banner
+                 (equity - reporting.starting_equity), P/L-over-time + per-trade P/L charts,
+                 equity curve, positions, decisions + judge reasoning (filter chips), lessons,
+                 calibration, slippage; vanilla inline JS only (tooltips/count-up/filters).
+                 Regenerated at every scheduled
                  touchpoint and published with journal.html via scripts/publish_dashboard.sh
                  to https://connorshibley.github.io/trading-agent-dashboard/ (public repo).
                  The news brain (market_context) refreshes hourly 9:25-15:25 ET on
