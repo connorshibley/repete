@@ -29,10 +29,13 @@ def test_missing_heartbeat_flagged_on_weekday(tmp_path):
 
 
 def test_stale_heartbeat_flagged_on_weekday(tmp_path):
+    # Anchor the heartbeat to the fixed check date (not real `now`), so the
+    # stale gap is deterministic regardless of when the suite runs.
     hb = _write_heartbeat(
-        tmp_path, datetime.now(timezone.utc) - timedelta(days=3))
-    problems = watchdog.check(today=date.today() if date.today().weekday() < 5
-                              else MONDAY,
+        tmp_path,
+        datetime(MONDAY.year, MONDAY.month, MONDAY.day, tzinfo=timezone.utc)
+        - timedelta(days=3))
+    problems = watchdog.check(today=MONDAY,
                               heartbeat_path=hb,
                               halt_path=str(tmp_path / "HALT"))
     assert problems and "did NOT run" in problems[0]

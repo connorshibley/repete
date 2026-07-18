@@ -48,8 +48,14 @@ def test_render_groups_days_and_filters_status(cfg, tmp_path):
     with open(cfg["x_posting"]["posts_log_path"], "w") as f:
         for p in posts:
             f.write(json.dumps(p) + "\n")
-    Ledger(cfg["memory"]["ledger_path"]).log_event(
-        "market_context", "Markets calm ahead of CPI | nominations: none")
+    # Context event dated to a post day (07-17) so the morning-read block
+    # attaches deterministically — log_event would stamp real `now`, which
+    # drifts off the fixture days as the clock advances.
+    with open(cfg["memory"]["ledger_path"], "a") as f:
+        f.write(json.dumps({
+            "type": "event", "event": "market_context",
+            "detail": "Markets calm ahead of CPI | nominations: none",
+            "ts": "2026-07-17T13:30:00+00:00"}) + "\n")
 
     out = blog.render(cfg, out_path=str(tmp_path / "blog.html"))
     html = open(out).read()
