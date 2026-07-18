@@ -208,6 +208,37 @@ BRACKET_KEYS = ("stop_atr_mult", "take_profit_atr_mult",
                 "stop_atr_mult_high_vol")
 
 
+_RCFG_DEFAULT = {"sma_period": 50, "vol_period": 20,
+                 "vol_low": 0.15, "vol_high": 0.25}
+
+
+def regime_label_series(spy_bars: list[dict], rcfg: dict) -> dict:
+    """ts -> full regime label (e.g. "down/low") from SPY history up to each
+    bar (no look-ahead). Used by the down-regime exposure-cap candidate."""
+    out = {}
+    for i in range(len(spy_bars)):
+        r = regime_mod.compute_regime(spy_bars[:i + 1], rcfg)
+        if r:
+            out[spy_bars[i]["ts"]] = r["label"]
+    return out
+
+
+def measured_slippage_bps(records: list[dict], min_fills: int = 10,
+                          sane_bps: float = 100.0) -> float | None:
+    """Median measured slippage from fill_quality ledger records, for
+    calibrating the backtest cost model to reality. Fills with |bps| beyond
+    sane_bps are artifacts (e.g. the stale-signal-price era) and excluded;
+    returns None until min_fills clean measurements exist."""
+    slips = sorted(r["slippage_bps"] for r in records
+                   if r.get("type") == "fill_quality"
+                   and abs(r.get("slippage_bps", 0)) <= sane_bps)
+    if len(slips) < min_fills:
+        return None
+    mid = len(slips) // 2
+    med = slips[mid] if len(slips) % 2 else (slips[mid - 1] + slips[mid]) / 2
+    return round(max(med, 0.0), 2)  # never model negative cost
+
+
 def vol_bucket_series(spy_bars: list[dict], rcfg: dict) -> dict:
     """ts -> "low"|"mid"|"high" from SPY history up to each bar (no
     look-ahead). Empty dict when SPY isn't in the tested universe — the
@@ -260,13 +291,12 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
 
     # Per-date vol bucket from SPY (only needed for the vol-conditioned stop;
     # empty => bracket_prices falls back to the base multiplier).
-    vol_series = (vol_bucket_series(sym_bars.get("SPY", []),
-                                    cfg.get("learning", {}).get(
-                                        "regime", {"sma_period": 50,
-                                                   "vol_period": 20,
-                                                   "vol_low": 0.15,
-                                                   "vol_high": 0.25}))
+    rcfg = cfg.get("learning", {}).get("regime", _RCFG_DEFAULT)
+    vol_series = (vol_bucket_series(sym_bars.get("SPY", []), rcfg)
                   if bcfg.get("stop_atr_mult_high_vol") else {})
+    regime_labels = (regime_label_series(sym_bars.get("SPY", []), rcfg)
+                     if (cfg["risk"].get("regime_exposure") or {}).get("enabled")
+                     else {})
 
     acct = SimAccount(cash=start_cash)
     closed: list = []
@@ -308,15 +338,18 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 if fills_by_date.get(date, 0) >= cfg["risk"]["max_trades_per_day"]:
                     continue  # rate limit across symbols, mirroring the live bot
                 fill = bar["open"] * (1 + slip / 1e4)
-                qty = risk.size_order(acct.account_dict(last_close), fill, cfg)
+                i = idx[sym][ts]
+                hist = sym_bars[sym][:i + 1]
+                qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
+                                      bars=hist,
+                                      strategy=strategy_name)
                 try:
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
-                                     acct.positions_dict(last_close), cfg)
+                                     acct.positions_dict(last_close), cfg,
+                                     regime_label=regime_labels.get(ts))
                 except risk.RiskRejection:
                     continue
-                i = idx[sym][ts]
-                hist = sym_bars[sym][:i + 1]
                 prices = risk.bracket_prices(
                     fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
                     vol_bucket=vol_series.get(ts))
@@ -544,15 +577,45 @@ def main():
                    default=[cfg["risk"].get("brackets", {}).get("take_profit_atr_mult", 0)])
     p.add_argument("--split", type=float, default=bt.get("walk_forward_split", 0.7))
     p.add_argument("--cash", type=float, default=100_000.0)
-    p.add_argument("--slippage-bps", type=float, default=bt.get("slippage_bps", 5))
+    p.add_argument("--slippage-bps", type=float, default=None,
+                   help="cost model bps; default = median measured fill "
+                        "slippage from the ledger when >=10 clean fills "
+                        "exist, else config backtest.slippage_bps")
+    p.add_argument("--vol-target", action="store_true",
+                   help="CANDIDATE: enable risk.vol_target sizing for this run")
+    p.add_argument("--regime-cap", type=float, default=None, metavar="PCT",
+                   help="CANDIDATE: enable down-regime gross exposure cap at PCT")
     p.add_argument("--fee", type=float, default=bt.get("fee_per_trade_usd", 0.0))
     p.add_argument("--trials-path",
                    default=bt.get("trials_path", "memory/backtest_trials.jsonl"))
     args = p.parse_args()
 
     cfg.setdefault("backtest", {})
-    cfg["backtest"]["slippage_bps"] = args.slippage_bps
+    if args.slippage_bps is not None:
+        slip_resolved, slip_src = args.slippage_bps, "explicit flag"
+    else:
+        measured = None
+        try:
+            from ledger import Ledger
+            measured = measured_slippage_bps(
+                Ledger(cfg["memory"]["ledger_path"]).all_records())
+        except Exception:  # noqa: BLE001 — calibration is best-effort
+            pass
+        slip_resolved = (measured if measured is not None
+                         else bt.get("slippage_bps", 5))
+        slip_src = ("measured from ledger fills" if measured is not None
+                    else "config default (need >=10 clean measured fills)")
+    print(f"(cost model: slippage {slip_resolved} bps — {slip_src})")
+    cfg["backtest"]["slippage_bps"] = slip_resolved
     cfg["backtest"]["fee_per_trade_usd"] = args.fee
+    if args.vol_target:
+        cfg["risk"].setdefault("vol_target", {}).update(
+            enabled=True, strategies=None)  # flag = test THIS strategy
+        print(f"(CANDIDATE on: vol_target {cfg['risk']['vol_target']})")
+    if args.regime_cap is not None:
+        cfg["risk"]["regime_exposure"] = {"enabled": True,
+                                          "down_max_gross_pct": args.regime_cap}
+        print(f"(CANDIDATE on: regime_exposure cap {args.regime_cap}%)")
 
     if args.bars_file:
         sym_bars = load_bars_file(args.bars_file)

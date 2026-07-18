@@ -20,13 +20,19 @@ src/strategies/  Strategy ensemble (deterministic ONLY; LLM never generates sign
                  risk-adjusted / exposure-matched).
 src/strategy.py  Compatibility facade over strategies/ (legacy generate_signal + indicators).
 src/llm.py       Judgment layer: approve / downsize / veto. Can NEVER enlarge or invent trades.
-src/risk.py      Hard rails: sizing, caps, trade-rate limit, daily-loss kill switch (HALT file),
-                 swing guard (min_holding_days blocks early exits — no day trading).
+                 Runs on llm.model (claude-sonnet-5, right-sized 2026-07-18 — evals show no
+                 thinking-model edge for judge roles); learning passes use learning.model (Fable).
+src/risk.py      Hard rails: sizing (vol-targeted for meanrev only — gate 2026-07-18), caps,
+                 trade-rate limit, daily-loss kill switch (HALT file), swing guard
+                 (min_holding_days blocks early exits — no day trading); param-gated
+                 down-regime exposure cap exists but is OFF (gate: cannot bind at 1%/trade).
 src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
 src/memory.py    Retrieval layer: balanced trade sample (losers force-included), ranked lessons,
-                 judge calibration, regime — assembled into the review prompt.
+                 judge calibration + last-20-resolved-calls scoreboard, regime — assembled
+                 into the review prompt.
 src/lessons.py   Hypothesis book (memory/lessons.jsonl, append-only events + replay): falsifiable
-                 lessons with a lifecycle candidate -> active | refuted | retired. learnings.md is
+                 lessons with a lifecycle candidate -> active | refuted | retired; staleness is
+                 scope-tiered (symbol 21d / strategy 90d / regime 180d — learning.staleness_tiers). learnings.md is
                  a GENERATED view of this store — never hand-edit or treat it as source of truth.
 src/judgments.py Judge calibration (memory/judgments.jsonl): every approve/downsize/veto logged,
                  later resolved (realized close or counterfactual) and scored; the judge sees its

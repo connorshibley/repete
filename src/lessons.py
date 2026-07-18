@@ -90,6 +90,23 @@ class LessonStore:
 
 # ---- pure lifecycle rules ----
 
+def staleness_days_for(scope: dict, lcfg: dict) -> int:
+    """Tiered decay by lesson scope (FinMem-style layered half-lives):
+    symbol-specific lessons expire fastest, regime-level generalizations
+    slowest. Falls back to flat staleness_days when tiers are unconfigured."""
+    flat = lcfg["staleness_days"]
+    tiers = lcfg.get("staleness_tiers") or {}
+    if not tiers:
+        return flat
+    if scope.get("symbols"):
+        return tiers.get("symbol", flat)
+    if scope.get("strategy") or scope.get("direction"):
+        return tiers.get("strategy", flat)
+    if scope.get("regime"):
+        return tiers.get("regime", flat)
+    return flat
+
+
 def apply_transitions(states: dict, now: datetime, lcfg: dict) -> list[tuple]:
     """Deterministic lifecycle pass. Returns [(lesson_id, from, to, reason)].
 
@@ -109,9 +126,10 @@ def apply_transitions(states: dict, now: datetime, lcfg: dict) -> list[tuple]:
             continue
 
         last = datetime.fromisoformat(max(s["created_ts"], s["last_evidence_ts"]))
-        if (now - last).days > lcfg["staleness_days"]:
+        stale_after = staleness_days_for(s.get("scope") or {}, lcfg)
+        if (now - last).days > stale_after:
             out.append((lid, s["status"], "retired",
-                        f"no new evidence in {lcfg['staleness_days']}d"))
+                        f"no new evidence in {stale_after}d"))
             continue
 
         if (s["status"] == "candidate"

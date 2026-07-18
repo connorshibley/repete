@@ -17,6 +17,7 @@ guidance, the Agentic Trading survey's 'supervisory controls'):
 import os
 import json
 import logging
+import math
 from datetime import date, datetime, timezone
 
 log = logging.getLogger("risk")
@@ -76,12 +77,45 @@ def daily_loss_breached(account: dict, cfg: dict) -> bool:
     return False
 
 
-def size_order(account: dict, price: float, cfg: dict) -> int:
-    """Fixed-fractional sizing, then clamp by every cap. Returns whole-share qty."""
+def realized_annual_vol(bars: list[dict], period: int) -> float | None:
+    """Annualized stdev of the last `period` daily log returns. None if thin."""
+    closes = [b["close"] for b in bars if b.get("close")]
+    if len(closes) < period + 1:
+        return None
+    rets = [math.log(closes[i] / closes[i - 1])
+            for i in range(len(closes) - period, len(closes))]
+    mean = sum(rets) / len(rets)
+    var = sum((x - mean) ** 2 for x in rets) / max(len(rets) - 1, 1)
+    return math.sqrt(var) * math.sqrt(252)
+
+
+def vol_scale(bars: list[dict] | None, vcfg: dict,
+              strategy: str | None = None) -> float:
+    """Volatility-target sizing multiplier: target_vol / realized_vol, clamped.
+    1.0 whenever disabled, scoped to other strategies, or data is too thin.
+    Adopted 2026-07-18 for meanrev only (frozen-snapshot gate; hurt tsmom)."""
+    if not vcfg.get("enabled") or not bars:
+        return 1.0
+    strats = vcfg.get("strategies")
+    if strats and strategy not in strats:
+        return 1.0
+    realized = realized_annual_vol(bars, vcfg.get("period", 20))
+    if not realized or realized <= 0:
+        return 1.0
+    scale = vcfg.get("annual_vol", 0.20) / realized
+    return min(max(scale, vcfg.get("min_scale", 0.5)), vcfg.get("max_scale", 1.5))
+
+
+def size_order(account: dict, price: float, cfg: dict,
+               bars: list[dict] | None = None,
+               strategy: str | None = None) -> int:
+    """Fixed-fractional sizing (optionally vol-targeted), then clamp by every
+    cap. Returns whole-share qty."""
     r = cfg["risk"]
     equity = account["equity"]
 
     dollars = equity * r["risk_per_trade_pct"] / 100          # fixed fractional
+    dollars *= vol_scale(bars, r.get("vol_target") or {}, strategy)
     dollars = min(dollars, r["max_order_value_usd"])           # per-order cap
     dollars = min(dollars, equity * r["max_position_pct"] / 100)  # concentration cap
     dollars = min(dollars, account["buying_power"])
@@ -153,7 +187,8 @@ def swing_guard(entry_ts: str | None, cfg: dict):
 
 
 def pure_checks(action: str, symbol: str, qty: int, price: float,
-                account: dict, positions: dict, cfg: dict):
+                account: dict, positions: dict, cfg: dict,
+                regime_label: str | None = None):
     """The side-effect-free subset of the rails (no HALT/trade-count file I/O).
 
     Shared with the offline backtester so simulated fills obey the exact same
@@ -175,20 +210,32 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
         if existing + order_value > account["equity"] * r["max_position_pct"] / 100:
             raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}")
 
+        recfg = r.get("regime_exposure") or {}
+        if (recfg.get("enabled") and regime_label
+                and regime_label.startswith("down")):
+            gross = sum(p.get("market_value", 0.0) for p in positions.values())
+            cap = account["equity"] * recfg.get("down_max_gross_pct", 50) / 100
+            if gross + order_value > cap:
+                raise RiskRejection(
+                    f"down-regime exposure cap: gross ${gross + order_value:,.0f} "
+                    f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity")
+
     if action == "sell" and symbol not in positions:
         raise RiskRejection(f"no position in {symbol} to sell (state desync guard)")
 
 
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      account: dict, positions: dict, cfg: dict,
-                     entry_ts: str | None = None):
+                     entry_ts: str | None = None,
+                     regime_label: str | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
         raise RiskRejection("HALT file present — trading disabled")
     if _trades_today() >= cfg["risk"]["max_trades_per_day"]:
         raise RiskRejection(f"max trades per day reached ({cfg['risk']['max_trades_per_day']})")
 
-    pure_checks(action, symbol, qty, price, account, positions, cfg)
+    pure_checks(action, symbol, qty, price, account, positions, cfg,
+                regime_label=regime_label)
 
     if action == "sell":
         swing_guard(entry_ts, cfg)

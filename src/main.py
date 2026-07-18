@@ -299,14 +299,16 @@ def _run_cycle():
 
         # --- Hard risk rails (not overridable) ---
         if sig.action == "buy":
-            qty = risk.size_order(account, price, cfg)
+            qty = risk.size_order(account, price, cfg, bars=bars,
+                                  strategy=sig.strategy)
             qty = int(qty * review["scale"])
         else:
             qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
 
         try:
             risk.pre_trade_checks(sig.action, symbol, qty, price, account,
-                                  positions, cfg, entry_ts=entry_ts)
+                                  positions, cfg, entry_ts=entry_ts,
+                                  regime_label=regime_label)
         except risk.RiskRejection as e:
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,

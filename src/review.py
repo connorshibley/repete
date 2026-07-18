@@ -134,6 +134,33 @@ def spy_benchmark_pct(days: int) -> float | None:
         return None
 
 
+def equal_weight_pct(bars_by_symbol: dict) -> float | None:
+    """Equal-weight buy-and-hold %% across a universe (pure). The honest
+    second baseline: the bot picks FROM these symbols, so beating SPY alone
+    can just mean the universe beat SPY."""
+    rets = [(bars[-1]["close"] - bars[0]["close"]) / bars[0]["close"] * 100
+            for bars in bars_by_symbol.values() if len(bars) >= 2]
+    return round(sum(rets) / len(rets), 2) if rets else None
+
+
+def universe_benchmark_pct(days: int, cfg: dict) -> float | None:
+    """Equal-weight B&H %% of the configured universe over the window."""
+    if days < 1:
+        return None
+    try:
+        from broker import Broker
+        broker = Broker(cfg)
+        bars_by_symbol = {}
+        for sym in cfg["symbols"]:
+            try:
+                bars_by_symbol[sym] = broker.bars(sym, "1Day", max(days, 2))
+            except Exception:  # noqa: BLE001
+                continue
+        return equal_weight_pct(bars_by_symbol)
+    except Exception:  # noqa: BLE001 — benchmark is optional
+        return None
+
+
 def _fmt_gate(ok: bool | None, label: str) -> str:
     mark = "?" if ok is None else ("PASS" if ok else "FAIL")
     return f"  [{mark:>4}] {label}"
@@ -187,6 +214,10 @@ def main():
     else:
         print(_fmt_gate(bot_pct > spy,
                         f"beats SPY buy-and-hold ({bot_pct:+.2f}% vs SPY {spy:+.2f}%)"))
+    ew = universe_benchmark_pct(r["history_days"], cfg)
+    if ew is not None:
+        print(f"  [info] equal-weight universe B&H over same window: {ew:+.2f}% "
+              f"(bot {bot_pct:+.2f}%) — the harder honest baseline")
 
     # --- Per-strategy breakdown ---
     per_strat = per_strategy_breakdown(ledger.closed_trades())

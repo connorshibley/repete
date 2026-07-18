@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 
 from ledger import Ledger
 from lessons import LessonStore
-from judgments import JudgmentStore, calibration_metrics, calibration_line
+from judgments import (JudgmentStore, calibration_metrics, calibration_line,
+                       recent_outcomes_block)
 import ranking
 import regime as regime_mod
 
@@ -126,7 +127,10 @@ class Memory:
         lesson_block = ranking.format_lessons_block(
             ranked, regime_label, self.lcfg.get("max_context_chars", 4000) // 2)
 
-        calib = calibration_line(calibration_metrics(self.judgments.replay()))
+        replayed = self.judgments.replay()
+        calib = calibration_line(calibration_metrics(replayed))
+        scoreboard = recent_outcomes_block(
+            replayed, 20)[:self.lcfg.get("max_context_chars", 4000) // 4]
 
         knowledge = self.knowledge_block()
         news = self.market_context_block(symbol)
@@ -136,6 +140,7 @@ class Memory:
                f"{lesson_block}\n\n"
                + (f"{knowledge}\n\n" if knowledge else "")
                + (f"{news}\n\n" if news else "")
+               + (f"{scoreboard}\n\n" if scoreboard else "")
                + f"{calib}\n"
                f"CURRENT REGIME: {regime_mod.describe(regime)}")
         return ctx[:self.lcfg.get("max_context_chars", 4000)]

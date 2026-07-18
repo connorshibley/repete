@@ -79,6 +79,30 @@ def assess(verdict: str, executed: bool, pnl_pct: float) -> str:
     return "good_veto" if pnl_pct <= 0 else "bad_veto"
 
 
+def recent_outcomes_block(judgments: dict, n: int = 20) -> str:
+    """Scoreboard of the judge's last n RESOLVED calls for the review prompt
+    (TradingGroup-style outcome-labeled reflection): what it ruled, what
+    actually happened. Empty string when nothing is resolved yet."""
+    resolved = [j for j in judgments.values()
+                if j.get("resolution") and j.get("kind") == "llm"]
+    resolved.sort(key=lambda j: j.get("ts") or "")
+    lines = []
+    for j in resolved[-n:]:
+        r = j["resolution"]
+        lines.append(
+            f"  [{r.get('assessment', '?').upper()}] {j['verdict']} "
+            f"{j['symbol']} {j['action']}"
+            + (f" ({j['strategy']}" + (f", {j['regime']})" if j.get("regime")
+                                       else ")") if j.get("strategy") else "")
+            + f" -> {r.get('pnl_pct', 0):+.1f}%"
+            + (f" [{r['kind']}]" if r.get("kind") == "counterfactual" else ""))
+    if not lines:
+        return ""
+    return ("YOUR LAST RESOLVED CALLS (what you ruled -> what actually "
+            "happened; counterfactuals are what a veto WOULD have done):\n"
+            + "\n".join(lines))
+
+
 def downsize_value_usd(judgment: dict, pnl: float) -> float:
     """P&L avoided on the shares NOT bought because of a downsize.
     Positive when the downsize helped (the trade lost)."""

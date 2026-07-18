@@ -72,3 +72,32 @@ dip entries the cap removes were profitable out-of-sample — an in-sample
 mirage, now confirmed on clean single-snapshot evidence (the 07-16 rejection
 had compared across fetches). Config unchanged (no cap). Param-gated code
 path remains; all variants in memory/backtest_trials.jsonl.
+
+## §5 Vol-targeted sizing (2026-07-18) — ADOPTED for meanrev, REJECTED for tsmom
+
+Candidate from the 2023–2026 research pass (vol-aware risk is the one
+process-side upgrade with durable evidence). `risk.vol_target`: position
+dollars scaled by target_annual_vol / realized_vol(20d), clamped [0.5, 1.5].
+METHOD: frozen snapshot memory/bars_snapshot_2020_2026-07-10.json,
+earnings_snapshot.json, slippage pinned 5 bps (matches prior rounds),
+default params, split 0.7. Pre-registered adoption rule (before running):
+adopt per strategy iff (a) OOS return ≥ baseline − 0.25pp, (b) OOS maxDD
+strictly improves, (c) IS return ≥ baseline − 1pp.
+
+- tsmom:  base IS +3.50 / OOS +1.25 maxDD 0.7 → vt IS +1.74 / OOS +0.76
+  maxDD 0.6. Fails (a) and (c) → **REJECTED**.
+- meanrev: base IS +0.43 / OOS +1.33 maxDD 0.3 → vt IS −0.02 / OOS +1.10
+  maxDD 0.2, PF 2.12→2.16. Passes (a) −0.23pp, (b), (c) → **ADOPTED**
+  (marginal, rule-driven; scoped via risk.vol_target.strategies=[meanrev];
+  monitor live).
+
+## §6 Down-regime gross-exposure cap (2026-07-18) — REJECTED (cannot bind)
+
+`risk.regime_exposure`: in a down-trend regime, total gross exposure capped
+at 50% of equity. Same frozen-snapshot method + pre-registered rule. Result:
+IS/OOS identical to baseline for both tsmom and meanrev — at 1%-per-trade
+fixed-fractional sizing with max 5 positions, gross exposure never
+approaches 50%, so the cap cannot bind and (b) cannot be satisfied. A
+forced-binding sanity check at cap=3% did alter behavior (tsmom OOS +1.22
+maxDD 0.5 vs +1.25 maxDD 0.7) but 3% is not a deployable setting. Config
+stays disabled; param-gated rail remains for a future where sizing scales.

@@ -233,7 +233,8 @@ def generate_lesson_structured(closed_trade: dict, memory_context: str,
     """Structured falsifiable hypothesis from a CLOSED trade (embargo respected).
     Returns {"hypothesis", "scope"} or None."""
     out = _json_call(cfg, 1500, _LESSON_SYSTEM,
-                     f"CLOSED TRADE: {json.dumps(closed_trade)}\n\n{memory_context}")
+                     f"CLOSED TRADE: {json.dumps(closed_trade)}\n\n{memory_context}",
+                     model=cfg.get("learning", {}).get("model"))
     if not out or not isinstance(out, dict) or not out.get("hypothesis"):
         return None
     scope = out.get("scope") or {}
@@ -265,7 +266,8 @@ def evaluate_trade_vs_lessons(closed_trade: dict, lessons: list[dict],
                 "scope": s["scope"]} for s in lessons]
     out = _json_call(cfg, 3000, _EVAL_SYSTEM,
                      f"CLOSED TRADE: {json.dumps(closed_trade)}\n\n"
-                     f"HYPOTHESES: {json.dumps(listing)}")
+                     f"HYPOTHESES: {json.dumps(listing)}",
+                     model=cfg.get("learning", {}).get("model"))
     if not isinstance(out, list):
         return None
     known = {s["id"] for s in lessons}
@@ -294,7 +296,8 @@ def propose_merge(lessons: list[dict], cfg: dict) -> dict | None:
                 "hypothesis": s["hypothesis"], "scope": s["scope"],
                 "n_supports": len(s["supports"]),
                 "n_contradicts": len(s["contradicts"])} for s in lessons]
-    out = _json_call(cfg, 2000, _MERGE_SYSTEM, json.dumps(listing))
+    out = _json_call(cfg, 2000, _MERGE_SYSTEM, json.dumps(listing),
+                     model=cfg.get("learning", {}).get("model"))
     if not isinstance(out, dict):
         return None
     merge = out.get("merge")
