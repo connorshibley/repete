@@ -25,7 +25,8 @@ def _msg_text(msg) -> str:
 _SYSTEM = """You are the risk-review layer of an automated PAPER trading bot.
 A deterministic strategy produced a trade signal. Your ONLY job is to sanity-check it
 against recent performance memory and reply with strict JSON:
-{"verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>, "reasoning": "<2-3 sentences>"}
+{"verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>, "reasoning": "<2-3 sentences>",
+ "cited_lessons": ["ls-..."]}
 
 Rules:
 - You may not propose different trades or symbols.
@@ -33,11 +34,14 @@ Rules:
 - Veto only with a concrete reason grounded in the memory or the signal itself.
 - Be skeptical of patterns from fewer than ~30 trades; do not overfit to recent results.
 - Note: memory samples intentionally include losing trades; do not assume the strategy is
-  better than the sample shows."""
+  better than the sample shows.
+- cited_lessons: the lesson ids (shown in the VALIDATED LESSONS block) that MATERIALLY
+  drove this verdict; [] when none did. Cite honestly — citations are scored against
+  the trade's real outcome, and dishonest citations corrupt your own lesson book."""
 
 
 def review_signal(signal, memory_context: str, cfg: dict) -> dict:
-    fallback = {"verdict": "approve", "scale": 1.0,
+    fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
     if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
         return fallback
@@ -61,6 +65,11 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         verdict["scale"] = min(max(float(verdict.get("scale", 1.0)), 0.0), 1.0)
         if verdict.get("verdict") not in ("approve", "downsize", "veto"):
             return fallback
+        # cited lessons: strings only, capped; unknown ids are dropped later
+        # at grading time (learn.grade_cited_lessons validates against the store)
+        cited = verdict.get("cited_lessons")
+        verdict["cited_lessons"] = ([str(c) for c in cited if isinstance(c, str)][:5]
+                                    if isinstance(cited, list) else [])
         return verdict
     except Exception as e:  # noqa: BLE001 — any LLM failure degrades to rules
         log.warning("LLM review failed (%s) — proceeding rule-based", e)

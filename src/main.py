@@ -24,6 +24,8 @@ from memory import Memory
 import journal
 import learn
 import llm
+import modelver
+import postexit
 import regime as regime_mod
 import risk
 import strategies
@@ -158,6 +160,52 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
             ledger.log_event("reconcile_error", f"{symbol} trade {tid}: {e}")
 
 
+def update_trailing_stops(broker, ledger, cfg: dict, open_trades: dict,
+                          all_bars: dict):
+    """Chandelier ratchet (gate candidate §7, param-gated by
+    risk.brackets.trailing_atr_mult — 0 disables): raise each open
+    position's resting stop leg to high-water-since-entry − mult·ATR when
+    that sits above the current stop. Deterministic protective-leg
+    maintenance, computed before any LLM involvement — the same class of
+    broker-side exit the swing-guard invariant already exempts. Stops are
+    only ever RAISED, never lowered or widened. Fail-soft per position."""
+    if not (cfg["risk"].get("brackets") or {}).get("trailing_atr_mult", 0):
+        return
+    try:
+        stops_open = {}
+        for o in broker.open_stop_orders():  # survives leg replacement
+            cur = stops_open.get(o["symbol"])
+            if cur is None or o["stop_price"] > cur["stop_price"]:
+                stops_open[o["symbol"]] = o
+    except Exception as e:  # noqa: BLE001
+        log.warning("trailing pass: open-order lookup failed: %s", e)
+        return
+    atr_period = cfg["risk"]["brackets"].get("atr_period", 14)
+    for rec in open_trades.values():
+        symbol = rec["symbol"]
+        leg = stops_open.get(symbol)
+        bars = all_bars.get(symbol)
+        if not leg or not bars or not rec.get("entry_price"):
+            continue
+        try:
+            entry_ts = rec.get("ts") or ""
+            high_water = max([rec["entry_price"]]
+                             + [b["high"] for b in bars if b["ts"] > entry_ts])
+            new_stop = risk.trail_stop(high_water,
+                                       strategy.atr(bars, atr_period), cfg,
+                                       strategy=rec.get("strategy"))
+            if new_stop is None or new_stop <= leg["stop_price"] + 0.01:
+                continue
+            broker.replace_stop(leg["id"], new_stop)
+            ledger.log_event("trail_stop_raised",
+                             f"{symbol}: {leg['stop_price']:.2f} -> "
+                             f"{new_stop:.2f} (hw {high_water:.2f})")
+            log.info("%s: trailing stop raised %.2f -> %.2f",
+                     symbol, leg["stop_price"], new_stop)
+        except Exception as e:  # noqa: BLE001 — the old stop stays in force
+            log.warning("trailing pass failed for %s: %s", symbol, e)
+
+
 HEARTBEAT_FILE = "memory/heartbeat"
 
 
@@ -217,6 +265,9 @@ def _run_cycle():
         cfg = yaml.safe_load(f)
 
     ledger = Ledger(cfg["memory"]["ledger_path"])
+    # Decision-surface fingerprint: every record this cycle carries the
+    # rulebook version, so the track record segments honestly by model.
+    ledger.set_model_version(modelver.current_version())
     memory = Memory(cfg, ledger)
 
     if risk.check_halt():
@@ -293,14 +344,26 @@ def _run_cycle():
                 tid, symbol, sig.action, "veto", review.get("scale", 1.0),
                 price, regime_label, kind="llm", executed=False,
                 reasoning=review.get("reasoning", ""),
-                stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                stop_price=stop, tp_price=tp, strategy=sig.strategy,
+                cited_lessons=review.get("cited_lessons"))
             log.info("%s: %s VETOED — %s", symbol, sig.action, review["reasoning"])
             return "blocked"
 
         # --- Hard risk rails (not overridable) ---
+        # Protective bracket prices are computed BEFORE sizing (deterministic,
+        # ATR + config — the LLM never sees them): stop-distance sizing (§8,
+        # param-gated) needs the stop, and the same prices are reused at
+        # execution so the sized risk and the placed stop always match.
+        bracket_prices = None
         if sig.action == "buy":
+            bcfg = cfg["risk"].get("brackets", {})
+            bracket_prices = risk.bracket_prices(
+                price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
+                vol_bucket=(market_regime or {}).get("vol"))
             qty = risk.size_order(account, price, cfg, bars=bars,
-                                  strategy=sig.strategy)
+                                  strategy=sig.strategy,
+                                  stop_price=bracket_prices[0]
+                                  if bracket_prices else None)
             qty = int(qty * review["scale"])
         else:
             qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
@@ -340,19 +403,14 @@ def _run_cycle():
         # --- Execute ---
         try:
             order = None
-            if sig.action == "buy":
-                # Protective bracket legs: deterministic (ATR + config), computed
-                # after the LLM review and the rails — the LLM never sees them.
-                bcfg = cfg["risk"].get("brackets", {})
-                prices = risk.bracket_prices(
-                    price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
-                    vol_bucket=(market_regime or {}).get("vol"))
-                if prices:
-                    try:
-                        order = broker.bracket_market_order(symbol, qty, *prices)
-                    except Exception as e:  # noqa: BLE001 — degrade to plain order
-                        log.warning("%s: bracket order failed (%s) — falling back "
-                                    "to plain market order", symbol, e)
+            if sig.action == "buy" and bracket_prices:
+                # Protective legs reuse the exact prices sizing saw above.
+                try:
+                    order = broker.bracket_market_order(symbol, qty,
+                                                        *bracket_prices)
+                except Exception as e:  # noqa: BLE001 — degrade to plain order
+                    log.warning("%s: bracket order failed (%s) — falling back "
+                                "to plain market order", symbol, e)
             if order is None:
                 order = broker.market_order(symbol, qty, sig.action)
         except Exception as e:  # noqa: BLE001
@@ -380,7 +438,8 @@ def _run_cycle():
                 price, regime_label, kind="llm", executed=True,
                 reasoning=review.get("reasoning", ""),
                 stop_price=order.get("stop_price"),
-                tp_price=order.get("take_profit_price"), strategy=sig.strategy)
+                tp_price=order.get("take_profit_price"), strategy=sig.strategy,
+                cited_lessons=review.get("cited_lessons"))
         log.info("%s: EXECUTED %s x%d @ ~$%.2f (trade %s, %s)",
                  symbol, sig.action.upper(), qty, price, trade_id, sig.strategy)
 
@@ -442,6 +501,18 @@ def _run_cycle():
                                               cfg["learning"]["regime"])
     regime_label = market_regime["label"] if market_regime else None
     log.info("Regime: %s", regime_mod.describe(market_regime))
+
+    # Chandelier trail maintenance (param-gated; no-op while mult is 0).
+    update_trailing_stops(broker, ledger, cfg, open_trades, all_bars)
+
+    # Same-ticker re-entry cooldown (§9 — adopted for meanrev only):
+    # symbol -> most recent exit ts, checked per strategy in the entry loop.
+    last_exit: dict = {}
+    if (cfg["risk"].get("reentry_cooldown") or {}).get("days"):
+        for t in ledger.closed_trades():
+            ets = t.get("exit_ts")
+            if ets and ets > last_exit.get(t["symbol"], ""):
+                last_exit[t["symbol"]] = ets
 
     # --- Phase 2: once-per-cycle cross-sectional precompute (includes
     # disabled strategies that still own open positions — exits must work) ---
@@ -531,6 +602,13 @@ def _run_cycle():
         hold_reasons: dict = {}
         entered = False
         for name, params in strategies.enabled(cfg):
+            cd = risk.cooldown_days_for(cfg, name)
+            if cd and risk.cooldown_blocked(
+                    last_exit.get(symbol),
+                    datetime.now(timezone.utc).isoformat(), cd):
+                hold_reasons[name] = {"reason": f"re-entry cooldown ({cd}d) — "
+                                                f"exited {last_exit[symbol][:10]}"}
+                continue
             if symbol in earnings_blackouts.get(name, ()):
                 hold_reasons[name] = {"reason": "earnings within "
                                                 f"{ebd[name]}d — entry "
@@ -570,6 +648,12 @@ def _run_cycle():
                                 broker=broker)
     if any(summary.values()):
         log.info("Learning: %s", summary)
+
+    # Post-exit runner tracking: measure what happened AFTER each close
+    # (bounded bar fetches; measurement only — see src/postexit.py).
+    pe = postexit.run(ledger, broker, cfg)
+    if any(pe.values()):
+        log.info("Post-exit tracking: %s", pe)
 
     import json as _json
     ledger.log_event("cycle_complete",

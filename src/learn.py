@@ -64,7 +64,35 @@ def evaluate_closed_trades(ledger, lessons, cfg, limit: int) -> int:
 
 # ---- judgment resolution ----
 
-def resolve_realized(ledger, judgments) -> int:
+def grade_cited_lessons(lessons, judgment: dict, assessment: str) -> int:
+    """Citation-graded lessons (decision-time attribution): the judge named
+    the lesson ids that drove a verdict; the verdict's resolved outcome now
+    scores those lessons through the normal evidence lifecycle.
+    good_* -> supports (the lesson gave good guidance), bad_* -> contradicts.
+    Deterministic guards: unknown/terminal lesson ids are dropped, and a
+    trade never evidences the same lesson twice (the post-hoc evaluator may
+    already have linked them)."""
+    cited = judgment.get("cited_lessons") or []
+    if not cited:
+        return 0
+    states = lessons.replay()
+    n = 0
+    for lid in cited:
+        s = states.get(lid)
+        if not s or s["status"] in lessons_mod.TERMINAL:
+            continue
+        tid = judgment["trade_id"]
+        if tid in s["supports"] or tid in s["contradicts"]:
+            continue  # already evidenced by this trade — never double-count
+        rel = "supports" if assessment.startswith("good") else "contradicts"
+        lessons.add_evidence(lid, tid, rel,
+                             f"cited in {judgment['verdict']} judgment "
+                             f"{judgment['id']} -> {assessment}")
+        n += 1
+    return n
+
+
+def resolve_realized(ledger, judgments, lessons=None) -> int:
     """Join executed judgments to ledger outcomes (pure, no network)."""
     outcomes = {t["trade_id"]: t for t in ledger.closed_trades()}
     n = 0
@@ -72,14 +100,17 @@ def resolve_realized(ledger, judgments) -> int:
         if not j["executed"] or j["trade_id"] not in outcomes:
             continue
         t = outcomes[j["trade_id"]]
+        assessment = judgments_mod.assess(j["verdict"], True, t["pnl_pct"])
         judgments.log_resolution(
             j["id"], "realized", t["pnl_pct"], t.get("exit_reason", ""),
-            judgments_mod.assess(j["verdict"], True, t["pnl_pct"]))
+            assessment)
+        if lessons is not None:
+            grade_cited_lessons(lessons, j, assessment)
         n += 1
     return n
 
 
-def resolve_counterfactuals(broker, judgments, cfg, now=None) -> int:
+def resolve_counterfactuals(broker, judgments, cfg, now=None, lessons=None) -> int:
     """Resolve due vetoed/rejected buys via read-only bars. Capped per run;
     data failures skip and retry. Embargo enforced by resolution_due()."""
     lcfg = cfg["learning"]
@@ -109,9 +140,12 @@ def resolve_counterfactuals(broker, judgments, cfg, now=None) -> int:
             j.get("stop_price"), j.get("tp_price"), horizon)
         if result is None:
             continue
+        assessment = judgments_mod.assess(j["verdict"], False, result["pnl_pct"])
         judgments.log_resolution(
             j["id"], "counterfactual", result["pnl_pct"], result["exit_reason"],
-            judgments_mod.assess(j["verdict"], False, result["pnl_pct"]))
+            assessment)
+        if lessons is not None:
+            grade_cited_lessons(lessons, j, assessment)
         n += 1
     return n
 
@@ -170,10 +204,10 @@ def inline_pass(ledger, lessons, judgments, cfg, broker=None) -> dict:
     try:
         summary["evaluated"] = evaluate_closed_trades(
             ledger, lessons, cfg, cfg["learning"]["max_llm_calls_per_cycle"])
-        summary["realized"] = resolve_realized(ledger, judgments)
+        summary["realized"] = resolve_realized(ledger, judgments, lessons)
         if broker is not None:
             summary["counterfactual"] = resolve_counterfactuals(
-                broker, judgments, cfg)
+                broker, judgments, cfg, lessons=lessons)
         summary["transitions"] = run_transitions(ledger, lessons, cfg)
         lessons_mod.render_markdown(lessons.replay(),
                                     cfg["memory"]["learnings_path"])
@@ -206,8 +240,9 @@ def full_run(cfg, with_meta: bool = False, broker=None) -> dict:
     summary = {"migrated": migrate_legacy(ledger, lessons, cfg)}
     summary["evaluated"] = evaluate_closed_trades(
         ledger, lessons, cfg, cfg["learning"]["evaluator_batch_size"])
-    summary["realized"] = resolve_realized(ledger, judgments)
-    summary["counterfactual"] = (resolve_counterfactuals(broker, judgments, cfg)
+    summary["realized"] = resolve_realized(ledger, judgments, lessons)
+    summary["counterfactual"] = (resolve_counterfactuals(broker, judgments, cfg,
+                                                         lessons=lessons)
                                  if broker is not None else 0)
     summary["transitions"] = run_transitions(ledger, lessons, cfg)
     summary["merged"] = apply_meta_merge(ledger, lessons, cfg) if with_meta else False

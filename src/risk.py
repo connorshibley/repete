@@ -106,22 +106,86 @@ def vol_scale(bars: list[dict] | None, vcfg: dict,
     return min(max(scale, vcfg.get("min_scale", 0.5)), vcfg.get("max_scale", 1.5))
 
 
+def _risk_sizing_active(rcfg: dict, strategy: str | None,
+                        price: float, stop_price: float | None) -> bool:
+    """Stop-distance sizing applies only when enabled, scoped to this
+    strategy, and an actual protective stop is known below the price."""
+    if not rcfg.get("enabled") or not stop_price or stop_price >= price:
+        return False
+    strats = rcfg.get("strategies")
+    return not strats or strategy in strats
+
+
 def size_order(account: dict, price: float, cfg: dict,
                bars: list[dict] | None = None,
-               strategy: str | None = None) -> int:
-    """Fixed-fractional sizing (optionally vol-targeted), then clamp by every
-    cap. Returns whole-share qty."""
+               strategy: str | None = None,
+               stop_price: float | None = None) -> int:
+    """Position sizing, then clamp by every cap. Returns whole-share qty.
+
+    Two modes (per-strategy, gate-decided — see backtest_candidates.md §8):
+      * notional (default): equity × risk_per_trade_pct, optionally scaled by
+        the vol_target multiplier;
+      * risk-based (risk_sizing.enabled + stop known): equity × risk_pct /
+        stop-distance fraction, so every trade risks the same equity slice
+        entry-to-stop. Replaces vol_target for that strategy — both normalize
+        by realized vol and compounding them would double-count.
+    """
     r = cfg["risk"]
     equity = account["equity"]
 
-    dollars = equity * r["risk_per_trade_pct"] / 100          # fixed fractional
-    dollars *= vol_scale(bars, r.get("vol_target") or {}, strategy)
+    rscfg = r.get("risk_sizing") or {}
+    if _risk_sizing_active(rscfg, strategy, price, stop_price):
+        stop_frac = (price - stop_price) / price
+        dollars = equity * rscfg.get("risk_pct", 0.1) / 100 / stop_frac
+    else:
+        dollars = equity * r["risk_per_trade_pct"] / 100      # fixed fractional
+        dollars *= vol_scale(bars, r.get("vol_target") or {}, strategy)
     dollars = min(dollars, r["max_order_value_usd"])           # per-order cap
     dollars = min(dollars, equity * r["max_position_pct"] / 100)  # concentration cap
     dollars = min(dollars, account["buying_power"])
 
     qty = int(dollars // price)
     return max(qty, 0)
+
+
+def trail_stop(high_water: float, atr_value: float | None,
+               cfg: dict, strategy: str | None = None) -> float | None:
+    """Chandelier trail level: high-water-since-entry − trailing_atr_mult·ATR.
+    None when the trail is off (mult 0/absent), scoped to other strategies
+    (trailing_strategies — gate 2026-07-19 adopted it for tsmom ONLY), or ATR
+    is unavailable. The caller RATCHETS — an existing stop is only ever
+    replaced by a HIGHER one (backtest_candidates.md §7)."""
+    b = cfg["risk"].get("brackets") or {}
+    mult = b.get("trailing_atr_mult", 0)
+    if not mult or not atr_value or atr_value <= 0:
+        return None
+    strats = b.get("trailing_strategies")
+    if strats and strategy not in strats:
+        return None
+    return round(high_water - mult * atr_value, 2)
+
+
+def cooldown_days_for(cfg: dict, strategy: str | None) -> int:
+    """Re-entry cooldown days that apply to entries by this strategy
+    (0 = none). Per-strategy scope — the 2026-07-19 gate adopted the
+    cooldown for meanrev only (§9)."""
+    ccfg = cfg["risk"].get("reentry_cooldown") or {}
+    strats = ccfg.get("strategies")
+    if strats and strategy not in strats:
+        return 0
+    return ccfg.get("days", 0)
+
+
+def cooldown_blocked(last_exit_ts: str | None, now_ts: str,
+                     cooldown_days: int) -> bool:
+    """True when a NEW entry is still inside the same-ticker re-entry
+    cooldown after that symbol's last exit (gate candidate, §9).
+    Calendar days, matching the swing guard's semantics."""
+    if cooldown_days <= 0 or not last_exit_ts:
+        return False
+    days = (datetime.fromisoformat(now_ts)
+            - datetime.fromisoformat(last_exit_ts)).days
+    return days < cooldown_days
 
 
 def bracket_prices(entry_price: float, atr_value: float | None,

@@ -161,6 +161,53 @@ def universe_benchmark_pct(days: int, cfg: dict) -> float | None:
         return None
 
 
+def heat_report(positions: dict, stops: list[dict], atr_by_symbol: dict,
+                equity: float, gap_atr_fraction: float = 0.5) -> dict:
+    """Pure gap-adjusted portfolio heat: what firing every protective stop
+    would cost, plus a modeled gap-through (stops do NOT fill at the stop —
+    gap_atr_fraction x ATR further against you). Positions without a resting
+    stop are flagged uncovered rather than guessed at. Reporting only — no
+    cap binds at current sizing (same finding as candidates.md §6)."""
+    best_stop: dict = {}
+    for s in stops:
+        if s["symbol"] not in best_stop or s["stop_price"] > best_stop[s["symbol"]]:
+            best_stop[s["symbol"]] = s["stop_price"]
+    risk_usd = gap_usd = 0.0
+    uncovered = []
+    for sym, p in positions.items():
+        qty = p.get("qty", 0)
+        price = (p["market_value"] / qty) if qty and p.get("market_value") \
+            else p.get("avg_entry", 0)
+        stop = best_stop.get(sym)
+        if stop is None:
+            uncovered.append(sym)
+            continue
+        risk_usd += max(price - stop, 0.0) * qty
+        atr = atr_by_symbol.get(sym)
+        if atr:
+            gap_usd += gap_atr_fraction * atr * qty
+    total = risk_usd + gap_usd
+    return {"committed_risk_usd": round(risk_usd, 2),
+            "gap_add_usd": round(gap_usd, 2),
+            "gap_adjusted_usd": round(total, 2),
+            "pct_of_equity": round(total / equity * 100, 2) if equity else None,
+            "uncovered": uncovered}
+
+
+def model_version_breakdown(closed: list[dict], current: str | None) -> dict:
+    """Pure: closed trades per decision-surface fingerprint. A record that
+    spans versions is a blend of rulebooks — the go-live gate should read
+    per-version numbers, not the blend."""
+    by_ver: dict = {}
+    for t in closed:
+        v = t.get("model_version") or "untagged"
+        b = by_ver.setdefault(v, {"n": 0, "pnl": 0.0})
+        b["n"] += 1
+        b["pnl"] = round(b["pnl"] + t.get("pnl", 0.0), 2)
+    return {"current": current, "versions": by_ver,
+            "mixed": len(by_ver) > 1}
+
+
 def _fmt_gate(ok: bool | None, label: str) -> str:
     mark = "?" if ok is None else ("PASS" if ok else "FAIL")
     return f"  [{mark:>4}] {label}"
@@ -218,6 +265,62 @@ def main():
     if ew is not None:
         print(f"  [info] equal-weight universe B&H over same window: {ew:+.2f}% "
               f"(bot {bot_pct:+.2f}%) — the harder honest baseline")
+
+    # --- Model-version segmentation (decision-surface fingerprint) ---
+    import modelver
+    mv = model_version_breakdown(ledger.closed_trades(),
+                                 modelver.current_version())
+    if mv["versions"]:
+        parts = ", ".join(f"{v[:12]} n={b['n']} P&L ${b['pnl']:,.2f}"
+                          for v, b in sorted(mv["versions"].items()))
+        print(f"\nMODEL VERSIONS (current {mv['current']}): {parts}")
+        if mv["mixed"]:
+            print("  [note] record spans multiple rulebook versions — judge "
+                  "the gate on per-version numbers, not the blend")
+
+    # --- Post-exit runner tracking (what happened AFTER each close) ---
+    import postexit
+    pe_states = postexit.PostExitStore(
+        postexit._cfg(cfg)["path"]).replay()
+    pes = postexit.summary(pe_states)
+    if pe_states:
+        v = ", ".join(f"{k}={n}" for k, n in sorted(pes["verdicts"].items()))
+        print(f"\nPOST-EXIT ({pes['n_resolved']} resolved, "
+              f"{pes['n_tracking']} tracking): {v or 'no verdicts yet'}")
+        if pes["avg_winner_max_extension_pct"] is not None:
+            print(f"  Winners kept running on average "
+                  f"{pes['avg_winner_max_extension_pct']:+.1f}% past our exit "
+                  f"(evidence for future exit-rule gate candidates)")
+
+    # --- Gap-adjusted portfolio heat (reporting only; live broker state) ---
+    try:
+        from broker import Broker
+        import strategy as strategy_mod
+        b = Broker(cfg)
+        positions = b.positions()
+        if positions:
+            stops = b.open_stop_orders()
+            atr_p = cfg["risk"].get("brackets", {}).get("atr_period", 14)
+            atrs = {}
+            for sym in positions:
+                try:
+                    atrs[sym] = strategy_mod.atr(b.bars(sym, "1Day", atr_p * 3),
+                                                 atr_p)
+                except Exception:  # noqa: BLE001
+                    pass
+            equity = b.account()["equity"]
+            gap_frac = cfg.get("reporting", {}).get("heat_gap_atr_fraction", 0.5)
+            h = heat_report(positions, stops, atrs, equity, gap_frac)
+            print(f"\nPORTFOLIO HEAT (if every stop fires, gap-adjusted "
+                  f"{gap_frac}xATR through): ${h['gap_adjusted_usd']:,.2f} "
+                  f"= {h['pct_of_equity']:.2f}% of equity "
+                  f"(stops ${h['committed_risk_usd']:,.2f} + gap "
+                  f"${h['gap_add_usd']:,.2f})")
+            if h["uncovered"]:
+                print(f"  [warn] positions with NO resting stop: "
+                      f"{', '.join(sorted(h['uncovered']))}")
+    except Exception:  # noqa: BLE001 — heat is optional (offline runs)
+        pass
 
     # --- Per-strategy breakdown ---
     per_strat = per_strategy_breakdown(ledger.closed_trades())

@@ -33,14 +33,16 @@ class JudgmentStore:
                      executed: bool, reasoning: str = "",
                      stop_price: float | None = None,
                      tp_price: float | None = None,
-                     strategy: str | None = None) -> str:
+                     strategy: str | None = None,
+                     cited_lessons: list[str] | None = None) -> str:
         jid = f"jg-{uuid.uuid4().hex[:8]}"
         self._append({"event": "judgment", "id": jid, "trade_id": trade_id,
                       "symbol": symbol, "action": action, "verdict": verdict,
                       "scale": scale, "price_at_decision": price,
                       "regime": regime, "strategy": strategy, "kind": kind,
                       "executed": executed, "reasoning": reasoning,
-                      "stop_price": stop_price, "tp_price": tp_price})
+                      "stop_price": stop_price, "tp_price": tp_price,
+                      "cited_lessons": cited_lessons or []})
         return jid
 
     def log_resolution(self, judgment_id: str, kind: str, pnl_pct: float,

@@ -109,13 +109,22 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     stop_atr_mult: 2.0           # stop  = entry − 2.0 · ATR
     take_profit_atr_mult: 0      # stop-only (OTO): every walk-forward winner chose no
                                  # TP leg — capping winners hurt in and out of sample
+    trailing_atr_mult: 3.0       # chandelier trail: stop ratchets to high-water −
+                                 # 3·ATR, never down. Gate 2026-07-19 (§7, frozen
+                                 # snapshot, pre-registered): ADOPTED for tsmom
+                                 # (OOS +1.38→+2.37, maxDD 0.7→0.5 — the
+                                 # Kaminski-Lo momentum prediction held); REJECTED
+                                 # for meanrev (maxDD tie, +0.01pp noise — exits
+                                 # already fast).
+    trailing_strategies: [tsmom] # trail applies only to positions OWNED by these
     time_in_force: gtc           # legs must survive across days (DAY would expire overnight)
-  vol_target:                    # volatility-targeted sizing. Gate 2026-07-18
-    enabled: true                # (frozen bars_snapshot_2020_2026-07-10, slip 5bps,
-    strategies: [meanrev]        # pre-registered rule): ADOPTED for meanrev only
-                                 # (OOS maxDD 0.3->0.2 at -0.23pp return, within
-                                 # tolerance); REJECTED for tsmom (IS -1.76pp,
-                                 # OOS -0.49pp). Marginal, rule-driven — monitor.
+  vol_target:                    # volatility-targeted sizing. Gate 2026-07-18:
+    enabled: false               # ADOPTED for meanrev only (marginal) — then
+    strategies: [meanrev]        # SUPERSEDED 2026-07-19 by risk_sizing below,
+                                 # which beat it head-to-head on the same frozen
+                                 # snapshot for its only scoped strategy
+                                 # (meanrev OOS +2.38 vs +1.10). Both normalize
+                                 # by realized vol, so only one may be active.
     annual_vol: 0.20             # target annualized vol; size scales by target/realized
     period: 20                   # realized-vol lookback (daily bars)
     min_scale: 0.5               # clamp so sizing never swings more than 2x either way
@@ -125,6 +134,22 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # the cap, results identical to baseline (untestable
                                  # benefit). Revisit only if sizing scales up.
     down_max_gross_pct: 50       # in a down-trend regime, total position value <= 50% equity
+  risk_sizing:                   # stop-distance sizing: dollars = equity·risk_pct /
+    enabled: true                # stop-distance-fraction (equal TRUE risk per
+                                 # trade, Van Tharp school). Gate 2026-07-19 (§8):
+                                 # ADOPTED for meanrev (OOS +1.10→+2.38, maxDD
+                                 # 0.2→0.3 within tolerance, IS improves; also
+                                 # beats + replaces vol_target); REJECTED for
+                                 # tsmom (maxDD 0.7→1.1 breaks the rule).
+    risk_pct: 0.1                # % of equity truly at risk entry-to-stop
+    strategies: [meanrev]        # per-strategy scope from the gate
+  reentry_cooldown:              # same-ticker re-entry cooldown after an exit
+    days: 5                      # (anti-whipsaw). Gate 2026-07-19 (§9): ADOPTED
+    strategies: [meanrev]        # for meanrev (PF 2.16→2.25, dd/return hold, IS
+                                 # −0.02→+0.50); REJECTED for tsmom (maxDD
+                                 # 0.7→1.0 despite PF 4.0 — rule is the rule).
+                                 # Combined meanrev overlay (sizing + cooldown)
+                                 # verified on the snapshot: OOS +2.24 PF 2.28.
 
 llm:                   # optional judgment layer (Anthropic API)
   enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
@@ -185,6 +210,13 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     regime: 180                   # regime-level generalizations are most durable
   counterfactual_extra_days: 5    # vetoed buys resolve after min_holding_days + this
   counterfactual_max_per_run: 10  # bars() calls bounded per learn run
+  postexit:                       # post-exit runner tracking (src/postexit.py):
+    enabled: true                 # every close re-marked later — measurement only,
+    path: memory/postexit.jsonl   # feeds review.py + future exit-rule gate evidence
+    mark_days: [15, 30, 60]       # calendar days after exit
+    left_on_table_pct: 8.0        # winner kept running >= this -> left_on_table
+    good_lock_in_pct: -5.0        # faded <= this after our exit -> good_lock_in
+    max_marks_per_run: 10         # bars() fetches bounded per cycle
   evaluator_batch_size: 5         # closed trades evaluated per learn.py run
   max_llm_calls_per_cycle: 2      # hard cap on learning LLM calls inside a trading cycle
   top_k_lessons: 8                # lessons injected into the review prompt
@@ -198,6 +230,8 @@ learning:                # the learning loop: hypothesis book + judge calibratio
 reporting:
   starting_equity: 100000        # Alpaca paper account starting capital; the
                                  # dashboard's total-P/L = equity - this
+  heat_gap_atr_fraction: 0.5     # review.py heat report: modeled stop gap-through
+                                 # (stops do not fill AT the stop) as a fraction of ATR
 
 memory:
   ledger_path: memory/ledger.jsonl

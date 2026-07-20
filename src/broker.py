@@ -145,6 +145,7 @@ class Broker:
             "filled_qty": float(o.filled_qty) if o.filled_qty else 0.0,
             "legs": [{"id": str(l.id), "type": str(l.type), "side": str(l.side),
                       "status": str(l.status),
+                      "stop_price": float(l.stop_price) if l.stop_price else None,
                       "filled_avg_price": float(l.filled_avg_price) if l.filled_avg_price else None}
                      for l in (o.legs or [])],
         }
@@ -169,6 +170,29 @@ class Broker:
         if open_orders:
             log.info("Cancelled %d open order(s) on %s", len(open_orders), symbol)
         return len(open_orders)
+
+    def open_stop_orders(self) -> list[dict]:
+        """All open stop legs (protective exits), for the heat report.
+        One row per stop: symbol, qty, stop_price."""
+        orders = self.trading.get_orders(GetOrdersRequest(
+            status=QueryOrderStatus.OPEN))
+        out = []
+        for o in orders:
+            if "stop" in str(o.type).lower() and o.stop_price:
+                out.append({"id": str(o.id), "symbol": o.symbol,
+                            "qty": float(o.qty or 0),
+                            "stop_price": float(o.stop_price)})
+        return out
+
+    def replace_stop(self, order_id: str, stop_price: float) -> dict:
+        """Raise a resting stop leg (chandelier trail ratchet). NOTE: Alpaca
+        replacement mints a NEW order id — reconciliation keeps working
+        because resolve_exit_price falls back to closed_orders(symbol)."""
+        from alpaca.trading.requests import ReplaceOrderRequest
+        o = self.trading.replace_order_by_id(
+            order_id, ReplaceOrderRequest(stop_price=stop_price))
+        log.info("Stop leg %s replaced -> %s @ %.2f", order_id, o.id, stop_price)
+        return {"id": str(o.id), "stop_price": stop_price}
 
     def last_price(self, symbol: str) -> float | None:
         """Latest daily close — final fallback for reconciliation exit prices."""

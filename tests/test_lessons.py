@@ -76,7 +76,12 @@ def test_refutation_checked_before_promotion(store):
 
 def test_staleness_retires(store):
     lid = _seed(store)
-    trans = apply_transitions(store.replay(), NOW + timedelta(days=46), LCFG)
+    states = store.replay()
+    # Pin the clock: store.append stamps REAL now, which made this test flip
+    # whenever the wall clock crossed a UTC midnight near the 45d boundary.
+    states[lid]["created_ts"] = NOW.isoformat()
+    states[lid]["last_evidence_ts"] = NOW.isoformat()
+    trans = apply_transitions(states, NOW + timedelta(days=46), LCFG)
     assert [(t[0], t[2]) for t in trans] == [(lid, "retired")]
 
 

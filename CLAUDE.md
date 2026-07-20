@@ -22,10 +22,12 @@ src/strategy.py  Compatibility facade over strategies/ (legacy generate_signal +
 src/llm.py       Judgment layer: approve / downsize / veto. Can NEVER enlarge or invent trades.
                  Runs on llm.model (claude-sonnet-5, right-sized 2026-07-18 — evals show no
                  thinking-model edge for judge roles); learning passes use learning.model (Fable).
-src/risk.py      Hard rails: sizing (vol-targeted for meanrev only — gate 2026-07-18), caps,
-                 trade-rate limit, daily-loss kill switch (HALT file), swing guard
-                 (min_holding_days blocks early exits — no day trading); param-gated
-                 down-regime exposure cap exists but is OFF (gate: cannot bind at 1%/trade).
+src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 2026-07-19 §8,
+                 superseded vol_target; others: 1% notional), caps, trade-rate limit,
+                 daily-loss kill switch (HALT file), swing guard (min_holding_days blocks
+                 early exits — no day trading), chandelier trail (tsmom only, §7 — stop
+                 ratchets up, never down), re-entry cooldown (meanrev only, §9);
+                 param-gated down-regime exposure cap exists but is OFF (cannot bind).
 src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
 src/memory.py    Retrieval layer: balanced trade sample (losers force-included), ranked lessons,
                  judge calibration + last-20-resolved-calls scoreboard, regime — assembled
@@ -39,6 +41,13 @@ src/judgments.py Judge calibration (memory/judgments.jsonl): every approve/downs
                  own track record in the prompt. kind=llm and kind=rails bucketed separately.
 src/counterfactual.py  What a vetoed buy would have done (pessimistic stop-before-TP replay,
                  embargoed until min_holding_days + extra_days pass).
+src/postexit.py  Post-exit runner tracking (memory/postexit.jsonl, append-only): every close
+                 re-marked at 15/30/60d -> left_on_table | good_lock_in | mixed |
+                 stopped_then_recovered | stop_confirmed. MEASUREMENT ONLY — feeds
+                 review.py + future exit-rule gate evidence, never sizing/signals/judge.
+src/modelver.py  Decision-surface fingerprint (config + strategy/risk/broker/llm code)
+                 stamped on every ledger record; review.py segments the track record by
+                 version. Stamp-only by design — no freeze; gates iterate the model.
 src/regime.py    Deterministic market regime from SPY bars (trend x vol bucket); tags decisions,
                  judgments, and lesson scopes so off-regime evidence gets discounted.
 src/market_context.py  Morning news awareness (Alpaca News API + LLM distill, 9:35 job):
@@ -79,8 +88,10 @@ config.yaml      All parameters. .env holds secrets (never commit).
 3. **Swing-only.** The swing guard (`min_holding_days`) must keep blocking exits on
    young positions. Only the daily-loss kill switch and broker-side protective
    stop/take-profit bracket legs (set deterministically at entry, before any LLM
-   involvement) may exit before `min_holding_days`; the guard continues to block
-   all strategy-signal exits on young positions. `timeframe` stays `1Day`.
+   involvement; the chandelier trail may deterministically RAISE a stop leg later,
+   never lower or remove it) may exit before `min_holding_days`; the guard
+   continues to block all strategy-signal exits on young positions. `timeframe`
+   stays `1Day`.
 4. **Positions/equity always read fresh from the broker** (`broker.account()`,
    `broker.positions()`) — never inferred from memory, the ledger, or prior LLM output.
 5. **Outcome embargo.** Lessons/evidence are generated only from CLOSED trades;
@@ -142,3 +153,10 @@ config.yaml      All parameters. .env holds secrets (never commit).
     dashboard.html each cycle; `src/daily_posts.py` posts a 9:35 plan and
     4:20 review (launchd com.trading-agent.dailypost), read-only scans,
     [PAPER] enforced.
+13. **common-trade ports** DONE 2026-07-19 (research in
+    knowledge/port_research_2026-07-19.md; gates in backtest_candidates.md
+    §7–§9): post-exit runner tracking (src/postexit.py), model-version
+    fingerprint (src/modelver.py), citation-graded lessons, secrets-hygiene
+    test, gap-adjusted heat report (review.py), chandelier trail (ADOPTED
+    tsmom), stop-distance risk sizing (ADOPTED meanrev, superseded
+    vol_target), re-entry cooldown (ADOPTED meanrev).

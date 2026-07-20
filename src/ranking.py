@@ -75,8 +75,11 @@ def format_lessons_block(ranked: list[dict], current_regime: str | None,
     for s in ranked:
         n = f"n={len(s['supports'])}/{len(s['contradicts'])}"
         scope = s.get("scope") or {}
+        # lesson ids are shown so the judge can CITE the ones that drive a
+        # verdict — citations are later scored against the trade's outcome
         tag = (f"CAUTION (refuted, {n})" if s.get("_caution")
-               else f"{s['status'].upper()} {n}, scope {_fmt_scope(scope)}")
+               else f"{s['id']} | {s['status'].upper()} {n}, "
+                    f"scope {_fmt_scope(scope)}")
         off = (" (different regime)"
                if current_regime and scope.get("regime")
                and scope["regime"] != current_regime and not s.get("_caution") else "")

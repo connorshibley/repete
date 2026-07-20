@@ -16,10 +16,18 @@ import uuid
 class Ledger:
     def __init__(self, path: str):
         self.path = path
+        self.model_version: str | None = None  # set once per cycle (modelver)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def set_model_version(self, version: str | None):
+        """Stamp every subsequent record with the decision-surface
+        fingerprint, so the track record segments by rulebook version."""
+        self.model_version = version
 
     def _append(self, record: dict):
         record["ts"] = datetime.now(timezone.utc).isoformat()
+        if self.model_version:
+            record.setdefault("model_version", self.model_version)
         with open(self.path, "a") as f:
             f.write(json.dumps(record) + "\n")
 
@@ -112,5 +120,6 @@ class Ledger:
                 merged = dict(decisions[r["trade_id"]])
                 merged.update({k: r[k] for k in ("exit_price", "pnl", "pnl_pct", "result")})
                 merged["exit_reason"] = r.get("exit_reason", "")
+                merged["exit_ts"] = r.get("ts")   # when the outcome was recorded
                 out.append(merged)
         return out

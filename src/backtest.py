@@ -205,7 +205,7 @@ def _cal_days(entry_ts: str, now_ts: str) -> int:
 
 
 BRACKET_KEYS = ("stop_atr_mult", "take_profit_atr_mult",
-                "stop_atr_mult_high_vol")
+                "stop_atr_mult_high_vol", "trailing_atr_mult")
 
 
 _RCFG_DEFAULT = {"sma_period": 50, "vol_period": 20,
@@ -280,6 +280,12 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         bcfg["take_profit_atr_mult"] = params["take_profit_atr_mult"]
     if "stop_atr_mult_high_vol" in params:
         bcfg["stop_atr_mult_high_vol"] = params["stop_atr_mult_high_vol"]
+    if "trailing_atr_mult" in params:
+        bcfg["trailing_atr_mult"] = params["trailing_atr_mult"]
+    t_strats = bcfg.get("trailing_strategies")
+    trail_on = (bcfg.get("trailing_atr_mult", 0) > 0
+                and (not t_strats or strategy_name in t_strats))
+    cooldown_days = risk.cooldown_days_for(cfg, strategy_name)
 
     smod = strategies.REGISTRY[strategy_name]
     needs_xs = smod.NEEDS_CROSS_SECTION
@@ -304,6 +310,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     deployment: list = []
     guard_skips = 0
     fills_by_date: dict = {}
+    last_exit: dict = {}  # symbol -> exit ts (re-entry cooldown, §9)
     pending: list = []  # (symbol, action) to fill at that symbol's next open
 
     all_ts = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
@@ -318,6 +325,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         t = pos["trade"]
         t.exit_ts, t.exit_price, t.exit_reason = ts, fill, reason
         t.fees += fee
+        last_exit[sym] = ts
         closed.append(t)
 
     for ts in all_ts:
@@ -340,9 +348,16 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 fill = bar["open"] * (1 + slip / 1e4)
                 i = idx[sym][ts]
                 hist = sym_bars[sym][:i + 1]
+                # Bracket prices BEFORE sizing (mirrors the live pipeline) so
+                # stop-distance sizing (§8) sees the same stop it will place.
+                prices = risk.bracket_prices(
+                    fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
+                    vol_bucket=vol_series.get(ts))
+                stop, tp = prices if prices else (None, None)
                 qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
                                       bars=hist,
-                                      strategy=strategy_name)
+                                      strategy=strategy_name,
+                                      stop_price=stop)
                 try:
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
@@ -350,14 +365,10 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                                      regime_label=regime_labels.get(ts))
                 except risk.RiskRejection:
                     continue
-                prices = risk.bracket_prices(
-                    fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
-                    vol_bucket=vol_series.get(ts))
-                stop, tp = prices if prices else (None, None)
                 acct.cash -= qty * fill + fee
                 acct.positions[sym] = {
                     "qty": qty, "avg_entry": fill, "entry_ts": ts,
-                    "stop": stop, "tp": tp,
+                    "stop": stop, "tp": tp, "hw": fill,
                     "trade": SimTrade(sym, ts, fill, qty, fees=fee)}
                 fills_by_date[date] = fills_by_date.get(date, 0) + 1
             elif sym in acct.positions:
@@ -366,14 +377,29 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         pending = still_pending
 
         # 2. Bracket legs, intrabar, pessimistic: stop wins when both touch.
+        # The chandelier trail (§7) ratchets AFTER the exit check, from data
+        # through today — so today's high can never raise a stop that then
+        # fires on today's own low (no intrabar look-ahead; matches the live
+        # once-per-cycle update timing).
         for sym in list(acct.positions):
             if sym not in today:
                 continue
             bar, pos = today[sym], acct.positions[sym]
             if pos["stop"] is not None and bar["low"] <= pos["stop"]:
                 _exit(sym, pos["stop"], ts, "stop_loss")
-            elif pos["tp"] is not None and bar["high"] >= pos["tp"]:
+                continue
+            if pos["tp"] is not None and bar["high"] >= pos["tp"]:
                 _exit(sym, pos["tp"], ts, "take_profit")
+                continue
+            if trail_on:
+                pos["hw"] = max(pos.get("hw", pos["avg_entry"]), bar["high"])
+                hist = sym_bars[sym][:idx[sym][ts] + 1]
+                t_stop = risk.trail_stop(
+                    pos["hw"], strategy.atr(hist, bcfg.get("atr_period", 14)),
+                    cfg, strategy=strategy_name)
+                if t_stop is not None and (pos["stop"] is None
+                                           or t_stop > pos["stop"]):
+                    pos["stop"] = t_stop
 
         # 3. Signals on data up to and including this bar's close.
         xs_ctx = None
@@ -392,6 +418,10 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
             sig = strategies.generate(strategy_name, sym, hist, cfg, holding,
                                       cross_section=xs_ctx, entry_ts=entry_ts)
             if sig.action == "buy" and not holding:
+                # re-entry cooldown (§9) — same calendar-day rule as main.py
+                if cooldown_days and risk.cooldown_blocked(
+                        last_exit.get(sym), ts, cooldown_days):
+                    continue
                 # earnings blackout — same rule as the live filter in main.py
                 if blackout_days and earnings and earnings_mod.next_within(
                         earnings.get(sym, []), ts, blackout_days):
@@ -585,6 +615,13 @@ def main():
                    help="CANDIDATE: enable risk.vol_target sizing for this run")
     p.add_argument("--regime-cap", type=float, default=None, metavar="PCT",
                    help="CANDIDATE: enable down-regime gross exposure cap at PCT")
+    p.add_argument("--trail-mult", type=float, default=None, metavar="MULT",
+                   help="CANDIDATE §7: chandelier trailing stop at MULT x ATR")
+    p.add_argument("--risk-sizing", type=float, default=None, metavar="PCT",
+                   help="CANDIDATE §8: stop-distance sizing at PCT equity "
+                        "risk per trade (replaces vol_target for the run)")
+    p.add_argument("--cooldown-days", type=int, default=None, metavar="N",
+                   help="CANDIDATE §9: same-ticker re-entry cooldown, N days")
     p.add_argument("--fee", type=float, default=bt.get("fee_per_trade_usd", 0.0))
     p.add_argument("--trials-path",
                    default=bt.get("trials_path", "memory/backtest_trials.jsonl"))
@@ -616,6 +653,22 @@ def main():
         cfg["risk"]["regime_exposure"] = {"enabled": True,
                                           "down_max_gross_pct": args.regime_cap}
         print(f"(CANDIDATE on: regime_exposure cap {args.regime_cap}%)")
+    if args.trail_mult is not None:
+        cfg["risk"].setdefault("brackets", {})["trailing_atr_mult"] = args.trail_mult
+        print(f"(CANDIDATE on: chandelier trail {args.trail_mult}x ATR)")
+    if args.risk_sizing is not None:
+        # Pre-registered (§8): risk-based sizing REPLACES vol_target for the
+        # run — both normalize by realized vol; stacking them double-counts.
+        cfg["risk"]["risk_sizing"] = {"enabled": True,
+                                      "risk_pct": args.risk_sizing,
+                                      "strategies": None}
+        cfg["risk"]["vol_target"] = {"enabled": False}
+        print(f"(CANDIDATE on: risk-based sizing {args.risk_sizing}%/trade, "
+              "vol_target off for this run)")
+    if args.cooldown_days is not None:
+        cfg["risk"]["reentry_cooldown"] = {"days": args.cooldown_days,
+                                           "strategies": None}
+        print(f"(CANDIDATE on: re-entry cooldown {args.cooldown_days}d)")
 
     if args.bars_file:
         sym_bars = load_bars_file(args.bars_file)
