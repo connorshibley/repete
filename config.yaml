@@ -176,6 +176,21 @@ news:                  # market awareness (Alpaca News API + LLM distill),
                        # skepticism, outside backtested universe) + all rails.
   max_news_entries_per_cycle: 1   # hard cap on executed news-nominated entries
   context_path: memory/market_context.json  # today-only; stale context ignored
+  wsj_rss:               # WSJ's FREE PUBLIC RSS feeds (headline + 1-2 sentence
+                         # summary only). NO login, NO scraping, NO credentials —
+                         # merged into the news brain alongside Alpaca. Full-text
+                         # WSJ would need a licensed Dow Jones/Factiva API (not this).
+    enabled: true
+    max_items: 20        # cap on total WSJ headlines merged in (keeps Alpaca's
+                         # ticker-tagged items dominant for symbol_flags)
+    max_per_feed: 8
+    max_age_hours: 36    # drop stale RSS items
+    feeds:                 # live Dow Jones host (feeds.a.dj.com froze in Jan 2025);
+                           # verified fresh 2026-07-20, titles = genuine WSJ.com feeds
+      - https://feeds.content.dowjones.io/public/rss/RSSMarketsMain     # WSJ:Markets
+      - https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness   # WSJ:Business
+      - https://feeds.content.dowjones.io/public/rss/RSSWSJD            # WSJ:Tech
+      - https://feeds.content.dowjones.io/public/rss/RSSWorldNews       # WSJ:World
 
 x_posting:
   enabled: true

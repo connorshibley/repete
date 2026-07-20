@@ -2,7 +2,9 @@
 
 Every trading morning (from the 9:35 plan job) this module:
   1. pulls the last ~24h of market news from the Alpaca News API
-     (existing keys, read-only),
+     (existing keys, read-only) MERGED with WSJ's free public RSS feeds
+     (headline + summary only, no login, no scraping, no credentials —
+     see fetch_wsj_rss),
   2. has the LLM distill it into a structured context: what's driving
      markets, today's scheduled events, per-symbol news flags, and up to
      `news.max_nominations` watchlist NOMINATIONS,
@@ -24,7 +26,10 @@ import logging
 import os
 import re
 import sys
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -34,6 +39,9 @@ import strategies
 log = logging.getLogger("news")
 
 TICKER_RE = re.compile(r"^[A-Z]{1,5}$")
+_TAG_RE = re.compile(r"<[^>]+>")  # strip HTML from RSS descriptions
+_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36")
 
 
 def _ncfg(cfg: dict) -> dict:
@@ -62,6 +70,81 @@ def fetch_headlines(cfg: dict) -> list[dict]:
     except Exception as e:  # noqa: BLE001 — no news is a quiet morning, not a crash
         log.warning("news fetch failed: %s", e)
         return []
+
+
+def parse_rss(xml_text: str, source_label: str,
+              max_age_hours: int = 36, now=None) -> list[dict]:
+    """Parse an RSS 2.0 feed body into the same item shape as fetch_headlines
+    ({headline, summary, symbols, source, ts}). RSS carries no ticker tags, so
+    symbols is always []. Items older than max_age_hours (by <pubDate>) are
+    dropped; an unparseable/absent date is KEPT (fail-open). Any XML error =>
+    []. Pure + offline — the network lives in fetch_wsj_rss."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=max_age_hours)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        log.warning("RSS parse failed (%s): %s", source_label, e)
+        return []
+    out = []
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        desc = (item.findtext("description") or "").strip()
+        desc = _TAG_RE.sub("", desc).strip()  # strip embedded HTML
+        pub = (item.findtext("pubDate") or "").strip()
+        ts_dt = None
+        if pub:
+            try:
+                ts_dt = parsedate_to_datetime(pub)
+                if ts_dt.tzinfo is None:
+                    ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                ts_dt = None  # unparseable date => keep the item
+        if ts_dt is not None and ts_dt < cutoff:
+            continue  # stale
+        if not title and not desc:
+            continue
+        out.append({"headline": title,
+                    "summary": desc[:300],
+                    "symbols": [],
+                    "source": source_label,
+                    "ts": pub})
+    return out
+
+
+def fetch_wsj_rss(cfg: dict) -> list[dict]:
+    """WSJ's public RSS feeds (headline + summary only, no login). Merged into
+    the news brain alongside Alpaca. Every feed is fail-soft: a bad/slow/absent
+    feed is logged and skipped, never raised. [] when disabled or all fail."""
+    wcfg = _ncfg(cfg).get("wsj_rss", {})
+    if not wcfg.get("enabled", False):
+        return []
+    feeds = wcfg.get("feeds", []) or []
+    max_per_feed = int(wcfg.get("max_per_feed", 8))
+    max_items = int(wcfg.get("max_items", 20))
+    max_age = int(wcfg.get("max_age_hours", 36))
+    out: list[dict] = []
+    for url in feeds:
+        try:
+            label = "WSJ:" + _feed_label(url)
+            req = urllib.request.Request(url, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=8) as resp:  # noqa: S310 — https feeds only
+                body = resp.read().decode("utf-8", "replace")
+            items = parse_rss(body, label, max_age)[:max_per_feed]
+            out.extend(items)
+        except Exception as e:  # noqa: BLE001 — a dead feed is a quiet morning, not a crash
+            log.warning("WSJ RSS fetch failed (%s): %s", url, e)
+            continue
+    return out[:max_items]
+
+
+def _feed_label(url: str) -> str:
+    """Human-readable section from a WSJ feed filename, best-effort. Handles
+    both the old .xml URLs and the new extensionless dowjones.io ones."""
+    fname = url.rstrip("/").rsplit("/", 1)[-1].replace(".xml", "")
+    known = {"RSSMarketsMain": "Markets", "WSJcomUSBusiness": "Business",
+             "RSSWSJD": "Tech", "RSSWorldNews": "World", "RSSOpinion": "Opinion"}
+    return known.get(fname, fname or "RSS")
 
 
 def validate_nominations(raw, cfg: dict, broker) -> list[dict]:
@@ -104,7 +187,9 @@ def refresh(cfg: dict, broker, ledger=None) -> dict | None:
     """Build and persist today's market context. Returns it, or None."""
     if not _ncfg(cfg).get("enabled", False):
         return None
-    headlines = fetch_headlines(cfg)
+    # Alpaca first (ticker-tagged, drives symbol_flags), then WSJ public RSS.
+    headlines = fetch_headlines(cfg) + fetch_wsj_rss(cfg)
+    headlines = headlines[:_ncfg(cfg).get("max_headlines", 50)]
     if not headlines:
         log.info("no headlines this morning — no market context today")
         return None

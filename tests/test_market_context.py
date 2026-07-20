@@ -35,6 +35,60 @@ def _fresh_bars(n=80):
     return out
 
 
+# ---- WSJ RSS parsing (pure, offline) ----
+
+def _rss(items_xml):
+    return ('<?xml version="1.0"?><rss version="2.0"><channel>'
+            '<title>WSJ.com: Markets</title>' + items_xml +
+            '</channel></rss>')
+
+
+def test_parse_rss_maps_shape():
+    xml = _rss(
+        '<item><title>Stocks Sink in AI Rout</title>'
+        '<description>Nasdaq led declines; &lt;b&gt;Nvidia&lt;/b&gt; down 16%.'
+        '</description></item>'
+        '<item><title>Gold Settles Lower</title>'
+        '<description>Gold fell 1.4%.</description></item>')
+    out = market_context.parse_rss(xml, "WSJ:Markets")
+    assert len(out) == 2
+    assert out[0]["headline"] == "Stocks Sink in AI Rout"
+    # embedded HTML stripped from the summary
+    assert out[0]["summary"] == "Nasdaq led declines; Nvidia down 16%."
+    assert out[0]["symbols"] == [] and out[0]["source"] == "WSJ:Markets"
+
+
+def test_parse_rss_malformed_returns_empty():
+    assert market_context.parse_rss("<rss><broken>", "WSJ:Markets") == []
+
+
+def test_parse_rss_missing_description():
+    out = market_context.parse_rss(
+        _rss("<item><title>Headline only</title></item>"), "WSJ:Tech")
+    assert out[0]["summary"] == "" and out[0]["headline"] == "Headline only"
+
+
+def test_parse_rss_drops_stale_keeps_undated():
+    from datetime import datetime, timedelta, timezone
+    now = datetime(2026, 7, 20, 12, 0, tzinfo=timezone.utc)
+    old = (now - timedelta(hours=100)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    fresh = (now - timedelta(hours=2)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    xml = _rss(
+        f'<item><title>stale</title><pubDate>{old}</pubDate></item>'
+        f'<item><title>fresh</title><pubDate>{fresh}</pubDate></item>'
+        '<item><title>undated</title></item>'
+        '<item><title>baddate</title><pubDate>not a date</pubDate></item>')
+    out = market_context.parse_rss(xml, "WSJ:Markets", max_age_hours=36, now=now)
+    titles = [o["headline"] for o in out]
+    assert titles == ["fresh", "undated", "baddate"]  # stale dropped, rest kept
+
+
+def test_fetch_wsj_rss_disabled_returns_empty():
+    assert market_context.fetch_wsj_rss({"news": {}}) == []
+    assert market_context.fetch_wsj_rss(
+        {"news": {"wsj_rss": {"enabled": False}}}) == []
+
+
 # ---- validation ----
 
 def test_validate_nominations_filters_garbage(cfg):

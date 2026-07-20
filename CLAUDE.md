@@ -50,7 +50,10 @@ src/modelver.py  Decision-surface fingerprint (config + strategy/risk/broker/llm
                  version. Stamp-only by design — no freeze; gates iterate the model.
 src/regime.py    Deterministic market regime from SPY bars (trend x vol bucket); tags decisions,
                  judgments, and lesson scopes so off-regime evidence gets discounted.
-src/market_context.py  Morning news awareness (Alpaca News API + LLM distill, 9:35 job):
+src/market_context.py  Morning news awareness (Alpaca News API + WSJ free public RSS
+                 feeds [headline/summary only, no login/scraping/credentials — ToS-clean;
+                 full-text WSJ would need a licensed Dow Jones/Factiva API, not built] +
+                 LLM distill, 9:35 job):
                  today-only context for the judge/plan post + validated watchlist
                  NOMINATIONS. The LLM may summarize news and nominate scan symbols;
                  it still cannot generate, enlarge, or execute trades — a nominated
