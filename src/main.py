@@ -160,6 +160,45 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
             ledger.log_event("reconcile_error", f"{symbol} trade {tid}: {e}")
 
 
+def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
+                              positions: dict):
+    """Complement to reconcile_closed_positions: a broker position with NO
+    open ledger buy is a 'ghost' — an entry order that filled but whose ledger
+    write never landed (a crash/kill between broker.submit and log_decision in
+    _process_signal). Adopt it so it becomes tracked again: its P&L, the
+    learning loop, judge calibration, and the public track record must never
+    silently omit a real position. Entry price and qty come from the broker
+    (the source of truth); the strategy defaults to the owner fallback so the
+    normal owner-only exit path routes it. Errors never crash the cycle."""
+    tracked = {rec["symbol"] for rec in ledger.open_buys().values()}
+    for symbol, pos in positions.items():
+        if symbol in tracked:
+            continue
+        try:
+            qty = int(pos.get("qty") or 0)
+            if qty <= 0:
+                continue
+            entry = pos.get("avg_entry")
+            if not entry:  # defensive: derive from market value if absent
+                entry = (pos.get("market_value", 0.0) / qty) if qty else 0.0
+            tid = ledger.log_decision(
+                symbol, "buy", "adopted: broker position with no ledger record",
+                {}, None, executed=True,
+                order={"id": None, "symbol": symbol, "adopted": True},
+                entry_price=float(entry), qty=qty,
+                strategy=strategies.DEFAULT_OWNER,
+                detail="adopted untracked broker position")
+            ledger.log_event("position_adopted",
+                             f"{symbol}: qty {qty} @ {float(entry):.2f} "
+                             f"(trade {tid})")
+            log.warning("Adopted untracked %s position: qty %d @ $%.2f "
+                        "(trade %s) — an entry filled but its ledger write was "
+                        "lost", symbol, qty, float(entry), tid)
+        except Exception as e:  # noqa: BLE001 — adoption must never crash the cycle
+            log.error("Adoption failed for %s: %s", symbol, e)
+            ledger.log_event("adopt_error", f"{symbol}: {e}")
+
+
 def update_trailing_stops(broker, ledger, cfg: dict, open_trades: dict,
                           all_bars: dict):
     """Chandelier ratchet (gate candidate §7, param-gated by
@@ -290,6 +329,10 @@ def _run_cycle():
     # Sync broker-side exits (bracket leg fills, flattens, manual closes)
     # into the ledger BEFORE reading open trades.
     reconcile_closed_positions(broker, ledger, memory, cfg, positions)
+    # Complement: a broker position with no open ledger buy is a ghost from a
+    # crash between order submit and the ledger write — adopt it so it is
+    # tracked before we read open trades below.
+    adopt_untracked_positions(broker, ledger, cfg, positions)
     record_fill_quality(broker, ledger)
 
     open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
