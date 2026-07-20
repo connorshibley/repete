@@ -2,9 +2,9 @@
 
 Every trading morning (from the 9:35 plan job) this module:
   1. pulls the last ~24h of market news from the Alpaca News API
-     (existing keys, read-only) MERGED with WSJ's free public RSS feeds
-     (headline + summary only, no login, no scraping, no credentials —
-     see fetch_wsj_rss),
+     (existing keys, read-only) MERGED with free public RSS feeds from
+     WSJ and CNBC (headline + summary only, no login, no scraping, no
+     credentials — see fetch_rss_sources),
   2. has the LLM distill it into a structured context: what's driving
      markets, today's scheduled events, per-symbol news flags, and up to
      `news.max_nominations` watchlist NOMINATIONS,
@@ -112,39 +112,41 @@ def parse_rss(xml_text: str, source_label: str,
     return out
 
 
-def fetch_wsj_rss(cfg: dict) -> list[dict]:
-    """WSJ's public RSS feeds (headline + summary only, no login). Merged into
-    the news brain alongside Alpaca. Every feed is fail-soft: a bad/slow/absent
-    feed is logged and skipped, never raised. [] when disabled or all fail."""
-    wcfg = _ncfg(cfg).get("wsj_rss", {})
-    if not wcfg.get("enabled", False):
-        return []
-    feeds = wcfg.get("feeds", []) or []
-    max_per_feed = int(wcfg.get("max_per_feed", 8))
-    max_items = int(wcfg.get("max_items", 20))
-    max_age = int(wcfg.get("max_age_hours", 36))
+def fetch_rss_sources(cfg: dict) -> list[dict]:
+    """All configured public RSS sources (WSJ, CNBC, ...) merged into one list,
+    same item shape as fetch_headlines. Headline + summary only — no login, no
+    scraping, no credentials. Each source is fail-soft: a bad/slow/absent feed
+    is logged and skipped, never raised. [] when none are enabled."""
+    sources = _ncfg(cfg).get("rss_sources", {}) or {}
     out: list[dict] = []
-    for url in feeds:
+    for name, scfg in sources.items():
+        if not isinstance(scfg, dict) or not scfg.get("enabled", False):
+            continue
+        out.extend(_fetch_rss_source(str(name), scfg))
+    return out
+
+
+def _fetch_rss_source(name: str, scfg: dict) -> list[dict]:
+    """One named source: fetch each {Section: url} feed, cap per-feed and per-
+    source. `feeds` may be a {section: url} mapping or a plain list of urls."""
+    feeds = scfg.get("feeds", {}) or {}
+    pairs = list(feeds.items()) if isinstance(feeds, dict) \
+        else [(None, u) for u in feeds]
+    max_per_feed = int(scfg.get("max_per_feed", 8))
+    max_items = int(scfg.get("max_items", 20))
+    max_age = int(scfg.get("max_age_hours", 36))
+    out: list[dict] = []
+    for section, url in pairs:
+        label = name + (":" + str(section) if section else "")
         try:
-            label = "WSJ:" + _feed_label(url)
             req = urllib.request.Request(url, headers={"User-Agent": _UA})
             with urllib.request.urlopen(req, timeout=8) as resp:  # noqa: S310 — https feeds only
                 body = resp.read().decode("utf-8", "replace")
-            items = parse_rss(body, label, max_age)[:max_per_feed]
-            out.extend(items)
+            out.extend(parse_rss(body, label, max_age)[:max_per_feed])
         except Exception as e:  # noqa: BLE001 — a dead feed is a quiet morning, not a crash
-            log.warning("WSJ RSS fetch failed (%s): %s", url, e)
+            log.warning("RSS fetch failed (%s / %s): %s", name, url, e)
             continue
     return out[:max_items]
-
-
-def _feed_label(url: str) -> str:
-    """Human-readable section from a WSJ feed filename, best-effort. Handles
-    both the old .xml URLs and the new extensionless dowjones.io ones."""
-    fname = url.rstrip("/").rsplit("/", 1)[-1].replace(".xml", "")
-    known = {"RSSMarketsMain": "Markets", "WSJcomUSBusiness": "Business",
-             "RSSWSJD": "Tech", "RSSWorldNews": "World", "RSSOpinion": "Opinion"}
-    return known.get(fname, fname or "RSS")
 
 
 def validate_nominations(raw, cfg: dict, broker) -> list[dict]:
@@ -187,8 +189,8 @@ def refresh(cfg: dict, broker, ledger=None) -> dict | None:
     """Build and persist today's market context. Returns it, or None."""
     if not _ncfg(cfg).get("enabled", False):
         return None
-    # Alpaca first (ticker-tagged, drives symbol_flags), then WSJ public RSS.
-    headlines = fetch_headlines(cfg) + fetch_wsj_rss(cfg)
+    # Alpaca first (ticker-tagged, drives symbol_flags), then public RSS (WSJ, CNBC).
+    headlines = fetch_headlines(cfg) + fetch_rss_sources(cfg)
     headlines = headlines[:_ncfg(cfg).get("max_headlines", 50)]
     if not headlines:
         log.info("no headlines this morning — no market context today")

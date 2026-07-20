@@ -176,21 +176,33 @@ news:                  # market awareness (Alpaca News API + LLM distill),
                        # skepticism, outside backtested universe) + all rails.
   max_news_entries_per_cycle: 1   # hard cap on executed news-nominated entries
   context_path: memory/market_context.json  # today-only; stale context ignored
-  wsj_rss:               # WSJ's FREE PUBLIC RSS feeds (headline + 1-2 sentence
-                         # summary only). NO login, NO scraping, NO credentials —
-                         # merged into the news brain alongside Alpaca. Full-text
-                         # WSJ would need a licensed Dow Jones/Factiva API (not this).
-    enabled: true
-    max_items: 20        # cap on total WSJ headlines merged in (keeps Alpaca's
+  rss_sources:           # FREE PUBLIC RSS feeds (headline + 1-2 sentence summary
+                         # only). NO login, NO scraping, NO credentials — merged
+                         # into the news brain alongside Alpaca. Each source is a
+                         # named group of {Section: url}; label = "Source:Section".
+                         # Full-text articles would need a licensed API (not this).
+    WSJ:                 # live Dow Jones host (feeds.a.dj.com froze Jan 2025);
+                         # verified fresh 2026-07-20, titles = genuine WSJ.com feeds
+      enabled: true
+      max_items: 20      # cap on total headlines from this source (keeps Alpaca's
                          # ticker-tagged items dominant for symbol_flags)
-    max_per_feed: 8
-    max_age_hours: 36    # drop stale RSS items
-    feeds:                 # live Dow Jones host (feeds.a.dj.com froze in Jan 2025);
-                           # verified fresh 2026-07-20, titles = genuine WSJ.com feeds
-      - https://feeds.content.dowjones.io/public/rss/RSSMarketsMain     # WSJ:Markets
-      - https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness   # WSJ:Business
-      - https://feeds.content.dowjones.io/public/rss/RSSWSJD            # WSJ:Tech
-      - https://feeds.content.dowjones.io/public/rss/RSSWorldNews       # WSJ:World
+      max_per_feed: 8
+      max_age_hours: 36  # drop stale RSS items
+      feeds:
+        Markets:  https://feeds.content.dowjones.io/public/rss/RSSMarketsMain
+        Business: https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness
+        Tech:     https://feeds.content.dowjones.io/public/rss/RSSWSJD
+        World:    https://feeds.content.dowjones.io/public/rss/RSSWorldNews
+    CNBC:                # cnbc.com public RSS; verified fresh 2026-07-20
+      enabled: true
+      max_items: 15
+      max_per_feed: 6
+      max_age_hours: 36
+      feeds:
+        Finance:   https://www.cnbc.com/id/10000664/device/rss/rss.html
+        Investing: https://www.cnbc.com/id/15839069/device/rss/rss.html
+        Economy:   https://www.cnbc.com/id/20910258/device/rss/rss.html
+        Business:  https://www.cnbc.com/id/10001147/device/rss/rss.html
 
 x_posting:
   enabled: true

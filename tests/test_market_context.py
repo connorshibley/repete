@@ -83,10 +83,35 @@ def test_parse_rss_drops_stale_keeps_undated():
     assert titles == ["fresh", "undated", "baddate"]  # stale dropped, rest kept
 
 
-def test_fetch_wsj_rss_disabled_returns_empty():
-    assert market_context.fetch_wsj_rss({"news": {}}) == []
-    assert market_context.fetch_wsj_rss(
-        {"news": {"wsj_rss": {"enabled": False}}}) == []
+def test_fetch_rss_sources_disabled_returns_empty():
+    assert market_context.fetch_rss_sources({"news": {}}) == []
+    assert market_context.fetch_rss_sources(
+        {"news": {"rss_sources": {"WSJ": {"enabled": False,
+                                          "feeds": {"Markets": "http://x"}}}}}) == []
+
+
+def test_fetch_rss_source_labels_and_caps(monkeypatch):
+    # Offline: stub the network so we exercise label + caps deterministically.
+    def fake_open(req, timeout=8):
+        class _R:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def read(self):
+                return _rss(
+                    "<item><title>a</title><description>d</description></item>"
+                    "<item><title>b</title><description>d</description></item>"
+                    "<item><title>c</title><description>d</description></item>"
+                ).encode()
+        return _R()
+    monkeypatch.setattr(market_context.urllib.request, "urlopen", fake_open)
+    scfg = {"enabled": True, "max_per_feed": 2, "max_items": 3,
+            "feeds": {"Markets": "http://x", "Business": "http://y"}}
+    out = market_context._fetch_rss_source("WSJ", scfg)
+    assert len(out) == 3                      # max_items cap (2+2 -> 3)
+    assert out[0]["source"] == "WSJ:Markets"  # Source:Section label
+    assert {o["source"] for o in out} <= {"WSJ:Markets", "WSJ:Business"}
 
 
 # ---- validation ----
