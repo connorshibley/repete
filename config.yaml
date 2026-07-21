@@ -29,12 +29,14 @@ symbols:               # what the bot is allowed to trade — liquid large-caps 
   - V
   - UNH
   - JNJ
-  # ---- expansion 2026-07-21 (gate evidence: knowledge/backtest_candidates.md §10):
-  # 18 sector-diverse liquid large caps, adopted after every enabled strategy
-  # passed the enablement gate on the EXPANDED universe from one frozen ~4.5y
-  # snapshot (tsmom OOS PF 1.02->1.72, meanrev +0.65->+0.84%, ma_x +1.19->+1.59%).
-  # More independent setups per week at unchanged per-trade risk; the
-  # correlation heat cap keeps the wider book from collapsing into one bet.
+  # ---- expansion 2026-07-21, universe 25 -> 38 unique (gate evidence:
+  # knowledge/backtest_candidates.md §10): sector-diverse liquid large caps,
+  # adopted after every enabled strategy passed the enablement gate on the
+  # EXPANDED universe from one frozen ~4.5y snapshot (tsmom OOS PF 1.02->1.72,
+  # meanrev +0.65->+0.84%, ma_x +1.19->+1.59%). XOM/PG/HD/KO/DIS were already
+  # in the list (a brief duplicate was caught by the dashboard boot screen
+  # showing 43 and removed same day). More independent setups per week at
+  # unchanged per-trade risk; the correlation cap keeps it from being one bet.
   - XOM
   - CVX
   - WMT
@@ -52,11 +54,6 @@ symbols:               # what the bot is allowed to trade — liquid large-caps 
   - ORCL
   - AVGO
   - CRM
-  - DIS
-  - XOM
-  - PG
-  - HD
-  - KO
   - DIS
 
 strategy:              # execution globals (per-strategy params live in strategies:)

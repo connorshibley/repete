@@ -98,8 +98,29 @@ a.x:hover{text-decoration:underline}
 .cards .card:nth-child(4n+2){border-top-color:var(--violet)}
 .cards .card:nth-child(4n+3){border-top-color:var(--amber)}
 .cards .card:nth-child(4n+4){border-top-color:var(--pink)}
+#boot{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  cursor:pointer;transition:opacity .5s}
+#boot.show{display:flex}
+#boot.bye{opacity:0;pointer-events:none}
+#boot .robot{transform:scale(1.7);margin-bottom:18px}
+#boot .bootname{font-size:15px;letter-spacing:.28em;color:var(--violet);
+  font-weight:700;text-transform:uppercase}
+#boot .bl{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:13px;color:var(--ink2);opacity:0;transition:opacity .25s;
+  min-height:18px}
+#boot .bl.on{opacity:1}
+#boot .bl b{color:var(--cyan);font-weight:600}
+#boot .bl .ok{color:var(--green)}
+#bootbar{width:220px;height:5px;border-radius:3px;background:var(--surf2);
+  overflow:hidden;margin-top:8px}
+#bootbar i{display:block;height:100%;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink))}
+#boot.show #bootbar i{animation:bootfill 2.1s ease-out forwards}
+@keyframes bootfill{to{width:100%}}
+#boot .skip{font-size:11px;color:var(--mut);margin-top:6px}
 @media (prefers-reduced-motion: reduce){
-  .tape-track,.robot,.robot .eye,.robot .tip,.livedot{animation:none}}
+  .tape-track,.robot,.robot .eye,.robot .tip,.livedot,#bootbar i{animation:none}}
 .hero .hk{font-size:12px;letter-spacing:.14em;color:var(--ink2);
           text-transform:uppercase}
 .hero .hv{font-size:46px;font-weight:700;margin:4px 0 2px;
@@ -179,6 +200,24 @@ document.querySelectorAll('.chip').forEach(function(c){
       r.style.display=(f==='all'||r.classList.contains(f))?'':'none';});
   });
 });
+var boot=document.getElementById('boot');
+if(boot){
+  var played=false;
+  try{played=sessionStorage.getItem('repete_boot')==='1';}catch(e){}
+  var noMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(played||noMotion){boot.remove();}
+  else{
+    try{sessionStorage.setItem('repete_boot','1');}catch(e){}
+    boot.classList.add('show');
+    var bls=boot.querySelectorAll('.bl');
+    bls.forEach(function(el,i){
+      setTimeout(function(){el.classList.add('on');},220+i*300);});
+    function bye(){boot.classList.add('bye');
+      setTimeout(function(){boot.remove();},520);}
+    var t=setTimeout(bye,2500);
+    boot.addEventListener('click',function(){clearTimeout(t);bye();});
+  }
+}
 var bl=document.getElementById('bubble'),
     src=document.getElementById('replines');
 if(bl&&src&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -383,6 +422,26 @@ def _robot(total: float) -> str:
   <line x1="50" y1="55" x2="56" y2="60" stroke="#3987e5" stroke-width="2"
         stroke-linecap="round"/>
 </svg>"""
+
+
+def _boot(total: float, n_positions: int, n_symbols: int) -> str:
+    """Repete OS boot splash: plays once per visit (~2.5s, click to skip),
+    hidden by default so no-JS visitors and reduced-motion users go straight
+    to the data. All lines are true."""
+    lines = [
+        "REPETE OS v2.0 <span class=ok>[PAPER]</span>",
+        "reading the append-only ledger… <span class=ok>ok</span>",
+        f"waking the judge… <b>bull and bear reporting in</b>",
+        f"arming the risk rails… <span class=ok>all deterministic</span>",
+        f"book: <b>{n_positions} position{'s' if n_positions != 1 else ''}"
+        f"</b> · scanning <b>{n_symbols} names</b>",
+        "market brain online <span class=ok>✓</span>",
+    ]
+    lis = "".join(f'<div class=bl>{ln}</div>' for ln in lines)
+    return (f'<div id=boot>{_robot(total)}'
+            f'<div class=bootname>Repete is booting</div>{lis}'
+            f'<div id=bootbar><i></i></div>'
+            f'<div class=skip>click anywhere to skip</div></div>')
 
 
 def _hero(total: float, start: float, equity_now: float | None,
@@ -688,6 +747,7 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300">
 <title>trading-agent dashboard</title><style>{CSS}</style></head><body>
+{_boot(total_pl, len(open_now), n_symbols)}
 <div class=wrap>
 <h1>trading-agent <span class=small>[PAPER] — generated
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>

@@ -188,7 +188,7 @@ the params (`trailing_strategies`, `risk_sizing.strategies`,
 `reentry_cooldown.strategies`) — a global flag would have applied a tsmom
 result to meanrev and vice versa.
 
-## §10 — Universe expansion 20 → 38 (2026-07-21) — ADOPTED
+## §10 — Universe expansion 25 → 38 unique (2026-07-21) — ADOPTED
 
 Motivation: evidence velocity. At ~2 closes/week every learning mechanism
 (lessons, calibration, live_kill, postexit) is starved; a wider gated
@@ -209,7 +209,7 @@ produced zero OOS trades for tsmom/meanrev — the 30% OOS window (150 bars)
 was shorter than their 200-bar SMA warmup. Windowing artifact, not signal;
 the run was discarded and refetched longer. Recorded so nobody repeats it.
 
-RESULTS (OOS, same snapshot, current 20 names vs expanded 38):
+RESULTS (OOS, same snapshot, current 25 names vs expanded 38 unique):
 
 | strategy     | current univ                    | expanded univ                  | gate (expanded) |
 |--------------|---------------------------------|--------------------------------|-----------------|
@@ -219,7 +219,7 @@ RESULTS (OOS, same snapshot, current 20 names vs expanded 38):
 
 DECISION (pre-registered rule: adopt only if every enabled strategy passes
 the gate on the expanded universe): all three pass, 3/3 improve or hold →
-**ADOPTED**, config `symbols:` extended to 38.
+**ADOPTED**, config `symbols:` extended to 38 unique names. CORRECTION, same day: the original list held 25 names (not 20 — XOM/PG/HD/KO/DIS were already present past the visible fold), so the expansion is 25→38 and the first config edit briefly duplicated those five (43 entries). The dashboard boot screen surfaced the 43; duplicates removed. The backtest itself was always clean — its bars dict deduped to 38 unique symbols.
 
 HONEST FLAG: tsmom on the CURRENT universe FAILS the gate on this recent
 window (PF 1.02 — momentum has been thin in the 20-name universe lately).
