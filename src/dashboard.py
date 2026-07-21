@@ -37,20 +37,69 @@ C_MUTED = "#898781"
 CSS = """
 :root{--bg:#0b0e14;--surf:#131722;--surf2:#1a2130;--line:#232b3b;
       --ink:#e6e9f0;--ink2:#9aa4b5;--mut:#6b7482;--blue:#3987e5;
-      --green:#0ca30c;--red:#d03b3b;--amber:#c98500}
+      --green:#0ca30c;--red:#d03b3b;--amber:#c98500;
+      --cyan:#22d3ee;--violet:#8b5cf6;--pink:#ec4899}
 *{box-sizing:border-box}
 body{font-family:-apple-system,Segoe UI,sans-serif;margin:0;background:var(--bg);
      color:var(--ink);line-height:1.5}
 .wrap{max-width:1000px;margin:0 auto;padding:24px 16px 60px}
 h1{font-size:21px;margin:0 0 4px}
 h2{font-size:16px;margin:30px 0 10px;border-bottom:1px solid var(--line);
-   padding-bottom:6px}
+   padding-bottom:6px;position:relative}
+h2:after{content:"";position:absolute;left:0;bottom:-1px;width:64px;height:2px;
+   border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--violet))}
 .small{color:var(--ink2);font-size:12px}
 a.x{color:var(--blue);text-decoration:none;font-weight:600;font-size:13px}
 a.x:hover{text-decoration:underline}
-.hero{background:linear-gradient(160deg,var(--surf) 0%,var(--surf2) 100%);
+.hero{background:linear-gradient(160deg,var(--surf) 0%,var(--surf2) 78%,
+      rgba(139,92,246,.12) 100%);
       border:1px solid var(--line);border-radius:14px;padding:22px 26px;
-      margin:18px 0}
+      margin:18px 0;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.hero .htext{flex:1 1 260px}
+.robotbox{display:flex;align-items:center;gap:10px;flex:0 1 auto}
+.robot{animation:bob 3.4s ease-in-out infinite}
+.robot .eye{transform-origin:center;transform-box:fill-box;
+            animation:blink 4.2s infinite}
+.robot .tip{animation:tippulse 2.2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%,97%{transform:scaleY(.08)}}
+@keyframes tippulse{0%,100%{opacity:.55}50%{opacity:1}}
+.bubble{position:relative;background:var(--surf2);border:1px solid #2e3950;
+        border-radius:12px;padding:8px 12px;font-size:12.5px;color:var(--ink2);
+        max-width:210px;min-height:38px;display:flex;align-items:center;
+        transition:opacity .45s}
+.bubble:before{content:"";position:absolute;left:-7px;top:50%;margin-top:-6px;
+        border:6px solid transparent;border-right-color:#2e3950}
+.tape{overflow:hidden;border:1px solid var(--line);border-radius:10px;
+      background:var(--surf);margin:14px 0;white-space:nowrap;position:relative}
+.tape:before,.tape:after{content:"";position:absolute;top:0;bottom:0;width:26px;
+      z-index:2;pointer-events:none}
+.tape:before{left:0;background:linear-gradient(90deg,var(--bg),transparent)}
+.tape:after{right:0;background:linear-gradient(270deg,var(--bg),transparent)}
+.tape-track{display:inline-flex;align-items:center;gap:8px;padding:8px 0;
+      animation:tapescroll 45s linear infinite;will-change:transform}
+.tape:hover .tape-track{animation-play-state:paused}
+@keyframes tapescroll{to{transform:translateX(-50%)}}
+.tchip{display:inline-flex;align-items:center;gap:5px;padding:3px 11px;
+      border-radius:12px;border:1px solid var(--line);background:var(--surf2);
+      font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums;
+      flex:0 0 auto}
+.tchip b{color:var(--ink);font-weight:600}
+.tchip.up{border-color:rgba(12,163,12,.5)}.tchip.up b{color:var(--green)}
+.tchip.dn{border-color:rgba(208,59,59,.5)}.tchip.dn b{color:var(--red)}
+.tchip.bot{border-color:var(--violet);color:var(--violet)}
+.tchip.fun{border-color:rgba(34,211,238,.45)}.tchip.fun b{color:var(--cyan)}
+.livedot{display:inline-block;width:8px;height:8px;border-radius:50%;
+      background:var(--green);margin-right:5px;vertical-align:1px;
+      animation:tippulse 1.6s ease-in-out infinite;
+      box-shadow:0 0 8px rgba(12,163,12,.7)}
+.cards .card{border-top:2px solid var(--line)}
+.cards .card:nth-child(4n+1){border-top-color:var(--cyan)}
+.cards .card:nth-child(4n+2){border-top-color:var(--violet)}
+.cards .card:nth-child(4n+3){border-top-color:var(--amber)}
+.cards .card:nth-child(4n+4){border-top-color:var(--pink)}
+@media (prefers-reduced-motion: reduce){
+  .tape-track,.robot,.robot .eye,.robot .tip,.livedot{animation:none}}
 .hero .hk{font-size:12px;letter-spacing:.14em;color:var(--ink2);
           text-transform:uppercase}
 .hero .hv{font-size:46px;font-weight:700;margin:4px 0 2px;
@@ -130,6 +179,19 @@ document.querySelectorAll('.chip').forEach(function(c){
       r.style.display=(f==='all'||r.classList.contains(f))?'':'none';});
   });
 });
+var bl=document.getElementById('bubble'),
+    src=document.getElementById('replines');
+if(bl&&src&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  try{
+    var lines=JSON.parse(src.textContent),i=0;
+    setInterval(function(){
+      bl.style.opacity='0';
+      setTimeout(function(){
+        i=(i+1)%lines.length;bl.textContent=lines[i];
+        bl.style.opacity='1';},450);
+    },6000);
+  }catch(e){}
+}
 })();
 """
 
@@ -296,8 +358,35 @@ def svg_trade_bars(closed: list[dict], width=940, height=180) -> str:
     return "".join(parts)
 
 
+def _robot(total: float) -> str:
+    """Repete, the resident robot (inline SVG, no assets). Mood is real:
+    he smiles when total P/L >= 0 and puts on his determined face when not."""
+    mouth = ('<path id=mouth-smile d="M24 40 Q31 46 38 40" stroke="#22d3ee" '
+             'stroke-width="2.4" fill="none" stroke-linecap="round"/>'
+             if total >= 0 else
+             '<path id=mouth-flat d="M25 42 L37 42" stroke="#c98500" '
+             'stroke-width="2.4" fill="none" stroke-linecap="round"/>')
+    return f"""<svg class=robot width="62" height="74" viewBox="0 0 62 74"
+ style="background:none;border:none" aria-label="Repete the trading robot">
+  <line x1="31" y1="12" x2="31" y2="4" stroke="#8b5cf6" stroke-width="2"/>
+  <circle class=tip cx="31" cy="4" r="3.4" fill="#ec4899"/>
+  <rect x="12" y="12" width="38" height="34" rx="9" fill="#1a2130"
+        stroke="#8b5cf6" stroke-width="2"/>
+  <circle class=eye cx="24" cy="27" r="4.6" fill="#22d3ee"/>
+  <circle class=eye cx="38" cy="27" r="4.6" fill="#22d3ee"/>
+  {mouth}
+  <rect x="17" y="49" width="28" height="17" rx="6" fill="#1a2130"
+        stroke="#3987e5" stroke-width="2"/>
+  <rect x="24" y="54" width="14" height="6" rx="2" fill="#0ca30c" opacity=".8"/>
+  <line x1="12" y1="55" x2="6" y2="60" stroke="#3987e5" stroke-width="2"
+        stroke-linecap="round"/>
+  <line x1="50" y1="55" x2="56" y2="60" stroke="#3987e5" stroke-width="2"
+        stroke-linecap="round"/>
+</svg>"""
+
+
 def _hero(total: float, start: float, equity_now: float | None,
-          realized_only: bool) -> str:
+          realized_only: bool, speech_lines: list[str] | None = None) -> str:
     pct = total / start * 100 if start else 0.0
     cls = "win" if total >= 0 else "loss"
     sub = (f"{pct:+.2f}% on {_fmt_money(start)} starting capital"
@@ -305,10 +394,60 @@ def _hero(total: float, start: float, equity_now: float | None,
               if equity_now is not None else "")
            + (" · realized only (equity snapshots start next cycle)"
               if realized_only else ""))
-    return (f'<div class=hero><div class=hk>Total P/L — paper account</div>'
+    lines = speech_lines or ["beep boop — paper trading, honestly"]
+    bubble = (f'<div class=robotbox>{_robot(total)}'
+              f'<div class=bubble id=bubble>{_esc(lines[0])}</div></div>'
+              f'<script type="application/json" id=replines>'
+              f'{json.dumps(lines)}</script>')
+    return (f'<div class=hero><div class=htext>'
+            f'<div class=hk>Total P/L — paper account</div>'
             f'<div class="hv {cls}" data-count="{total:.2f}" '
             f'data-prefix="$">{_fmt_signed(total)}</div>'
-            f'<div class=hs>{_esc(sub)}</div></div>')
+            f'<div class=hs>{_esc(sub)}</div></div>{bubble}</div>')
+
+
+def _ticker_chips(rep: dict, open_trades: dict, total_pl: float,
+                  equity_now: float | None, regime: str | None,
+                  n_symbols: int, card: dict) -> str:
+    """One pass of Repete's tape — real facts only, chip-styled."""
+    chips = ['<span class="tchip bot">🤖 REPETE · [PAPER]</span>']
+    cls = "up" if total_pl >= 0 else "dn"
+    eq_txt = f" · eq {_fmt_money(equity_now)}" if equity_now is not None else ""
+    chips.append(f'<span class="tchip {cls}">P/L <b>{_fmt_signed(total_pl)}'
+                 f'</b>{_esc(eq_txt)}</span>')
+    now = datetime.now(timezone.utc)
+    for r in open_trades.values():
+        age = (now - datetime.fromisoformat(r["ts"])).days
+        val = (r.get("qty") or 0) * (r.get("entry_price") or 0)
+        chips.append(f'<span class=tchip>HOLDING <b>{_esc(r["symbol"])}</b> '
+                     f'{_fmt_money(val)} · {age}d</span>')
+    if not open_trades:
+        chips.append('<span class=tchip>book is <b>flat</b> — '
+                     'patience is a position</span>')
+    if regime:
+        chips.append(f'<span class="tchip fun">regime <b>{_esc(regime)}</b></span>')
+    wr = rep.get("win_rate")
+    if wr is not None:
+        chips.append(f'<span class=tchip>win rate <b>{wr:.0%}</b> '
+                     f'({rep.get("n_closed", 0)} closed)</span>')
+    chips.append(f'<span class=tchip>judge vetoes <b>{rep.get("n_vetoes", 0)}'
+                 f'</b> · rail blocks <b>{rep.get("n_risk_rejections", 0)}'
+                 f'</b></span>')
+    chips.append(f'<span class="tchip fun">scanning <b>{n_symbols} names'
+                 f'</b> for setups</span>')
+    sm = (card or {}).get("summary") or {}
+    if sm.get("months_total"):
+        chips.append(f'<span class=tchip>vs S&amp;P: beaten '
+                     f'<b>{sm["months_beaten"]}/{sm["months_total"]}</b> '
+                     f'months</span>')
+    chips.append('<span class=tchip>next decision <b>3:45 PM ET</b> 🔔</span>')
+    return "".join(chips)
+
+
+def _tape(chips_html: str) -> str:
+    """The repeating strip: content twice + translateX(-50%) = seamless loop."""
+    return (f'<div class=tape><div class=tape-track>{chips_html}{chips_html}'
+            f'</div></div>')
 
 
 def _positions_rows(open_trades: dict, now: datetime) -> str:
@@ -496,6 +635,29 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
     exits = ", ".join(f"{k}: {v}" for k, v in
                       sorted(rep["exit_reasons"].items())) or "none yet"
 
+    # Repete's voice: playful lines, real facts only (rendered per cycle).
+    open_now = ledger.open_buys()
+    n_symbols = len(cfg.get("symbols") or [])
+    regime_now = None
+    for _r in reversed(records):
+        if _r.get("type") == "decision" and _r.get("regime"):
+            regime_now = _r["regime"]
+            break
+    speech = [
+        f"beep boop — {len(open_now)} position"
+        f"{'s' if len(open_now) != 1 else ''} on the book"
+        if open_now else "beep boop — book is flat, and that's a choice too",
+        f"scanning {n_symbols} names for the next setup",
+        f"the judge vetoed {rep['n_vetoes']} of my ideas — rude, but fair",
+        f"rails blocked {rep['n_risk_rejections']} trades so I don't "
+        f"have to be sorry later",
+        "next decision at the 3:45 bell 🔔",
+        "paper money, real discipline",
+    ]
+    if regime_now:
+        speech.insert(2, f"regime says {regime_now} — I trade the math, "
+                         f"not the mood")
+
     # Monthly scorecard vs S&P (2026-07-21): the benchmark goal, measured and
     # published month by month — wins and losses both.
     import scorecard
@@ -533,7 +695,11 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 rel="noopener">@Repete2026 on X ↗</a>
 &nbsp; <a class=x href="journal.html">trade journal →</a>
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
-{_hero(total_pl, start, equity_now, realized_only)}
+<p class=small><span class=livedot></span>live paper account · rebuilt
+after every cycle from the append-only ledger</p>
+{_tape(_ticker_chips(rep, open_now, total_pl, equity_now, regime_now,
+                     n_symbols, card))}
+{_hero(total_pl, start, equity_now, realized_only, speech)}
 <div class=cards>{cards}</div>
 <h2>📈 P/L over time</h2>{pl_chart}
 <h2>🪙 Trade scoreboard</h2>{bars}

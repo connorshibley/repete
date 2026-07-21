@@ -129,3 +129,44 @@ def test_filter_chips_and_row_classes(tmp_path, cfg):
         assert f">{chip}</span>" in html
     assert 'class="r-skip r-veto"' in html
     assert 'class="r-exec r-approve"' in html
+
+
+# ---- playful layer (2026-07-21): Repete's tape + robot + speech ----
+
+def _render_html(tmp_path, cfg, monkeypatch):
+    import dashboard
+    monkeypatch.chdir(tmp_path)
+    from ledger import Ledger
+    led = Ledger(cfg["memory"]["ledger_path"])
+    led.log_event("cycle_complete", '{"equity": 100150.0}')
+    tid = led.log_decision("SPY", "buy", "x", {}, None, executed=True,
+                           entry_price=100.0, qty=10, strategy="tsmom",
+                           regime="up/low")
+    out = tmp_path / "dash.html"
+    dashboard.render(cfg, out_path=str(out))
+    return out.read_text()
+
+
+def test_tape_repeats_and_robot_present(tmp_path, cfg, monkeypatch):
+    html_text = _render_html(tmp_path, cfg, monkeypatch)
+    assert html_text.count("REPETE · [PAPER]") == 2      # seamless double pass
+    assert 'class=tape' in html_text and "tapescroll" in html_text
+    assert "prefers-reduced-motion" in html_text          # a11y escape hatch
+    assert 'aria-label="Repete the trading robot"' in html_text
+    assert "HOLDING <b>SPY</b>" in html_text              # real book data
+
+
+def test_robot_mood_tracks_pl(tmp_path, cfg, monkeypatch):
+    import dashboard
+    assert "mouth-smile" in dashboard._robot(120.0)
+    assert "mouth-flat" in dashboard._robot(-120.0)
+
+
+def test_speech_lines_embedded_json(tmp_path, cfg, monkeypatch):
+    import json as _json
+    html_text = _render_html(tmp_path, cfg, monkeypatch)
+    start = html_text.index('id=replines>') + len('id=replines>')
+    end = html_text.index('</script>', start)
+    lines = _json.loads(html_text[start:end])
+    assert any("position" in ln for ln in lines)
+    assert all(isinstance(ln, str) for ln in lines)
