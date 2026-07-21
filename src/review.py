@@ -86,16 +86,24 @@ def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
             last_lesson_ts = line[4:14]  # the YYYY-MM-DD stamp
             break
 
-    slips = sorted(r["slippage_bps"] for r in records
-                   if r["type"] == "fill_quality")
+    # 2026-07-16 fills are excluded: that day's signals priced off stale bars
+    # (the incident that prompted the freshness guard), so their 142-1725bps
+    # "slippage" is data contamination, not execution cost. Read-side filter
+    # only — the ledger stays append-only.
+    fq = [r for r in records if r["type"] == "fill_quality"]
+    excluded = sum(1 for r in fq if r["ts"].startswith("2026-07-16"))
+    slips = sorted(r["slippage_bps"] for r in fq
+                   if not r["ts"].startswith("2026-07-16"))
     slippage = None
-    if slips:
+    if slips or excluded:
         mid = len(slips) // 2
-        median = (slips[mid] if len(slips) % 2
-                  else (slips[mid - 1] + slips[mid]) / 2)
+        median = ((slips[mid] if len(slips) % 2
+                   else (slips[mid - 1] + slips[mid]) / 2) if slips else None)
         slippage = {"n_fills": len(slips),
-                    "median_bps": round(median, 2),
-                    "mean_bps": round(sum(slips) / len(slips), 2)}
+                    "n_excluded_stale": excluded,
+                    "median_bps": round(median, 2) if slips else None,
+                    "mean_bps": (round(sum(slips) / len(slips), 2)
+                                 if slips else None)}
 
     return {
         "slippage": slippage,
@@ -241,9 +249,15 @@ def main():
     print(f"LLM vetoes: {r['n_vetoes']} | risk-rail rejections: {r['n_risk_rejections']}")
     if r["slippage"]:
         s = r["slippage"]
-        print(f"Measured slippage ({s['n_fills']} fills): median "
-              f"{s['median_bps']:+.1f} bps | mean {s['mean_bps']:+.1f} bps "
-              f"(positive = fills worse than signal price)")
+        note = (f" [{s['n_excluded_stale']} contaminated 2026-07-16 "
+                f"stale-bars fills excluded]"
+                if s.get("n_excluded_stale") else "")
+        if s["n_fills"]:
+            print(f"Measured slippage ({s['n_fills']} fills): median "
+                  f"{s['median_bps']:+.1f} bps | mean {s['mean_bps']:+.1f} bps "
+                  f"(positive = fills worse than signal price){note}")
+        else:
+            print(f"Measured slippage: no clean fills yet{note}")
     if r["exit_reasons"]:
         print("Exits:", ", ".join(f"{k}={v}" for k, v in sorted(r["exit_reasons"].items())))
 

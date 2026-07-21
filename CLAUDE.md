@@ -29,12 +29,17 @@ src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 20
                  superseded vol_target; others: 1% notional), caps, trade-rate limit,
                  daily-loss kill switch (HALT file), swing guard (min_holding_days blocks
                  early exits — no day trading), chandelier trail (tsmom only, §7 — stop
-                 ratchets up, never down), re-entry cooldown (meanrev only, §9);
+                 ratchets up, never down), re-entry cooldown (meanrev only, §9),
+                 entry drift guard (2026-07-21: buy skipped when live quote drifts >
+                 risk.max_entry_drift_bps from signal price; fail-open on quote outage;
+                 entries only — would have blocked all six 2026-07-16 stale-bars fills);
                  param-gated down-regime exposure cap exists but is OFF (cannot bind).
 src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
-src/memory.py    Retrieval layer: balanced trade sample (losers force-included), ranked lessons,
-                 judge calibration + last-20-resolved-calls scoreboard, regime — assembled
-                 into the review prompt.
+src/memory.py    Retrieval layer: similar-setups trade sample for the judge (2026-07-21,
+                 deterministic strategy/regime/symbol/indicator match — losers still
+                 force-included; balanced random sample for signal-less callers),
+                 ranked lessons, judge calibration + last-20-resolved-calls scoreboard,
+                 regime — assembled into the review prompt.
 src/lessons.py   Hypothesis book (memory/lessons.jsonl, append-only events + replay): falsifiable
                  lessons with a lifecycle candidate -> active | refuted | retired; staleness is
                  scope-tiered (symbol 21d / strategy 90d / regime 180d — learning.staleness_tiers). learnings.md is
@@ -54,7 +59,7 @@ src/modelver.py  Decision-surface fingerprint (config + strategy/risk/broker/llm
 src/regime.py    Deterministic market regime from SPY bars (trend x vol bucket); tags decisions,
                  judgments, and lesson scopes so off-regime evidence gets discounted.
 src/market_context.py  Morning news awareness (Alpaca News API + free public RSS
-                 from WSJ + CNBC via news.rss_sources [headline/summary only, no
+                 from WSJ + CNBC + MarketWatch via news.rss_sources [headline/summary only, no
                  login/scraping/credentials — ToS-clean; full-text would need a
                  licensed API, not built] + LLM distill, 9:35 job):
                  today-only context for the judge/plan post + validated watchlist

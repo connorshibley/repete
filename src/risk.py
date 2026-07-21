@@ -237,6 +237,24 @@ def bars_fresh(bars: list[dict], max_age_days: int) -> bool:
     return age.days <= max_age_days
 
 
+def entry_drift_bps(signal_price: float, live_price: float) -> float:
+    """Absolute drift between the price the signal saw and the live market,
+    in basis points."""
+    return abs(live_price - signal_price) / signal_price * 1e4
+
+
+def entry_drift_ok(signal_price: float, live_price: float, cfg: dict) -> bool:
+    """Order-level defense in depth behind bars_fresh (2026-07-21): even with
+    fresh-looking bars, never ENTER when the live market has moved more than
+    risk.max_entry_drift_bps away from the signal price — every 2026-07-16
+    stale-bars fill (142-1725bps of phantom slippage) would have been blocked
+    here. Entries only; exits are never blocked. <=0/absent disables."""
+    cap = cfg["risk"].get("max_entry_drift_bps", 0)
+    if cap <= 0 or signal_price <= 0:
+        return True
+    return entry_drift_bps(signal_price, live_price) <= cap
+
+
 def swing_guard(entry_ts: str | None, cfg: dict):
     """Block exits on positions younger than min_holding_days (no day trading)."""
     min_days = cfg["risk"].get("min_holding_days", 0)

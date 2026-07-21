@@ -71,6 +71,55 @@ class Memory:
         random.shuffle(sample)
         return sample
 
+    def similar_trade_sample(self, signal,
+                             regime_label: str | None = None) -> list[dict]:
+        """Closed trades MOST SIMILAR to the current signal (deterministic
+        port of OpenProphet's find_similar_setups — no embeddings, 2026-07-21).
+        Category score: same strategy +3, same regime +2, same symbol +2,
+        same action +1; indicator closeness is a <1pt tiebreak so it can
+        never outrank a category match. Invariant #5 still holds: the most
+        similar LOSERS are force-included, so similarity can never produce
+        a winners-only highlight reel."""
+        closed = self.ledger.closed_trades()[-self.cfg["review_lookback_trades"]:]
+        if not closed:
+            return []
+        sig_ind = {k: v
+                   for k, v in (getattr(signal, "indicators", None) or {}).items()
+                   if isinstance(v, (int, float))}
+
+        def score(t: dict) -> float:
+            s = 0.0
+            if t.get("strategy") and t["strategy"] == getattr(signal, "strategy", None):
+                s += 3
+            if regime_label and t.get("regime") == regime_label:
+                s += 2
+            if t.get("symbol") == getattr(signal, "symbol", None):
+                s += 2
+            if t.get("action") == getattr(signal, "action", None):
+                s += 1
+            t_ind = t.get("indicators") or {}
+            shared = [k for k in sig_ind
+                      if isinstance(t_ind.get(k), (int, float))]
+            if shared:
+                dist = sum(min(abs(float(sig_ind[k]) - float(t_ind[k]))
+                               / max(abs(float(sig_ind[k])),
+                                     abs(float(t_ind[k])), 1e-9), 1.0)
+                           for k in shared) / len(shared)
+                s += (1.0 - dist) * 0.9
+            return s
+
+        ranked = sorted(closed, key=score, reverse=True)
+        n = min(len(ranked), 10)
+        quota = self.cfg["negative_example_quota"]
+        losers = [t for t in ranked if t["result"] == "loss"]
+        n_losers = min(max(int(n * quota), 1 if losers else 0), len(losers))
+        keep_ids = {id(t) for t in losers[:n_losers]}
+        for t in ranked:
+            if len(keep_ids) >= n:
+                break
+            keep_ids.add(id(t))
+        return [t for t in ranked if id(t) in keep_ids][:n]
+
     def knowledge_block(self) -> str:
         """Static curated principles (knowledge/principles.md), config-gated.
         External and unverified — labeled so the judge weighs it below
@@ -107,12 +156,22 @@ class Memory:
 
     def context_for_llm(self, symbol: str | None = None,
                         regime: dict | None = None,
-                        strategy: str | None = None) -> str:
-        """Memory block for the judgment prompt: balanced trades, ranked
-        validated lessons (scope match: symbol > regime > strategy > global),
-        the judge's own calibration, current regime.
+                        strategy: str | None = None,
+                        signal=None) -> str:
+        """Memory block for the judgment prompt: similar (or balanced) trades,
+        ranked validated lessons (scope match: symbol > regime > strategy >
+        global), the judge's own calibration, current regime.
         Hard-capped at learning.max_context_chars."""
-        trades = self.balanced_trade_sample()
+        regime_label = regime["label"] if regime else None
+        # With a live signal, show the MOST SIMILAR past trades instead of a
+        # random balanced sample — same loser quota either way (invariant #5).
+        trades = (self.similar_trade_sample(signal, regime_label)
+                  if signal is not None else self.balanced_trade_sample())
+        header = ("MOST SIMILAR PAST CLOSED TRADES (deterministic match on "
+                  "strategy/regime/symbol — losses force-included on purpose):"
+                  if signal is not None else
+                  "RECENT CLOSED TRADES (balanced sample — losses included "
+                  "on purpose):")
         lines = []
         for t in trades:
             lines.append(f"  [{t['result'].upper()}] {t['symbol']} {t['action']} — "
@@ -120,7 +179,6 @@ class Memory:
         trade_block = "\n".join(lines) or "  (no closed trades yet)"
 
         now = datetime.now(timezone.utc)
-        regime_label = regime["label"] if regime else None
         ranked = ranking.top_lessons(self.lessons.replay(), symbol, regime_label,
                                      self.lcfg.get("top_k_lessons", 8), now,
                                      strategy=strategy)
@@ -134,7 +192,7 @@ class Memory:
 
         knowledge = self.knowledge_block()
         news = self.market_context_block(symbol)
-        ctx = (f"RECENT CLOSED TRADES (balanced sample — losses included on purpose):\n"
+        ctx = (f"{header}\n"
                f"{trade_block}\n\n"
                f"VALIDATED LESSONS (hypotheses with evidence counts n=supports/contradicts):\n"
                f"{lesson_block}\n\n"

@@ -95,6 +95,15 @@ class Broker:
             for b in rows
         ][-limit:]
 
+    def latest_price(self, symbol: str) -> float:
+        """Most recent trade price — the entry drift guard compares this
+        against the bar-close the signal priced from. Raises on failure;
+        the caller fails OPEN (bars freshness covers the outage class)."""
+        from alpaca.data.requests import StockLatestTradeRequest
+        resp = self.data.get_stock_latest_trade(
+            StockLatestTradeRequest(symbol_or_symbols=symbol))
+        return float(resp[symbol].price)
+
     # ---------- orders ----------
 
     def market_order(self, symbol: str, qty: float, side: str) -> dict:

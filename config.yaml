@@ -98,6 +98,11 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
                                  # API failure mode observed 2026-07-16.
+  max_entry_drift_bps: 100       # ENTRY DRIFT GUARD (2026-07-21): skip a buy when the
+                                 # live quote is >1% away from the price the signal saw.
+                                 # Order-level backstop behind the freshness guard — every
+                                 # 2026-07-16 stale-bars fill would have been blocked here.
+                                 # Entries only (exits never blocked). 0 disables.
   min_holding_days: 2            # SWING GUARD: exits blocked until a position is at least
                                  # this many calendar days old — makes day trading impossible.
                                  # (The daily-loss kill switch is exempt: safety wins.
@@ -203,6 +208,16 @@ news:                  # market awareness (Alpaca News API + LLM distill),
         Investing: https://www.cnbc.com/id/15839069/device/rss/rss.html
         Economy:   https://www.cnbc.com/id/20910258/device/rss/rss.html
         Business:  https://www.cnbc.com/id/10001147/device/rss/rss.html
+    MarketWatch:         # Dow Jones public feeds, same live host as WSJ; verified
+                         # fresh 2026-07-21. mw_realtimeheadlines + mw_marketpulse
+                         # are FROZEN (mid-2025) on this host — deliberately excluded.
+      enabled: true
+      max_items: 10
+      max_per_feed: 6
+      max_age_hours: 36
+      feeds:
+        TopStories: https://feeds.content.dowjones.io/public/rss/mw_topstories
+        Bulletins:  https://feeds.content.dowjones.io/public/rss/mw_bulletins
 
 x_posting:
   enabled: true

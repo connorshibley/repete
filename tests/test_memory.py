@@ -117,3 +117,61 @@ def test_knowledge_block_char_capped(tmp_path, cfg):
     cfg["learning"]["max_context_chars"] = 2000
     _, mem = _setup(tmp_path, cfg)
     assert len(mem.knowledge_block()) <= 2000 // 4 + 80  # cap + header slack
+
+
+# ---- similar-setups retrieval (OpenProphet port, 2026-07-21) ----
+
+from types import SimpleNamespace
+
+
+def _setup_mixed(tmp_path, cfg):
+    """Trades across strategies/symbols/regimes: 4 tsmom NVDA up/low WINS,
+    3 meanrev KO down/high wins, 1 meanrev KO down/high LOSS."""
+    cfg["memory"]["ledger_path"] = str(tmp_path / "memory" / "ledger.jsonl")
+    cfg["memory"]["learnings_path"] = str(tmp_path / "memory" / "learnings.md")
+    cfg["learning"]["lessons_path"] = str(tmp_path / "memory" / "lessons.jsonl")
+    cfg["learning"]["judgments_path"] = str(tmp_path / "memory" / "judgments.jsonl")
+    led = Ledger(cfg["memory"]["ledger_path"])
+    for i in range(4):
+        tid = led.log_decision("NVDA", "buy", f"tsmom {i}", {"mom": 0.10 + i / 100},
+                               None, executed=True, entry_price=100.0, qty=10,
+                               regime="up/low", strategy="tsmom")
+        led.close_trade(tid, 110.0, 100.0, 10.0)
+    for i in range(3):
+        tid = led.log_decision("KO", "buy", f"meanrev {i}", {"rsi": 25}, None,
+                               executed=True, entry_price=60.0, qty=10,
+                               regime="down/high", strategy="meanrev")
+        led.close_trade(tid, 66.0, 60.0, 10.0)
+    tid = led.log_decision("KO", "buy", "meanrev dip", {"rsi": 22}, None,
+                           executed=True, entry_price=60.0, qty=10,
+                           regime="down/high", strategy="meanrev")
+    led.close_trade(tid, 55.0, -50.0, -8.0)
+    return Memory(cfg, led)
+
+
+def test_similar_sample_prefers_matching_setup(tmp_path, cfg):
+    mem = _setup_mixed(tmp_path, cfg)
+    sig = SimpleNamespace(strategy="tsmom", symbol="NVDA", action="buy",
+                          indicators={"mom": 0.11})
+    sample = mem.similar_trade_sample(sig, "up/low")
+    # all 8 fit (n=min(8,10)), but the 4 tsmom/NVDA trades must rank first
+    assert [t["strategy"] for t in sample[:4]] == ["tsmom"] * 4
+
+
+def test_similar_sample_forces_loser_even_when_dissimilar(tmp_path, cfg):
+    mem = _setup_mixed(tmp_path, cfg)
+    cfg["memory"]["review_lookback_trades"] = 5  # window still holds the loss
+    sig = SimpleNamespace(strategy="tsmom", symbol="NVDA", action="buy",
+                          indicators={})
+    sample = mem.similar_trade_sample(sig, "up/low")
+    assert any(t["result"] == "loss" for t in sample)  # invariant #5 holds
+
+
+def test_context_header_similar_vs_balanced(tmp_path, cfg):
+    mem = _setup_mixed(tmp_path, cfg)
+    sig = SimpleNamespace(strategy="tsmom", symbol="NVDA", action="buy",
+                          indicators={})
+    with_sig = mem.context_for_llm(symbol="NVDA", strategy="tsmom", signal=sig)
+    without = mem.context_for_llm(symbol="NVDA", strategy="tsmom")
+    assert "MOST SIMILAR PAST CLOSED TRADES" in with_sig
+    assert "balanced sample" in without and "MOST SIMILAR" not in without

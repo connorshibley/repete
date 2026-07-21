@@ -376,7 +376,7 @@ def _run_cycle():
         Returns 'executed' or 'blocked'."""
         review = llm.review_signal(
             sig, memory.context_for_llm(symbol=symbol, regime=market_regime,
-                                        strategy=sig.strategy)
+                                        strategy=sig.strategy, signal=sig)
             + (f"\n\n{extra_context}" if extra_context else ""), cfg)
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
@@ -427,6 +427,33 @@ def _run_cycle():
                 stop_price=stop, tp_price=tp, strategy=sig.strategy)
             log.warning("%s: %s REJECTED by risk rails — %s", symbol, sig.action, e)
             return "blocked"
+
+        # Entry drift guard: last line of defense against acting on a price
+        # the live market has left behind (fails OPEN on a quote outage —
+        # bars_fresh covers that class). Entries only, never exits.
+        if sig.action == "buy":
+            try:
+                live = broker.latest_price(symbol)
+            except Exception as e:  # noqa: BLE001 — quote outage != bad price
+                log.warning("%s: drift check skipped, quote unavailable (%s)",
+                            symbol, e)
+                live = None
+            if live is not None and not risk.entry_drift_ok(price, live, cfg):
+                drift = risk.entry_drift_bps(price, live)
+                msg = (f"entry drift {drift:.0f}bps > "
+                       f"{cfg['risk']['max_entry_drift_bps']}bps cap "
+                       f"(signal ${price:.2f} vs live ${live:.2f})")
+                tid = ledger.log_decision(symbol, sig.action, sig.reason,
+                                          sig.indicators, review, executed=False,
+                                          detail=f"risk rejection: {msg}",
+                                          regime=regime_label, strategy=sig.strategy)
+                stop, tp = _would_be_brackets(sig, bars, price)
+                memory.judgments.log_judgment(
+                    tid, symbol, sig.action, "rails_reject", 1.0, price,
+                    regime_label, kind="rails", executed=False, reasoning=msg,
+                    stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                log.warning("%s: buy REJECTED by drift guard — %s", symbol, msg)
+                return "blocked"
 
         # A strategy sell of a bracketed position must first cancel the
         # surviving protective legs (they reserve the shares).
