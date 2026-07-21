@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ledger import Ledger
 from lessons import LessonStore
-from judgments import JudgmentStore, calibration_metrics, calibration_line
+from judgments import (JudgmentStore, calibration_metrics, calibration_line,
+                       confidence_calibration_lines)
 
 GATE_MIN_DAYS = 60          # "2-3 months" — use the low end as the floor
 GATE_MIN_CLOSED = 30
@@ -105,8 +106,18 @@ def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
                     "mean_bps": (round(sum(slips) / len(slips), 2)
                                  if slips else None)}
 
+    # Fail-loud degradations (2026-07-21): fail-open events (skipped guards,
+    # missing context) are ledgered so silence stays distinguishable from
+    # "checked and fine" — count them by source here.
+    degradations: dict = {}
+    for r in records:
+        if r.get("type") == "event" and r.get("event") == "degradation":
+            src = (r.get("detail") or "unknown").split(":", 1)[0]
+            degradations[src] = degradations.get(src, 0) + 1
+
     return {
         "slippage": slippage,
+        "degradations": degradations,
         "history_days": days,
         "n_decisions": len(decisions),
         "n_executed": len(executed),
@@ -367,6 +378,16 @@ def main():
     n_pending = len(jstore.unresolved())
     if n_pending:
         print(f"  ({n_pending} judgments awaiting resolution — embargo/horizon)")
+
+    for line in confidence_calibration_lines(jstore.replay()):
+        print(line)
+
+    if r["degradations"]:
+        parts = ", ".join(f"{k}: {v}" for k, v in sorted(r["degradations"].items()))
+        print(f"Degradations (fail-open events — guards skipped, context "
+              f"missing): {sum(r['degradations'].values())} ({parts})")
+    else:
+        print("Degradations: 0 (no guard ran fail-open this window)")
 
     if r["last_lesson_date"]:
         age = (now - datetime.fromisoformat(r["last_lesson_date"] + "T00:00:00+00:00")).days

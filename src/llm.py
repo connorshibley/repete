@@ -27,8 +27,9 @@ A deterministic strategy produced a trade signal. Your ONLY job is to sanity-che
 against recent performance memory and reply with strict JSON:
 {"bull_case": "<1-2 sentences: the strongest honest case FOR taking this trade>",
  "bear_case": "<1-2 sentences: the strongest honest case AGAINST it>",
- "verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>, "reasoning": "<2-3 sentences>",
- "cited_lessons": ["ls-..."]}
+ "verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>,
+ "confidence": <0.50-0.95: your honest probability that this trade closes profitable>,
+ "reasoning": "<2-3 sentences>", "cited_lessons": ["ls-..."]}
 
 Rules:
 - Argue BOTH sides honestly before deciding; your reasoning must address the
@@ -38,6 +39,9 @@ Rules:
 - "downsize" must include scale < 1.0. "approve" means scale 1.0.
 - Veto only with a concrete reason grounded in the memory or the signal itself.
 - Be skeptical of patterns from fewer than ~30 trades; do not overfit to recent results.
+- confidence is SCORED against realized outcomes per bucket — state your honest
+  probability, not enthusiasm; systematic overconfidence will be visible in your
+  own calibration record.
 - Note: memory samples intentionally include losing trades; do not assume the strategy is
   better than the sample shows.
 - cited_lessons: the lesson ids (shown in the VALIDATED LESSONS block) that MATERIALLY
@@ -47,7 +51,7 @@ Rules:
 
 def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
-                "bull_case": "", "bear_case": "",
+                "bull_case": "", "bear_case": "", "confidence": None,
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
     if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
         return fallback
@@ -79,6 +83,14 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # debate step: kept for the ledger/dashboard; absence never invalidates
         for side in ("bull_case", "bear_case"):
             verdict[side] = str(verdict.get(side) or "")[:300]
+        # stated confidence: clamped [0,1]; absent/junk => None (calibration
+        # groundwork — scored later against realized outcomes, never a gate)
+        try:
+            conf = verdict.get("confidence")
+            verdict["confidence"] = (min(max(float(conf), 0.0), 1.0)
+                                     if conf is not None else None)
+        except (TypeError, ValueError):
+            verdict["confidence"] = None
         return verdict
     except Exception as e:  # noqa: BLE001 — any LLM failure degrades to rules
         log.warning("LLM review failed (%s) — proceeding rule-based", e)

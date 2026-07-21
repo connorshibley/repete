@@ -74,3 +74,34 @@ def test_calibration_line_noise_framing(store):
 def test_calibration_line_empty(store):
     line = jm.calibration_line(jm.calibration_metrics(store.replay()))
     assert "no resolved judgments yet" in line
+
+
+# ---- stated-confidence calibration (2026-07-21) ----
+
+def test_confidence_persisted_and_bucketed(tmp_path):
+    from judgments import (JudgmentStore, confidence_calibration,
+                           confidence_calibration_lines)
+    js = JudgmentStore(str(tmp_path / "j.jsonl"))
+    jid_win = js.log_judgment("t1", "SPY", "buy", "approve", 1.0, 100.0,
+                              None, kind="llm", executed=True, confidence=0.65)
+    jid_loss = js.log_judgment("t2", "QQQ", "buy", "approve", 1.0, 100.0,
+                               None, kind="llm", executed=True, confidence=0.62)
+    js.log_judgment("t3", "DIA", "buy", "approve", 1.0, 100.0,
+                    None, kind="llm", executed=True)  # no confidence -> ignored
+    js.log_resolution(jid_win, "realized", 5.0, "strategy_sell", "good_approve")
+    js.log_resolution(jid_loss, "realized", -3.0, "stop_loss", "bad_approve")
+
+    cal = confidence_calibration(js.replay())
+    assert list(cal) == ["0.6-0.69"]
+    b = cal["0.6-0.69"]
+    assert b["n"] == 2 and b["won"] == 1 and abs(b["stated"] - 0.635) < 1e-9
+
+    lines = confidence_calibration_lines(js.replay())
+    assert any("too few to read" in ln for ln in lines)  # n=2 < min_n honesty
+
+
+def test_confidence_calibration_empty(tmp_path):
+    from judgments import JudgmentStore, confidence_calibration_lines
+    js = JudgmentStore(str(tmp_path / "j.jsonl"))
+    lines = confidence_calibration_lines(js.replay())
+    assert len(lines) == 1 and "no resolved trades" in lines[0]

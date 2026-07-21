@@ -268,6 +268,41 @@ def swing_guard(entry_ts: str | None, cfg: dict):
             f"{min_days}d — this bot does not day trade")
 
 
+def daily_returns(bars: list[dict]) -> list[float]:
+    """Close-to-close simple returns, oldest first."""
+    closes = [b["close"] for b in bars]
+    return [(b - a) / a for a, b in zip(closes, closes[1:]) if a]
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    n = min(len(xs), len(ys))
+    if n < 3:
+        return None
+    xs, ys = xs[-n:], ys[-n:]
+    mx, my = sum(xs) / n, sum(ys) / n
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    vx = sum((x - mx) ** 2 for x in xs)
+    vy = sum((y - my) ** 2 for y in ys)
+    if vx <= 0 or vy <= 0:
+        return None
+    return cov / (vx * vy) ** 0.5
+
+
+def correlated_position_count(cand_bars: list[dict], open_bars_map: dict,
+                              lookback: int, threshold: float) -> int:
+    """How many open positions co-move with the candidate (correlation heat,
+    2026-07-21 — 'co-moving names are one bet'). Pairwise Pearson correlation
+    of daily returns over the last `lookback` bars; positions with missing or
+    too-short bars are skipped (fail-open per symbol)."""
+    cand = daily_returns(cand_bars)[-lookback:]
+    count = 0
+    for bars in open_bars_map.values():
+        rho = _pearson(cand, daily_returns(bars or [])[-lookback:])
+        if rho is not None and rho >= threshold:
+            count += 1
+    return count
+
+
 def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
                 regime_label: str | None = None):
@@ -309,7 +344,8 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      account: dict, positions: dict, cfg: dict,
                      entry_ts: str | None = None,
-                     regime_label: str | None = None):
+                     regime_label: str | None = None,
+                     bars_map: dict | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
         raise RiskRejection("HALT file present — trading disabled")
@@ -318,6 +354,21 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
 
     pure_checks(action, symbol, qty, price, account, positions, cfg,
                 regime_label=regime_label)
+
+    # Correlation heat cap (entries only; needs the cycle's bars). Fail-open
+    # when bars are unavailable — the per-symbol cap above still applies.
+    ccfg = cfg["risk"].get("correlation_cap") or {}
+    if (action == "buy" and ccfg.get("enabled") and bars_map
+            and bars_map.get(symbol)):
+        open_bars = {s: bars_map.get(s) for s in positions if s != symbol}
+        n = correlated_position_count(bars_map[symbol], open_bars,
+                                      int(ccfg.get("lookback", 60)),
+                                      float(ccfg.get("threshold", 0.85)))
+        if n >= int(ccfg.get("max_correlated", 2)):
+            raise RiskRejection(
+                f"correlation cap: {n} open positions already move with "
+                f"{symbol} (corr>={ccfg.get('threshold', 0.85)}) — "
+                f"co-moving names are one bet")
 
     if action == "sell":
         swing_guard(entry_ts, cfg)

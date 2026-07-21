@@ -352,7 +352,15 @@ def _run_cycle():
             news_ctx = market_context_mod.refresh(cfg, broker, ledger=ledger) or {}
         except Exception as e:  # noqa: BLE001 — catch-up must never block the cycle
             log.warning("inline news catch-up failed: %s", e)
+            ledger.log_event("degradation",
+                             f"news_catchup: inline refresh failed ({e}) — "
+                             f"cycle ran without market context")
             news_ctx = {}
+        else:
+            if not news_ctx:
+                ledger.log_event("degradation",
+                                 "news_catchup: refresh returned no context — "
+                                 "cycle ran without market context")
     nominated = {n["symbol"]: n.get("reason", "")
                  for n in news_ctx.get("nominations", [])
                  if n["symbol"] not in cfg["symbols"]}
@@ -399,7 +407,8 @@ def _run_cycle():
                 price, regime_label, kind="llm", executed=False,
                 reasoning=review.get("reasoning", ""),
                 stop_price=stop, tp_price=tp, strategy=sig.strategy,
-                cited_lessons=review.get("cited_lessons"))
+                cited_lessons=review.get("cited_lessons"),
+                confidence=review.get("confidence"))
             log.info("%s: %s VETOED — %s", symbol, sig.action, review["reasoning"])
             return "blocked"
 
@@ -425,7 +434,8 @@ def _run_cycle():
         try:
             risk.pre_trade_checks(sig.action, symbol, qty, price, account,
                                   positions, cfg, entry_ts=entry_ts,
-                                  regime_label=regime_label)
+                                  regime_label=regime_label,
+                                  bars_map=all_bars)
         except risk.RiskRejection as e:
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,
@@ -446,8 +456,13 @@ def _run_cycle():
             try:
                 live = broker.latest_price(symbol)
             except Exception as e:  # noqa: BLE001 — quote outage != bad price
+                # Fail-open but fail-LOUD: a skipped guard must stay
+                # distinguishable from "checked and fine" in the ledger.
                 log.warning("%s: drift check skipped, quote unavailable (%s)",
                             symbol, e)
+                ledger.log_event("degradation",
+                                 f"drift_guard: quote unavailable for "
+                                 f"{symbol}, guard skipped ({e})")
                 live = None
             if live is not None and not risk.entry_drift_ok(price, live, cfg):
                 drift = risk.entry_drift_bps(price, live)
@@ -520,7 +535,8 @@ def _run_cycle():
                 reasoning=review.get("reasoning", ""),
                 stop_price=order.get("stop_price"),
                 tp_price=order.get("take_profit_price"), strategy=sig.strategy,
-                cited_lessons=review.get("cited_lessons"))
+                cited_lessons=review.get("cited_lessons"),
+                confidence=review.get("confidence"))
         log.info("%s: EXECUTED %s x%d @ ~$%.2f (trade %s, %s)",
                  symbol, sig.action.upper(), qty, price, trade_id, sig.strategy)
 

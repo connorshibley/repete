@@ -34,7 +34,8 @@ class JudgmentStore:
                      stop_price: float | None = None,
                      tp_price: float | None = None,
                      strategy: str | None = None,
-                     cited_lessons: list[str] | None = None) -> str:
+                     cited_lessons: list[str] | None = None,
+                     confidence: float | None = None) -> str:
         jid = f"jg-{uuid.uuid4().hex[:8]}"
         self._append({"event": "judgment", "id": jid, "trade_id": trade_id,
                       "symbol": symbol, "action": action, "verdict": verdict,
@@ -42,7 +43,8 @@ class JudgmentStore:
                       "regime": regime, "strategy": strategy, "kind": kind,
                       "executed": executed, "reasoning": reasoning,
                       "stop_price": stop_price, "tp_price": tp_price,
-                      "cited_lessons": cited_lessons or []})
+                      "cited_lessons": cited_lessons or [],
+                      "confidence": confidence})  # stated win-probability
         return jid
 
     def log_resolution(self, judgment_id: str, kind: str, pnl_pct: float,
@@ -103,6 +105,49 @@ def recent_outcomes_block(judgments: dict, n: int = 20) -> str:
     return ("YOUR LAST RESOLVED CALLS (what you ruled -> what actually "
             "happened; counterfactuals are what a veto WOULD have done):\n"
             + "\n".join(lines))
+
+
+def confidence_calibration(judgments: dict) -> dict:
+    """Stated confidence vs realized outcome, bucketed (2026-07-21,
+    EastEquity-review port). Uses EXECUTED resolved llm judgments that carry a
+    stated confidence. Returns {bucket_label: {"n": int, "stated": mean,
+    "won": wins}}; empty dict when nothing qualifies."""
+    buckets: dict = {}
+    for j in judgments.values():
+        conf, r = j.get("confidence"), j.get("resolution")
+        if (conf is None or not r or j.get("kind") != "llm"
+                or not j.get("executed")):
+            continue
+        lo = min(int(float(conf) * 10) / 10, 0.9)
+        label = f"{lo:.1f}-{lo + 0.09:.2f}"
+        b = buckets.setdefault(label, {"n": 0, "stated_sum": 0.0, "won": 0})
+        b["n"] += 1
+        b["stated_sum"] += float(conf)
+        b["won"] += 1 if r.get("pnl_pct", 0) > 0 else 0
+    return {k: {"n": b["n"], "stated": b["stated_sum"] / b["n"],
+                "won": b["won"]}
+            for k, b in sorted(buckets.items())}
+
+
+def confidence_calibration_lines(judgments: dict, min_n: int = 5) -> list[str]:
+    """Human-readable calibration block for review.py. Below min_n resolved
+    samples it reports the count only — published either way, because hiding
+    an unflattering number until it improves is how track records launder."""
+    cal = confidence_calibration(judgments)
+    total = sum(b["n"] for b in cal.values())
+    if total == 0:
+        return ["Confidence calibration: no resolved trades carry a stated "
+                "confidence yet (field added 2026-07-21; accumulating)"]
+    if total < min_n:
+        return [f"Confidence calibration: {total} resolved sample(s) — too "
+                f"few to read, shown for honesty only"] + [
+            f"  {k}: said {b['stated']:.0%} avg, won {b['won']}/{b['n']}"
+            for k, b in cal.items()]
+    return ["Confidence calibration (stated vs realized):"] + [
+        f"  {k}: n={b['n']}, said {b['stated']:.0%} avg, "
+        f"won {b['won'] / b['n']:.0%} "
+        f"(gap {b['won'] / b['n'] - b['stated']:+.0%})"
+        for k, b in cal.items()]
 
 
 def downsize_value_usd(judgment: dict, pnl: float) -> float:

@@ -98,6 +98,11 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
                                  # API failure mode observed 2026-07-16.
+  correlation_cap:               # CORRELATION HEAT CAP (2026-07-21, EastEquity review):
+    enabled: true                # "co-moving names are one bet." A new buy is blocked
+    lookback: 60                 # when >= max_correlated open positions have >= threshold
+    threshold: 0.85              # Pearson correlation of daily returns with it over the
+    max_correlated: 2            # lookback window. Entries only; fail-open without bars.
   max_entry_drift_bps: 100       # ENTRY DRIFT GUARD (2026-07-21): skip a buy when the
                                  # live quote is >1% away from the price the signal saw.
                                  # Order-level backstop behind the freshness guard — every

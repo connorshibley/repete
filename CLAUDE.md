@@ -32,7 +32,13 @@ src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 20
                  ratchets up, never down), re-entry cooldown (meanrev only, §9),
                  entry drift guard (2026-07-21: buy skipped when live quote drifts >
                  risk.max_entry_drift_bps from signal price; fail-open on quote outage;
-                 entries only — would have blocked all six 2026-07-16 stale-bars fills);
+                 entries only — would have blocked all six 2026-07-16 stale-bars fills),
+                 correlation heat cap (2026-07-21, EastEquity review: buy blocked when
+                 >= risk.correlation_cap.max_correlated open positions have >= threshold
+                 return correlation with it — "co-moving names are one bet"; entries
+                 only, fail-open without bars; fail-open guard skips are ledgered as
+                 "degradation" events and counted by review.py — silence must stay
+                 distinguishable from "checked and fine");
                  param-gated down-regime exposure cap exists but is OFF (cannot bind).
 src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
 src/memory.py    Retrieval layer: similar-setups trade sample for the judge (2026-07-21,
@@ -47,6 +53,8 @@ src/lessons.py   Hypothesis book (memory/lessons.jsonl, append-only events + rep
 src/judgments.py Judge calibration (memory/judgments.jsonl): every approve/downsize/veto logged,
                  later resolved (realized close or counterfactual) and scored; the judge sees its
                  own track record in the prompt. kind=llm and kind=rails bucketed separately.
+                 Judgments also carry the judge's stated confidence (2026-07-21) — scored per
+                 bucket vs realized win rate in review.py; measurement only for now (no caps).
 src/counterfactual.py  What a vetoed buy would have done (pessimistic stop-before-TP replay,
                  embargoed until min_holding_days + extra_days pass).
 src/postexit.py  Post-exit runner tracking (memory/postexit.jsonl, append-only): every close
