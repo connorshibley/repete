@@ -9,6 +9,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _fake_broker_env(monkeypatch):
+    """Preflight requires broker keys in env; tests never construct a real
+    Broker (it's always monkeypatched), so dummies keep the suite offline."""
+    monkeypatch.setenv("ALPACA_API_KEY", "test-key")
+    monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
+
+
 @pytest.fixture
 def cfg(tmp_path):
     """Minimal dict config mirroring config.yaml, network layers disabled.

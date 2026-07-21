@@ -272,6 +272,47 @@ def main():
     if r["exit_reasons"]:
         print("Exits:", ", ".join(f"{k}={v}" for k, v in sorted(r["exit_reasons"].items())))
 
+    # Monthly scorecard vs S&P (2026-07-21): the owner's benchmark goal,
+    # measured month by month. SPY bars fetched once; offline => "n/a".
+    import scorecard
+    records = ledger.all_records()
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), ".env"))
+        from broker import Broker as _B
+        spy_bars = _B(cfg).bars("SPY", "1Day", max(r["history_days"] + 5, 10))
+    except (Exception, SystemExit):  # noqa: BLE001 — offline review still renders
+        spy_bars = []
+    card = scorecard.monthly_scorecard(
+        records, spy_bars, scorecard.realized_pnl_by_month(records))
+    print()
+    for line in scorecard.format_lines(card):
+        print(line)
+
+    # Live kill criteria status (pre-registered) — visible BEFORE it binds.
+    kcfg = cfg["risk"].get("live_kill") or {}
+    if kcfg.get("enabled"):
+        import risk as risk_mod
+        closed_all = ledger.closed_trades()
+        strategies_seen = sorted({t.get("strategy") for t in closed_all
+                                  if t.get("strategy")}
+                                 | set((cfg.get("strategies") or {}).keys()))
+        print(f"\nLIVE KILL CRITERIA (pre-registered: PF < "
+              f"{kcfg.get('pf_below', 0.8)} over >= "
+              f"{kcfg.get('min_trades', 15)} live closed trades "
+              f"retires a strategy's entries):")
+        for strat in strategies_seen:
+            s = risk_mod.strategy_live_stats(closed_all, strat)
+            killed = risk_mod.live_kill_blocked(closed_all, strat, cfg)
+            pf_txt = ("n/a" if s["pf"] is None
+                      else "inf" if s["pf"] == float("inf")
+                      else f"{s['pf']:.2f}")
+            status = ("KILLED — entries retired" if killed
+                      else "armed" if s["n"] >= kcfg.get("min_trades", 15)
+                      else f"n too small ({s['n']}/{kcfg.get('min_trades', 15)})")
+            print(f"  {strat}: n={s['n']}, PF {pf_txt} [{status}]")
+
     spy = spy_benchmark_pct(r["history_days"])
     bot_pct = r["realized_pnl"] / 100_000 * 100  # vs the $100k paper account
 

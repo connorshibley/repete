@@ -458,7 +458,8 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
           else f"{rep['profit_factor']:.2f}")
     slip = rep.get("slippage")
     slip_txt = (f"{slip['median_bps']:+.1f} bps med / {slip['n_fills']} fills"
-                if slip else "no fills measured yet")
+                if slip and slip.get("median_bps") is not None
+                else "no clean fills yet")
 
     cards = "".join(
         f'<div class=card><div class=v>{v}</div><div class=k>{k}</div></div>'
@@ -495,6 +496,32 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
     exits = ", ".join(f"{k}: {v}" for k, v in
                       sorted(rep["exit_reasons"].items())) or "none yet"
 
+    # Monthly scorecard vs S&P (2026-07-21): the benchmark goal, measured and
+    # published month by month — wins and losses both.
+    import scorecard
+    card = scorecard.monthly_scorecard(
+        records, spy_bars or [], scorecard.realized_pnl_by_month(records))
+    month_rows = "".join(
+        f"<tr><td>{_esc(m['month'])}</td>"
+        f"<td class={'win' if m['bot_ret_pct'] >= 0 else 'loss'}>"
+        f"{m['bot_ret_pct']:+.2f}%</td>"
+        f"<td>{('%+.2f%%' % m['spy_ret_pct']) if m['spy_ret_pct'] is not None else 'n/a'}</td>"
+        f"<td>{'✅ beat' if m['beat'] else '❌ trailed' if m['beat'] is False else '—'}</td>"
+        f"<td>{m['max_dd_pct']:.2f}%</td></tr>"
+        for m in card["months"])
+    sm = card["summary"]
+    month_tbl = (("<div class=tblwrap><table><tr><th>Month</th><th>Bot</th>"
+                  "<th>S&amp;P (SPY)</th><th>vs S&amp;P</th><th>Max DD</th></tr>"
+                  + month_rows + "</table></div>"
+                  f"<p class=small>Beaten {sm['months_beaten']}/"
+                  f"{sm['months_total']} months · cumulative bot "
+                  f"{sm['cum_bot_pct']:+.2f}% vs SPY {sm['cum_spy_pct']:+.2f}%. "
+                  "Goal: beat the S&amp;P on a rolling basis — measured every "
+                  "month, promised never.</p>")
+                 if month_rows else
+                 "<p class=small>Monthly scorecard appears after the first "
+                 "full month of equity history.</p>")
+
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300">
@@ -511,6 +538,7 @@ rel="noopener">@Repete2026 on X ↗</a>
 <h2>📈 P/L over time</h2>{pl_chart}
 <h2>🪙 Trade scoreboard</h2>{bars}
 <h2>💰 Equity</h2>{eq_chart}{chart_note}
+<h2>🗓️ Monthly vs S&amp;P</h2>{month_tbl}
 <h2>💼 Open positions</h2>{_positions_rows(ledger.open_buys(), now)}
 <h2>🧭 Per-strategy</h2>{strat_tbl}
 <p class=small>Exits — {_esc(exits)}</p>

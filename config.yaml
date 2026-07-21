@@ -98,6 +98,12 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
                                  # API failure mode observed 2026-07-16.
+  live_kill:                     # PRE-REGISTERED LIVE KILL CRITERIA (2026-07-21):
+    enabled: true                # the live-side mirror of the backtest enablement gate.
+    min_trades: 15               # A strategy with >= min_trades LIVE closed trades and
+    pf_below: 0.8                # profit factor < pf_below stops ENTERING (exits always
+                                 # run). Registered while every strategy is far from the
+                                 # threshold, so it cannot be argued with later.
   correlation_cap:               # CORRELATION HEAT CAP (2026-07-21, EastEquity review):
     enabled: true                # "co-moving names are one bet." A new buy is blocked
     lookback: 60                 # when >= max_correlated open positions have >= threshold
@@ -273,6 +279,12 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     vol_period: 20                # 20-day realized vol, annualized
     vol_low: 0.15                 # below -> "low"; above vol_high -> "high"
     vol_high: 0.25
+
+ops:
+  max_degradations_per_day: 3    # SLO (2026-07-21): >= this many ledgered fail-open
+                                 # 'degradation' events in one day -> single slo_breach
+                                 # event + macOS alert. Escalates to a human; never HALTs
+                                 # (the daily-loss kill switch owns HALT). 0 disables.
 
 reporting:
   starting_equity: 100000        # Alpaca paper account starting capital; the

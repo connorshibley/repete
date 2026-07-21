@@ -34,17 +34,19 @@ class FakeCycleBroker:
     def bars(self, symbol, timeframe, limit):
         return self._bars
 
-    def market_order(self, symbol, qty, side):
+    def market_order(self, symbol, qty, side, client_order_id=None):
         order = {"id": "plain-1", "symbol": symbol, "qty": qty, "side": side,
-                 "status": "accepted"}
+                 "status": "accepted", "client_order_id": client_order_id}
         self.submitted.append(order)
         return order
 
-    def bracket_market_order(self, symbol, qty, stop_price, take_profit_price=None):
+    def bracket_market_order(self, symbol, qty, stop_price,
+                             take_profit_price=None, client_order_id=None):
         order = {"id": "entry-1", "symbol": symbol, "qty": qty, "side": "buy",
                  "status": "accepted", "order_class": "bracket",
                  "stop_price": stop_price, "take_profit_price": take_profit_price,
-                 "leg_ids": ["leg-stop", "leg-tp"]}
+                 "leg_ids": ["leg-stop", "leg-tp"],
+                 "client_order_id": client_order_id}
         self.submitted.append(order)
         return order
 
@@ -304,3 +306,33 @@ def test_halt_file_blocks_cycle_entirely(cycle_env):
     led = Ledger(cfg["memory"]["ledger_path"])
     events = [r for r in led.all_records() if r["type"] == "event"]
     assert any(e["event"] == "halted_cycle_skipped" for e in events)
+
+
+def test_executed_order_carries_idempotency_key(cycle_env):
+    """Crash-rerun protection: orders carry a deterministic per-symbol/side/
+    day client_order_id so the broker rejects a duplicate submission."""
+    from datetime import datetime, timezone
+    cfg, install = cycle_env
+    broker = install(FakeCycleBroker(make_bars(BUY_CLOSES)))
+    main.run_cycle()
+    coid = broker.submitted[0]["client_order_id"]
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    assert coid == f"ta-SPY-buy-{today}"
+
+
+def test_degradation_slo_breach_logged_once(cycle_env, monkeypatch):
+    cfg, install = cycle_env
+    cfg["ops"] = {"max_degradations_per_day": 2}
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(cfg, f)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    led.log_event("degradation", "drift_guard: test 1")
+    led.log_event("degradation", "news_catchup: test 2")
+    notes = []
+    import watchdog
+    monkeypatch.setattr(watchdog, "notify", lambda t, m: notes.append(t))
+    install(FakeCycleBroker(make_bars(BUY_CLOSES)))
+    main.run_cycle()   # crosses threshold -> one slo_breach + one alert
+    main.run_cycle()   # already breached today -> no second event
+    breaches = [r for r in led.all_records() if r.get("event") == "slo_breach"]
+    assert len(breaches) == 1 and len(notes) == 1

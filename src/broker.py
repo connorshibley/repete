@@ -106,19 +106,24 @@ class Broker:
 
     # ---------- orders ----------
 
-    def market_order(self, symbol: str, qty: float, side: str) -> dict:
+    def market_order(self, symbol: str, qty: float, side: str,
+                     client_order_id: str | None = None) -> dict:
+        # client_order_id = idempotency key: Alpaca rejects a duplicate, so a
+        # crash-and-rerun cycle cannot double-submit the same intended order.
         order = self.trading.submit_order(MarketOrderRequest(
             symbol=symbol,
             qty=qty,
             side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
             time_in_force=TimeInForce.DAY,
+            client_order_id=client_order_id,
         ))
         log.info("Order submitted: %s %s x%s (id=%s)", side, symbol, qty, order.id)
         return {"id": str(order.id), "symbol": symbol, "qty": qty, "side": side,
                 "status": str(order.status)}
 
     def bracket_market_order(self, symbol: str, qty: float, stop_price: float,
-                             take_profit_price: float | None = None) -> dict:
+                             take_profit_price: float | None = None,
+                             client_order_id: str | None = None) -> dict:
         """BUY market order with protective legs, GTC so they survive across days.
 
         Alpaca requires BOTH legs for OrderClass.BRACKET; with no take-profit
@@ -134,6 +139,7 @@ class Broker:
             stop_loss=StopLossRequest(stop_price=stop_price),
             take_profit=(TakeProfitRequest(limit_price=take_profit_price)
                          if take_profit_price else None),
+            client_order_id=client_order_id,
         )
         order = self.trading.submit_order(req)
         legs = [str(leg.id) for leg in (order.legs or [])]

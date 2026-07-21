@@ -26,6 +26,7 @@ import learn
 import llm
 import modelver
 import postexit
+import preflight
 import regime as regime_mod
 import risk
 import strategies
@@ -298,10 +299,59 @@ def run_cycle():
         write_heartbeat()
 
 
+def check_degradation_slo(ledger: Ledger, cfg: dict):
+    """Ops error budget (2026-07-21): count today's ledgered fail-open
+    'degradation' events; at/over ops.max_degradations_per_day, write ONE
+    slo_breach event and raise a desktop alert. Never raises, never HALTs —
+    escalation to a human, not to the kill switch."""
+    try:
+        limit = int((cfg.get("ops") or {}).get("max_degradations_per_day", 3))
+        if limit <= 0:
+            return
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        events = [r for r in ledger.all_records()
+                  if r.get("type") == "event"
+                  and (r.get("ts") or "")[:10] == today]
+        n = sum(1 for r in events if r.get("event") == "degradation")
+        if n < limit or any(r.get("event") == "slo_breach" for r in events):
+            return
+        ledger.log_event("slo_breach",
+                         f"{n} degradation events today >= limit {limit} — "
+                         f"guards are running fail-open too often")
+        try:
+            from watchdog import notify
+            notify("trading-agent: degradation SLO breach",
+                   f"{n} fail-open events today (limit {limit}) — check "
+                   f"data feeds and logs")
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as e:  # noqa: BLE001 — monitoring never kills a cycle
+        log.warning("SLO check failed: %s", e)
+
+
 def _run_cycle():
     load_dotenv()
     with open("config.yaml") as f:
         cfg = yaml.safe_load(f)
+
+    # Pre-flight: a misconfigured system FAILS SAFE (opposite polarity from
+    # data outages, which degrade gracefully). Nothing trades past this.
+    fails = preflight.run(cfg)
+    if fails:
+        for f_msg in fails:
+            log.critical("PREFLIGHT: %s", f_msg)
+        try:
+            Ledger(cfg["memory"]["ledger_path"]).log_event(
+                "preflight_failure", "; ".join(fails)[:500])
+        except Exception:  # noqa: BLE001 — even the ledger may be the problem
+            pass
+        try:
+            from watchdog import notify
+            notify("trading-agent PREFLIGHT FAILED",
+                   fails[0][:120] + (" (+more)" if len(fails) > 1 else ""))
+        except Exception:  # noqa: BLE001
+            pass
+        return
 
     ledger = Ledger(cfg["memory"]["ledger_path"])
     # Decision-surface fingerprint: every record this cycle carries the
@@ -432,6 +482,11 @@ def _run_cycle():
             qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
 
         try:
+            if sig.action == "buy":
+                kill = risk.live_kill_blocked(ledger.closed_trades(),
+                                              sig.strategy, cfg)
+                if kill:
+                    raise risk.RiskRejection(kill)
             risk.pre_trade_checks(sig.action, symbol, qty, price, account,
                                   positions, cfg, entry_ts=entry_ts,
                                   regime_label=regime_label,
@@ -497,18 +552,25 @@ def _run_cycle():
                 return "blocked"
 
         # --- Execute ---
+        # Idempotency key: deterministic per symbol/side/day, so a crashed
+        # cycle rerun cannot double-submit the same intended order (the
+        # broker rejects a duplicate client id).
+        coid = (f"ta-{symbol}-{sig.action}-"
+                f"{datetime.now(timezone.utc).strftime('%Y%m%d')}")
         try:
             order = None
             if sig.action == "buy" and bracket_prices:
                 # Protective legs reuse the exact prices sizing saw above.
                 try:
                     order = broker.bracket_market_order(symbol, qty,
-                                                        *bracket_prices)
+                                                        *bracket_prices,
+                                                        client_order_id=coid)
                 except Exception as e:  # noqa: BLE001 — degrade to plain order
                     log.warning("%s: bracket order failed (%s) — falling back "
                                 "to plain market order", symbol, e)
             if order is None:
-                order = broker.market_order(symbol, qty, sig.action)
+                order = broker.market_order(symbol, qty, sig.action,
+                                            client_order_id=coid)
         except Exception as e:  # noqa: BLE001
             ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                 review, executed=False, detail=f"order error: {e}",
@@ -757,6 +819,11 @@ def _run_cycle():
                      _json.dumps({"equity": account["equity"],
                                   "n_positions": len(positions),
                                   "regime": regime_label}))
+
+    # Degradation SLO: too many fail-open events in one day means the ops
+    # error budget is burned — escalate to a human (alert only; HALT stays
+    # reserved for the daily-loss kill switch).
+    check_degradation_slo(ledger, cfg)
     try:  # dashboard/blog regeneration is cosmetic — never touches the cycle
         import blog
         import dashboard

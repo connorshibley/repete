@@ -9,7 +9,18 @@ closed trades, and posts trade recaps to X. Built from an evidence-based design
 
 ## Architecture (do not restructure without asking)
 ```
-src/broker.py    Alpaca wrapper. Paper-mode double interlock lives here.
+src/broker.py    Alpaca wrapper. Paper-mode double interlock lives here. Orders carry a
+                 deterministic client_order_id (ta-SYM-side-YYYYMMDD, 2026-07-21) so a
+                 crashed cycle rerun cannot double-submit.
+src/preflight.py Fail-SAFE startup validation (2026-07-21): risk params, interlock, env
+                 keys, ledger-tail integrity, timeframe. Any failure = no trading this
+                 cycle + ledger preflight_failure + macOS alert. Opposite polarity from
+                 data outages (which degrade gracefully) — on purpose.
+src/scorecard.py Monthly performance vs S&P from cycle_complete equity snapshots + SPY
+                 bars (2026-07-21). Surfaces in review.py + dashboard. The benchmark
+                 goal is measured every month and published — never promised, and never
+                 wired into sizing/signals (goal-chasing is the documented failure mode
+                 of every LLM-trader reviewed).
 src/strategies/  Strategy ensemble (deterministic ONLY; LLM never generates signals):
                  ma_crossover (baseline), tsmom, xsmom, meanrev. Registry in __init__.py;
                  config `strategies:` gates ENTRIES per strategy; exits always route to the
@@ -39,7 +50,12 @@ src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 20
                  only, fail-open without bars; fail-open guard skips are ledgered as
                  "degradation" events and counted by review.py — silence must stay
                  distinguishable from "checked and fine");
-                 param-gated down-regime exposure cap exists but is OFF (cannot bind).
+                 param-gated down-regime exposure cap exists but is OFF (cannot bind),
+                 pre-registered live kill criteria (2026-07-21, risk.live_kill: a strategy
+                 with >=15 live closed trades and PF<0.8 stops ENTERING, exits unaffected —
+                 the live-side mirror of the enablement gate, registered before any strategy
+                 was near the threshold). Degradation SLO: ops.max_degradations_per_day
+                 fail-open events in one day -> slo_breach event + macOS alert (main.py).
 src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
 src/memory.py    Retrieval layer: similar-setups trade sample for the judge (2026-07-21,
                  deterministic strategy/regime/symbol/indicator match — losers still

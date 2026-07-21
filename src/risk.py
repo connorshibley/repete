@@ -268,6 +268,37 @@ def swing_guard(entry_ts: str | None, cfg: dict):
             f"{min_days}d — this bot does not day trade")
 
 
+def strategy_live_stats(closed_trades: list[dict], strategy: str) -> dict:
+    """Live closed-trade count and profit factor for one strategy."""
+    trades = [t for t in closed_trades if t.get("strategy") == strategy]
+    gross_win = sum(t["pnl"] for t in trades if t.get("pnl", 0) > 0)
+    gross_loss = -sum(t["pnl"] for t in trades if t.get("pnl", 0) < 0)
+    pf = (gross_win / gross_loss if gross_loss > 0
+          else (float("inf") if gross_win > 0 else None))
+    return {"n": len(trades), "pf": pf}
+
+
+def live_kill_blocked(closed_trades: list[dict], strategy: str | None,
+                      cfg: dict) -> str | None:
+    """Pre-registered live kill criteria (2026-07-21, enterprise-hardening):
+    the live-side mirror of the backtest enablement gate. A strategy whose
+    LIVE record over >= min_trades closed trades shows PF < pf_below stops
+    ENTERING (exits always still run). Registered before any strategy is
+    near the threshold, so it can't be argued with later. Returns the
+    rejection reason, or None."""
+    kcfg = cfg["risk"].get("live_kill") or {}
+    if not kcfg.get("enabled") or not strategy:
+        return None
+    s = strategy_live_stats(closed_trades, strategy)
+    min_trades = int(kcfg.get("min_trades", 15))
+    pf_below = float(kcfg.get("pf_below", 0.8))
+    if s["n"] >= min_trades and s["pf"] is not None and s["pf"] < pf_below:
+        return (f"live kill: {strategy} PF {s['pf']:.2f} over {s['n']} live "
+                f"closed trades is below {pf_below} (pre-registered criteria "
+                f"— entries retired, exits unaffected)")
+    return None
+
+
 def daily_returns(bars: list[dict]) -> list[float]:
     """Close-to-close simple returns, oldest first."""
     closes = [b["close"] for b in bars]
