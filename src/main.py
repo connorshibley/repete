@@ -24,6 +24,7 @@ from memory import Memory
 import journal
 import learn
 import llm
+import datacheck
 import modelver
 import postexit
 import preflight
@@ -443,9 +444,24 @@ def _run_cycle():
         """One actionable signal through the unchanged pipeline:
         LLM review -> rails -> leg cancel -> execute -> ledger/judgment/recap.
         Returns 'executed' or 'blocked'."""
+        # Vendor cross-check verdict (set after the bars fetch): entries are
+        # blocked before the LLM even looks — deterministic, and no judge can
+        # override a data-integrity stop. Exits pass through untouched.
+        if sig.action == "buy" and entries_blocked_reason:
+            tid = ledger.log_decision(
+                symbol, sig.action, sig.reason, sig.indicators, None,
+                executed=False,
+                detail=f"risk rejection: {entries_blocked_reason[:180]}",
+                regime=regime_label, strategy=sig.strategy)
+            memory.judgments.log_judgment(
+                tid, symbol, sig.action, "rails_reject", 1.0, price,
+                regime_label, kind="rails", executed=False,
+                reasoning=entries_blocked_reason[:200], strategy=sig.strategy)
+            return "blocked"
         review = llm.review_signal(
             sig, memory.context_for_llm(symbol=symbol, regime=market_regime,
-                                        strategy=sig.strategy, signal=sig)
+                                        strategy=sig.strategy, signal=sig,
+                                        positions=positions, account=account)
             + (f"\n\n{extra_context}" if extra_context else ""), cfg)
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
@@ -490,7 +506,9 @@ def _run_cycle():
             risk.pre_trade_checks(sig.action, symbol, qty, price, account,
                                   positions, cfg, entry_ts=entry_ts,
                                   regime_label=regime_label,
-                                  bars_map=all_bars)
+                                  bars_map=all_bars, open_trades=open_trades,
+                                  candidate_stop=(bracket_prices[0]
+                                                  if bracket_prices else None))
         except risk.RiskRejection as e:
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,
@@ -653,6 +671,16 @@ def _run_cycle():
                              f"{symbol}: newest bar {all_bars[symbol][-1]['ts']}")
             log.warning("%s: stale bars — symbol skipped this cycle", symbol)
             del all_bars[symbol]
+
+    # Second-vendor cross-check (2026-07-21): fresh-LOOKING bars can still be
+    # wrong (the 07-16 class). If Alpaca and yfinance disagree on SPY's close,
+    # one is lying and we can't know which — entries are blocked this cycle
+    # (exits and protective actions never are).
+    entries_blocked_reason = datacheck.crosscheck_spy(all_bars.get("SPY", []),
+                                                      cfg)
+    if entries_blocked_reason:
+        ledger.log_event("degradation", entries_blocked_reason)
+        log.critical("%s", entries_blocked_reason)
 
     # Market regime (deterministic, from SPY bars already fetched): tagged onto
     # every decision/judgment so the learning loop can discount off-regime evidence.

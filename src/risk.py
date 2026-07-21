@@ -268,6 +268,24 @@ def swing_guard(entry_ts: str | None, cfg: dict):
             f"{min_days}d — this bot does not day trade")
 
 
+def portfolio_heat(open_trades: dict, cfg: dict, equity: float) -> float:
+    """Total open stop-risk in dollars (2026-07-21): what the whole book
+    loses if EVERY open stop is hit. Per position: qty x (entry - stop) from
+    the recorded bracket stop; a position with no recorded stop contributes
+    the standard per-trade risk fraction of equity (conservative fallback)."""
+    heat = 0.0
+    per_trade = equity * cfg["risk"].get("risk_per_trade_pct", 1.0) / 100
+    for rec in (open_trades or {}).values():
+        qty = rec.get("qty") or 0
+        entry = rec.get("entry_price") or 0.0
+        stop = (rec.get("order") or {}).get("stop_price")
+        if stop and entry and qty:
+            heat += qty * max(entry - stop, 0.0)
+        elif qty:
+            heat += per_trade
+    return heat
+
+
 def strategy_live_stats(closed_trades: list[dict], strategy: str) -> dict:
     """Live closed-trade count and profit factor for one strategy."""
     trades = [t for t in closed_trades if t.get("strategy") == strategy]
@@ -376,7 +394,9 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      account: dict, positions: dict, cfg: dict,
                      entry_ts: str | None = None,
                      regime_label: str | None = None,
-                     bars_map: dict | None = None):
+                     bars_map: dict | None = None,
+                     open_trades: dict | None = None,
+                     candidate_stop: float | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
         raise RiskRejection("HALT file present — trading disabled")
@@ -385,6 +405,21 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
 
     pure_checks(action, symbol, qty, price, account, positions, cfg,
                 regime_label=regime_label)
+
+    # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
+    # risk must stay under max_portfolio_heat_pct of equity. Entries only.
+    heat_cap_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
+    if action == "buy" and heat_cap_pct > 0 and open_trades is not None:
+        heat = portfolio_heat(open_trades, cfg, account["equity"])
+        new_risk = (qty * max(price - candidate_stop, 0.0) if candidate_stop
+                    else account["equity"]
+                    * cfg["risk"].get("risk_per_trade_pct", 1.0) / 100)
+        cap = account["equity"] * heat_cap_pct / 100
+        if heat + new_risk > cap:
+            raise RiskRejection(
+                f"portfolio heat cap: open stop-risk ${heat:,.0f} + this "
+                f"trade's ${new_risk:,.0f} would exceed "
+                f"{heat_cap_pct}% of equity (${cap:,.0f})")
 
     # Correlation heat cap (entries only; needs the cycle's bars). Fail-open
     # when bars are unavailable — the per-symbol cap above still applies.

@@ -187,3 +187,42 @@ METHOD NOTE: adoption split by strategy forced per-strategy scoping into
 the params (`trailing_strategies`, `risk_sizing.strategies`,
 `reentry_cooldown.strategies`) — a global flag would have applied a tsmom
 result to meanrev and vice versa.
+
+## §10 — Universe expansion 20 → 38 (2026-07-21) — ADOPTED
+
+Motivation: evidence velocity. At ~2 closes/week every learning mechanism
+(lessons, calibration, live_kill, postexit) is starved; a wider gated
+universe multiplies independent setups at UNCHANGED per-trade risk, and the
+correlation heat cap (adopted earlier today) prevents the wider book from
+collapsing into one bet.
+
+Candidates (18, sector-diverse liquid large caps): XOM CVX WMT COST PG KO HD
+MCD CAT BA LLY ABBV GS BAC ORCL AVGO CRM DIS.
+
+METHOD (per the standing METHOD NOTE): ONE frozen snapshot — ~4.5y
+(1097 daily bars/symbol, all 38 complete) fetched once 2026-07-21, plus a
+frozen yfinance earnings calendar; every comparison ran offline from those
+files. Live params only (no grid re-search — re-picking params inside a
+universe decision would be data mining). walk_forward split 0.7; trials in
+memory/backtest_trials.jsonl. Note: a first attempt on a 2y snapshot
+produced zero OOS trades for tsmom/meanrev — the 30% OOS window (150 bars)
+was shorter than their 200-bar SMA warmup. Windowing artifact, not signal;
+the run was discarded and refetched longer. Recorded so nobody repeats it.
+
+RESULTS (OOS, same snapshot, current 20 names vs expanded 38):
+
+| strategy     | current univ                    | expanded univ                  | gate (expanded) |
+|--------------|---------------------------------|--------------------------------|-----------------|
+| tsmom        | +0.02%, PF 1.02, 57t, dd 0.46%  | +0.72%, PF 1.72, 54t, dd 0.56% | PASS            |
+| meanrev      | +0.65%, PF 1.57, 74t, dd 0.32%  | +0.84%, PF 1.51, 103t, dd 0.43%| PASS            |
+| ma_crossover | +1.19%, PF 2.14, 56t, dd 0.45%  | +1.59%, PF 2.49, 54t, dd 0.56% | PASS            |
+
+DECISION (pre-registered rule: adopt only if every enabled strategy passes
+the gate on the expanded universe): all three pass, 3/3 improve or hold →
+**ADOPTED**, config `symbols:` extended to 38.
+
+HONEST FLAG: tsmom on the CURRENT universe FAILS the gate on this recent
+window (PF 1.02 — momentum has been thin in the 20-name universe lately).
+This is exactly the drift class src/revalidate.py (also added 2026-07-21)
+exists to catch quarterly. No action beyond the expansion (which restores
+tsmom's OOS to PF 1.72); live_kill remains the realized-trades fast path.

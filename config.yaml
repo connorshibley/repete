@@ -29,6 +29,30 @@ symbols:               # what the bot is allowed to trade — liquid large-caps 
   - V
   - UNH
   - JNJ
+  # ---- expansion 2026-07-21 (gate evidence: knowledge/backtest_candidates.md §10):
+  # 18 sector-diverse liquid large caps, adopted after every enabled strategy
+  # passed the enablement gate on the EXPANDED universe from one frozen ~4.5y
+  # snapshot (tsmom OOS PF 1.02->1.72, meanrev +0.65->+0.84%, ma_x +1.19->+1.59%).
+  # More independent setups per week at unchanged per-trade risk; the
+  # correlation heat cap keeps the wider book from collapsing into one bet.
+  - XOM
+  - CVX
+  - WMT
+  - COST
+  - PG
+  - KO
+  - HD
+  - MCD
+  - CAT
+  - BA
+  - LLY
+  - ABBV
+  - GS
+  - BAC
+  - ORCL
+  - AVGO
+  - CRM
+  - DIS
   - XOM
   - PG
   - HD
@@ -98,6 +122,17 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
                                  # API failure mode observed 2026-07-16.
+  max_portfolio_heat_pct: 4.0    # PORTFOLIO HEAT CAP (2026-07-21): total open
+                                 # stop-risk (sum of qty x entry-to-stop across the
+                                 # book) + a new entry's risk may not exceed this % of
+                                 # equity. Entries only. 0 disables.
+  data_crosscheck:               # SECOND-VENDOR PRICE CHECK (2026-07-21): SPY's
+    enabled: true                # latest close compared Alpaca vs yfinance each
+    max_divergence_pct: 0.5      # cycle. Same-session divergence beyond this % =>
+                                 # one feed is lying => degradation event + entries
+                                 # blocked that cycle (exits never blocked). A vendor
+                                 # outage fails open silently — the rail fires only
+                                 # when both vendors report and DISAGREE.
   live_kill:                     # PRE-REGISTERED LIVE KILL CRITERIA (2026-07-21):
     enabled: true                # the live-side mirror of the backtest enablement gate.
     min_trades: 15               # A strategy with >= min_trades LIVE closed trades and

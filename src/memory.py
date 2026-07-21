@@ -154,10 +154,30 @@ class Memory:
         cap = self.lcfg.get("max_context_chars", 4000) // 4
         return "\n".join(parts)[:cap]
 
+    def book_block(self, positions: dict | None,
+                   account: dict | None) -> str:
+        """Deterministic snapshot of the CURRENT book for the judge — a risk
+        desk never reviews a trade blind to the portfolio (2026-07-21).
+        Broker-fresh data only (invariant #4); empty string when flat/absent."""
+        if not positions or not account:
+            return ""
+        equity = account.get("equity") or 0.0
+        gross = sum(p.get("market_value", 0.0) for p in positions.values())
+        lines = [f"CURRENT BOOK ({len(positions)} open positions, gross "
+                 f"exposure {gross / equity * 100:.0f}% of "
+                 f"${equity:,.0f} equity):"]
+        for sym, p in sorted(positions.items()):
+            lines.append(f"  {sym}: qty {p.get('qty', 0):g}, value "
+                         f"${p.get('market_value', 0):,.0f}, unrealized "
+                         f"${p.get('unrealized_pl', 0):+,.0f}")
+        return "\n".join(lines)
+
     def context_for_llm(self, symbol: str | None = None,
                         regime: dict | None = None,
                         strategy: str | None = None,
-                        signal=None) -> str:
+                        signal=None,
+                        positions: dict | None = None,
+                        account: dict | None = None) -> str:
         """Memory block for the judgment prompt: similar (or balanced) trades,
         ranked validated lessons (scope match: symbol > regime > strategy >
         global), the judge's own calibration, current regime.
@@ -192,7 +212,9 @@ class Memory:
 
         knowledge = self.knowledge_block()
         news = self.market_context_block(symbol)
-        ctx = (f"{header}\n"
+        book = self.book_block(positions, account)
+        ctx = ((f"{book}\n\n" if book else "")
+               + f"{header}\n"
                f"{trade_block}\n\n"
                f"VALIDATED LESSONS (hypotheses with evidence counts n=supports/contradicts):\n"
                f"{lesson_block}\n\n"

@@ -21,6 +21,14 @@ src/scorecard.py Monthly performance vs S&P from cycle_complete equity snapshots
                  goal is measured every month and published — never promised, and never
                  wired into sizing/signals (goal-chasing is the documented failure mode
                  of every LLM-trader reviewed).
+src/datacheck.py Second-vendor price cross-check (2026-07-21): SPY close Alpaca vs
+                 yfinance each cycle; same-session divergence > cap => degradation
+                 event + entries blocked that cycle (exits never). Vendor outage fails
+                 open silently — fires only when both vendors report and DISAGREE.
+src/revalidate.py Quarterly strategy re-validation, REPORT ONLY (2026-07-21): reruns
+                 each enabled strategy's CURRENT live params (never a grid re-search)
+                 through the walk-forward gate on recent data; prints + ledger
+                 `revalidation` event. Never auto-disables — live_kill is the fast path.
 src/strategies/  Strategy ensemble (deterministic ONLY; LLM never generates signals):
                  ma_crossover (baseline), tsmom, xsmom, meanrev. Registry in __init__.py;
                  config `strategies:` gates ENTRIES per strategy; exits always route to the
@@ -71,6 +79,12 @@ src/judgments.py Judge calibration (memory/judgments.jsonl): every approve/downs
                  own track record in the prompt. kind=llm and kind=rails bucketed separately.
                  Judgments also carry the judge's stated confidence (2026-07-21) — scored per
                  bucket vs realized win rate in review.py; measurement only for now (no caps).
+                 The judge's context includes a deterministic CURRENT BOOK block (memory.py,
+                 2026-07-21): open positions, unrealized P&L, gross exposure — broker-fresh.
+                 risk.py also carries a portfolio heat cap (max_portfolio_heat_pct: total
+                 open stop-risk + new entry risk <= 4% equity, entries only) and the
+                 watchdog has a --catchup mode (launchd 15:55 ET: a missed 15:45 cycle
+                 runs late while the market is still open instead of losing the day).
 src/counterfactual.py  What a vetoed buy would have done (pessimistic stop-before-TP replay,
                  embargoed until min_holding_days + extra_days pass).
 src/postexit.py  Post-exit runner tracking (memory/postexit.jsonl, append-only): every close

@@ -75,7 +75,34 @@ def check(today: date | None = None,
     return problems
 
 
+def catchup(now: datetime | None = None) -> str:
+    """Late catch-up (2026-07-21): scheduled ~15:55 ET weekdays. If today's
+    cycle hasn't run (machine was asleep at 15:45) and the market is still
+    open, run it NOW instead of losing the trading day. Safe to double-fire:
+    a same-day rerun is idempotent (client_order_ids + broker-fresh state).
+    Returns what it did (for logs/tests)."""
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(ZoneInfo("America/New_York"))
+    if now.weekday() >= 5:
+        return "weekend — no action"
+    if not (9 <= now.hour < 16 and (now.hour, now.minute) >= (9, 30)):
+        return "market closed — no action"
+    hb = heartbeat_date()
+    if hb is not None and hb >= now.date():
+        return "cycle already ran today — no action"
+    log.warning("catch-up: today's cycle missing at %s ET — running it late",
+                now.strftime("%H:%M"))
+    notify("Trading agent: late catch-up",
+           "3:45 cycle was missed; running it now before the close")
+    import main as main_mod
+    main_mod.run_cycle()
+    return "ran late cycle"
+
+
 def main():
+    if "--catchup" in sys.argv:
+        log.info("watchdog catch-up: %s", catchup())
+        return
     problems = check()
     if not problems:
         log.info("watchdog: all clear")
