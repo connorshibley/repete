@@ -267,3 +267,50 @@ def test_open_position_outside_universe_is_exit_scanned(tmp_path, monkeypatch,
     nvda = [r for r in led.all_records() if r["type"] == "decision"
             and r["symbol"] == "NVDA" and r["action"] == "hold"]
     assert nvda  # scanned and explicitly held by its owner
+
+
+# ---- missed-run resilience: inline catch-up at cycle start (2026-07-21) ----
+
+def _catchup_cycle(tmp_path, monkeypatch, cfg, news_cfg, write_ctx=False):
+    monkeypatch.chdir(tmp_path)
+    cfg["risk"]["brackets"]["atr_period"] = 3
+    cfg["news"] = news_cfg
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(cfg, f)
+    if write_ctx:
+        import os
+        os.makedirs("memory", exist_ok=True)
+        with open("memory/market_context.json", "w") as f:
+            json.dump({"date": date.today().isoformat(), "summary": "s",
+                       "events_today": [], "symbol_flags": {},
+                       "nominations": []}, f)
+    calls = []
+    monkeypatch.setattr(market_context, "refresh",
+                        lambda *a, **k: calls.append(1) or None)
+    broker = FakeCycleBroker(make_bars(BUY_CLOSES))
+    monkeypatch.setattr(main, "Broker", lambda cfg: broker)
+    main.run_cycle()
+    return calls, broker
+
+
+def test_cycle_inline_catchup_when_context_missing(tmp_path, monkeypatch, cfg):
+    calls, broker = _catchup_cycle(
+        tmp_path, monkeypatch, cfg,
+        {"enabled": True, "context_path": "memory/market_context.json"})
+    assert calls == [1]                   # exactly one self-heal attempt
+    assert len(broker.submitted) == 1     # refresh failure never blocks trading
+
+
+def test_cycle_no_catchup_when_context_fresh(tmp_path, monkeypatch, cfg):
+    calls, _ = _catchup_cycle(
+        tmp_path, monkeypatch, cfg,
+        {"enabled": True, "context_path": "memory/market_context.json"},
+        write_ctx=True)
+    assert calls == []
+
+
+def test_cycle_no_catchup_when_news_disabled(tmp_path, monkeypatch, cfg):
+    calls, _ = _catchup_cycle(
+        tmp_path, monkeypatch, cfg,
+        {"enabled": False, "context_path": "memory/market_context.json"})
+    assert calls == []

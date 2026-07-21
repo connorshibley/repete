@@ -70,6 +70,9 @@ src/market_context.py  Morning news awareness (Alpaca News API + free public RSS
                  is capped at news.max_news_entries_per_cycle (1). Nominations are
                  validated deterministically (ticker shape, fresh bars, history).
                  Stale context is ignored; every failure = no context, normal trading.
+                 Missed-run resilience (2026-07-21): if no context exists at cycle
+                 start (all hourly fires missed), main.run_cycle self-heals with one
+                 inline refresh before judging — fail-soft, never blocks the cycle.
 src/learn.py     Learning engine: `python src/learn.py` (weekly, --meta for merge pass) +
                  learn.inline_pass() at every cycle end. Bounded LLM calls, never crashes a cycle.
 src/x_poster.py  X recaps. dry_run default. Always disclose [PAPER]. Failures never block

@@ -342,6 +342,17 @@ def _run_cycle():
     # strategy signal + judge + rails. Stale/missing context = feature off. ---
     import market_context as market_context_mod
     news_ctx = market_context_mod.load(cfg) or {}
+    # Missed-run resilience (2026-07-21): if every hourly news-brain fire was
+    # missed today (machine asleep, job dead), self-heal with ONE inline
+    # refresh instead of trading blind on news. Fail-soft: any error means
+    # no context, exactly as before.
+    if not news_ctx and cfg.get("news", {}).get("enabled", False):
+        try:
+            log.info("no market context today — inline news-brain catch-up")
+            news_ctx = market_context_mod.refresh(cfg, broker, ledger=ledger) or {}
+        except Exception as e:  # noqa: BLE001 — catch-up must never block the cycle
+            log.warning("inline news catch-up failed: %s", e)
+            news_ctx = {}
     nominated = {n["symbol"]: n.get("reason", "")
                  for n in news_ctx.get("nominations", [])
                  if n["symbol"] not in cfg["symbols"]}
