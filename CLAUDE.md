@@ -22,6 +22,9 @@ src/strategy.py  Compatibility facade over strategies/ (legacy generate_signal +
 src/llm.py       Judgment layer: approve / downsize / veto. Can NEVER enlarge or invent trades.
                  Runs on llm.model (claude-sonnet-5, right-sized 2026-07-18 — evals show no
                  thinking-model edge for judge roles); learning passes use learning.model (Fable).
+                 Judge prompt includes a bull/bear debate step (2026-07-21, TradingAgents-inspired,
+                 single call): both cases argued in the JSON before the verdict, stored on the
+                 ledger's llm_review; calibration impact measured by the judgments scoreboard.
 src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 2026-07-19 §8,
                  superseded vol_target; others: 1% notional), caps, trade-rate limit,
                  daily-loss kill switch (HALT file), swing guard (min_holding_days blocks

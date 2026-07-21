@@ -25,10 +25,15 @@ def _msg_text(msg) -> str:
 _SYSTEM = """You are the risk-review layer of an automated PAPER trading bot.
 A deterministic strategy produced a trade signal. Your ONLY job is to sanity-check it
 against recent performance memory and reply with strict JSON:
-{"verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>, "reasoning": "<2-3 sentences>",
+{"bull_case": "<1-2 sentences: the strongest honest case FOR taking this trade>",
+ "bear_case": "<1-2 sentences: the strongest honest case AGAINST it>",
+ "verdict": "approve" | "downsize" | "veto", "scale": <0.1-1.0>, "reasoning": "<2-3 sentences>",
  "cited_lessons": ["ls-..."]}
 
 Rules:
+- Argue BOTH sides honestly before deciding; your reasoning must address the
+  losing side (why the bear case doesn't kill an approve, or why the bull case
+  doesn't save a veto).
 - You may not propose different trades or symbols.
 - "downsize" must include scale < 1.0. "approve" means scale 1.0.
 - Veto only with a concrete reason grounded in the memory or the signal itself.
@@ -42,6 +47,7 @@ Rules:
 
 def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
+                "bull_case": "", "bear_case": "",
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
     if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
         return fallback
@@ -70,6 +76,9 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         cited = verdict.get("cited_lessons")
         verdict["cited_lessons"] = ([str(c) for c in cited if isinstance(c, str)][:5]
                                     if isinstance(cited, list) else [])
+        # debate step: kept for the ledger/dashboard; absence never invalidates
+        for side in ("bull_case", "bear_case"):
+            verdict[side] = str(verdict.get(side) or "")[:300]
         return verdict
     except Exception as e:  # noqa: BLE001 — any LLM failure degrades to rules
         log.warning("LLM review failed (%s) — proceeding rule-based", e)

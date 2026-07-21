@@ -343,6 +343,10 @@ def _decisions_rows(records: list[dict]) -> str:
                   else _esc(r.get("detail") or "—"))
         why = _esc(r.get("strategy_reason"))
         judge = _esc((rev.get("reasoning") or "")[:160])
+        bull = _esc((rev.get("bull_case") or "")[:160])
+        bear = _esc((rev.get("bear_case") or "")[:160])
+        debate = ((f"<br><i>bull: {bull}</i>" if bull else "")
+                  + (f"<br><i>bear: {bear}</i>" if bear else ""))
         classes = ["r-exec" if r.get("executed") else "r-skip"]
         if verdict:
             classes.append(f"r-{verdict}")
@@ -352,7 +356,7 @@ def _decisions_rows(records: list[dict]) -> str:
             f"<td>{_esc(r['symbol'])}</td><td>{_esc(r['action'])}</td>"
             f"<td>{_esc(r.get('strategy') or '')}</td>"
             f"<td>{badge}</td><td>{status}</td>"
-            f"<td class=reason>{why}"
+            f"<td class=reason>{why}" + debate
             + (f"<br><i>judge: {judge}</i>" if judge else "") + "</td></tr>")
     if not rows:
         return "<p class=small>No decisions yet.</p>"
