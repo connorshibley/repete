@@ -176,8 +176,10 @@ def test_boot_splash_present_and_safe(tmp_path, cfg, monkeypatch):
     """Boot overlay ships hidden (display:none default — no-JS visitors go
     straight to data), plays once per session, and reduced-motion skips it."""
     html_text = _render_html(tmp_path, cfg, monkeypatch)
-    assert 'id=boot' in html_text and "Repete is booting" in html_text
+    assert 'id=boot' in html_text and "market brain is waking" in html_text
     assert "market brain online" in html_text
+    assert 'id=candles' in html_text        # candlestick loading tape
+    assert html_text.count("<b s") >= 6      # REPETE ignites letter by letter
     assert "repete_boot" in html_text            # once-per-session guard
     assert "#boot{position:fixed" in html_text and "display:none" in html_text
     assert "click anywhere to skip" in html_text

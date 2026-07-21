@@ -98,29 +98,67 @@ a.x:hover{text-decoration:underline}
 .cards .card:nth-child(4n+2){border-top-color:var(--violet)}
 .cards .card:nth-child(4n+3){border-top-color:var(--amber)}
 .cards .card:nth-child(4n+4){border-top-color:var(--pink)}
-#boot{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;
-  flex-direction:column;align-items:center;justify-content:center;gap:14px;
-  cursor:pointer;transition:opacity .5s}
+#boot{position:fixed;inset:0;z-index:50;display:none;cursor:pointer;
+  flex-direction:column;align-items:center;justify-content:center;gap:0;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 30%,rgba(34,211,238,.07),transparent 55%),
+    repeating-linear-gradient(0deg,transparent 0 39px,rgba(57,135,229,.05) 39px 40px),
+    repeating-linear-gradient(90deg,transparent 0 39px,rgba(57,135,229,.05) 39px 40px),
+    #05070c;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  transition:opacity .55s,transform .55s}
 #boot.show{display:flex}
-#boot.bye{opacity:0;pointer-events:none}
-#boot .robot{transform:scale(1.7);margin-bottom:18px}
-#boot .bootname{font-size:15px;letter-spacing:.28em;color:var(--violet);
-  font-weight:700;text-transform:uppercase}
-#boot .bl{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  font-size:13px;color:var(--ink2);opacity:0;transition:opacity .25s;
-  min-height:18px}
-#boot .bl.on{opacity:1}
+#boot.bye{opacity:0;transform:translateY(-3vh);pointer-events:none}
+#boot:after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,
+  transparent 1px 3px);mix-blend-mode:multiply}
+#boot:before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55))}
+#boot .robot{transform:scale(2);margin-bottom:34px;filter:
+  drop-shadow(0 0 18px rgba(139,92,246,.35))}
+#boot.show .robot .eye{animation:eyeson 1s .3s both, blink 4.2s 2s infinite}
+@keyframes eyeson{0%{fill:#12314a}55%{fill:#12314a}75%{fill:#22d3ee}
+  85%{fill:#0b6a80}100%{fill:#22d3ee}}
+#boot .sys{font-size:10px;letter-spacing:.5em;color:var(--mut);
+  text-transform:uppercase;margin-bottom:10px}
+#boot .mark{display:flex;gap:.14em;margin-bottom:6px}
+#boot .mark b{font-size:clamp(34px,7vw,64px);font-weight:800;line-height:1;
+  background:linear-gradient(180deg,#a7f3d0 0%,#22d3ee 55%,#0ca30c 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  opacity:0;transform:translateY(14px);
+  text-shadow:0 0 28px rgba(34,211,238,.25)}
+#boot.show .mark b{animation:markup .5s cubic-bezier(.2,.9,.3,1.3) forwards,
+  crt 5s 1.4s infinite}
+@keyframes markup{to{opacity:1;transform:none}}
+@keyframes crt{0%,96.5%,100%{opacity:1}97%{opacity:.72}97.6%{opacity:1}
+  98.2%{opacity:.85}98.8%{opacity:1}}
+#boot .tagline{font-size:11px;letter-spacing:.34em;color:var(--green);
+  text-transform:uppercase;margin-bottom:28px;
+  text-shadow:0 0 12px rgba(12,163,12,.6)}
+#boot .log{width:min(420px,86vw);text-align:left;margin-bottom:26px}
+#boot .bl{font-size:12.5px;color:var(--ink2);opacity:0;min-height:19px;
+  transform:translateX(-6px);transition:opacity .22s,transform .22s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#boot .bl:before{content:"▸ ";color:var(--violet)}
+#boot .bl.on{opacity:1;transform:none}
+#boot .bl.on.cur:after{content:"█";color:var(--green);
+  animation:cursorblink .7s steps(1) infinite;margin-left:2px}
+@keyframes cursorblink{50%{opacity:0}}
 #boot .bl b{color:var(--cyan);font-weight:600}
 #boot .bl .ok{color:var(--green)}
-#bootbar{width:220px;height:5px;border-radius:3px;background:var(--surf2);
-  overflow:hidden;margin-top:8px}
-#bootbar i{display:block;height:100%;width:0;border-radius:3px;
-  background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink))}
-#boot.show #bootbar i{animation:bootfill 2.1s ease-out forwards}
-@keyframes bootfill{to{width:100%}}
-#boot .skip{font-size:11px;color:var(--mut);margin-top:6px}
+#candles{display:flex;align-items:flex-end;gap:5px;height:34px;
+  margin-bottom:10px}
+#candles i{width:7px;border-radius:2px;transform-origin:bottom;
+  transform:scaleY(0)}
+#candles i.g{background:var(--green);box-shadow:0 0 8px rgba(12,163,12,.5)}
+#candles i.r{background:var(--red);box-shadow:0 0 8px rgba(208,59,59,.4)}
+#boot.show #candles i{animation:candlepop .3s cubic-bezier(.2,.8,.3,1.4) forwards}
+@keyframes candlepop{to{transform:scaleY(1)}}
+#boot .skip{font-size:10px;letter-spacing:.22em;color:var(--mut);
+  text-transform:uppercase}
 @media (prefers-reduced-motion: reduce){
-  .tape-track,.robot,.robot .eye,.robot .tip,.livedot,#bootbar i{animation:none}}
+  .tape-track,.robot,.robot .eye,.robot .tip,.livedot,
+  #boot .mark b,#candles i,#boot .bl.on.cur:after{animation:none}}
 .hero .hk{font-size:12px;letter-spacing:.14em;color:var(--ink2);
           text-transform:uppercase}
 .hero .hv{font-size:46px;font-weight:700;margin:4px 0 2px;
@@ -211,10 +249,14 @@ if(boot){
     boot.classList.add('show');
     var bls=boot.querySelectorAll('.bl');
     bls.forEach(function(el,i){
-      setTimeout(function(){el.classList.add('on');},220+i*300);});
+      setTimeout(function(){
+        el.classList.add('on');
+        bls.forEach(function(x){x.classList.remove('cur');});
+        el.classList.add('cur');
+      },700+i*330);});
     function bye(){boot.classList.add('bye');
-      setTimeout(function(){boot.remove();},520);}
-    var t=setTimeout(bye,2500);
+      setTimeout(function(){boot.remove();},580);}
+    var t=setTimeout(bye,3400);
     boot.addEventListener('click',function(){clearTimeout(t);bye();});
   }
 }
@@ -425,22 +467,36 @@ def _robot(total: float) -> str:
 
 
 def _boot(total: float, n_positions: int, n_symbols: int) -> str:
-    """Repete OS boot splash: plays once per visit (~2.5s, click to skip),
-    hidden by default so no-JS visitors and reduced-motion users go straight
-    to the data. All lines are true."""
+    """Repete's CRT power-on splash (~3s, click to skip, once per visit):
+    scanline terminal, wordmark igniting letter by letter, robot eyes
+    powering on, boot log with a live cursor, and a candlestick tape as the
+    progress bar. Hidden by default — no-JS and reduced-motion visitors go
+    straight to the data. Every line is true."""
     lines = [
-        "REPETE OS v2.0 <span class=ok>[PAPER]</span>",
-        "reading the append-only ledger… <span class=ok>ok</span>",
-        f"waking the judge… <b>bull and bear reporting in</b>",
-        f"arming the risk rails… <span class=ok>all deterministic</span>",
+        "power on · repete os v2.1 <span class=ok>[paper]</span>",
+        "mounting the append-only ledger… <span class=ok>ok</span>",
+        "waking the judge… <b>bull and bear reporting in</b>",
+        "arming the risk rails… <span class=ok>all deterministic</span>",
         f"book: <b>{n_positions} position{'s' if n_positions != 1 else ''}"
         f"</b> · scanning <b>{n_symbols} names</b>",
         "market brain online <span class=ok>✓</span>",
     ]
-    lis = "".join(f'<div class=bl>{ln}</div>' for ln in lines)
+    log = "".join(f'<div class=bl>{ln}</div>' for ln in lines)
+    mark = "".join(f'<b style="animation-delay:{.15 + i * .07:.2f}s'
+                   f',{1.4 + i * .1:.2f}s">{c}</b>'
+                   for i, c in enumerate("REPETE"))
+    # the loading tape: 14 candles, deterministic pseudo-random green/red mix
+    candles = "".join(
+        f'<i class={"g" if (i * 7 + 3) % 10 > 3 else "r"} '
+        f'style="height:{8 + (i * 13 + 5) % 24}px;'
+        f'animation-delay:{.4 + i * .13:.2f}s"></i>'
+        for i in range(14))
     return (f'<div id=boot>{_robot(total)}'
-            f'<div class=bootname>Repete is booting</div>{lis}'
-            f'<div id=bootbar><i></i></div>'
+            f'<div class=sys>autonomous swing desk</div>'
+            f'<div class=mark>{mark}</div>'
+            f'<div class=tagline>the market brain is waking</div>'
+            f'<div class=log>{log}</div>'
+            f'<div id=candles>{candles}</div>'
             f'<div class=skip>click anywhere to skip</div></div>')
 
 
