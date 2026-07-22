@@ -852,13 +852,15 @@ def _run_cycle():
     # error budget is burned — escalate to a human (alert only; HALT stays
     # reserved for the daily-loss kill switch).
     check_degradation_slo(ledger, cfg)
-    try:  # dashboard/blog regeneration is cosmetic — never touches the cycle
+    try:  # dashboard/landing/blog regeneration is cosmetic — never touches the cycle
         import blog
         import dashboard
+        import landing
         dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
+        landing.render(cfg)
         blog.render(cfg)
     except Exception as e:  # noqa: BLE001
-        log.warning("dashboard/blog render failed: %s", e)
+        log.warning("dashboard/landing/blog render failed: %s", e)
     log.info("Cycle complete.")
 
 

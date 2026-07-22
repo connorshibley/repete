@@ -7,9 +7,16 @@ cd "$(dirname "$0")/.." || exit 0
 [ -d .site/.git ] || exit 0
 
 changed=0
-if [ -f dashboard.html ] && ! cmp -s dashboard.html .site/index.html; then
-  cp dashboard.html .site/index.html
+# index.html = the cream/orange landing page; the dark terminal lives at
+# dash.html (structure change 2026-07-21).
+if [ -f landing.html ] && ! cmp -s landing.html .site/index.html; then
+  cp landing.html .site/index.html
   git -C .site add index.html
+  changed=1
+fi
+if [ -f dashboard.html ] && ! cmp -s dashboard.html .site/dash.html; then
+  cp dashboard.html .site/dash.html
+  git -C .site add dash.html
   changed=1
 fi
 if [ -f journal.html ] && ! cmp -s journal.html .site/journal.html; then

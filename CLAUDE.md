@@ -119,6 +119,9 @@ src/journal.py   Public trade journal: ~500-word Fable-5 write-up per executed b
                  close (template fallback) -> memory/journal.jsonl (append-only) -> journal.html
                  on the GitHub Pages site; recap tweets link to #<trade_id>. Cosmetic — never
                  blocks trading. Engagement metrics are NEVER read; learning stays outcome-based.
+src/landing.py   Cream/orange public landing page (2026-07-21, Claude palette) — the
+                 site's index.html front door; the dark terminal dashboard moved to
+                 dash.html. Same conventions: self-contained, ledger-read, cosmetic.
 src/dashboard.py Self-contained dashboard.html — dark terminal theme, hero total-P/L banner
                  (equity - reporting.starting_equity), P/L-over-time + per-trade P/L charts,
                  equity curve, positions, decisions + judge reasoning (filter chips), lessons,
