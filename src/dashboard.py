@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ledger import Ledger
 from lessons import LessonStore
 from judgments import JudgmentStore, calibration_metrics, calibration_line
+import disclaimer
 import review
 
 OUT_PATH = "dashboard.html"
@@ -837,6 +838,7 @@ append-only audit trail is the source of truth, this page is a view.
 The bot narrates its trades and reasoning at
 <a class=x href="https://x.com/Repete2026" target="_blank"
 rel="noopener">x.com/Repete2026</a>.</p>
+<p class=small>{_esc(disclaimer.DISCLAIMER)}</p>
 </div><script>{JS}</script></body></html>"""
     with open(out_path, "w") as f:
         f.write(doc)

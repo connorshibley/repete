@@ -35,6 +35,10 @@ JOBS = [
     ("watchdog",     range(0, 5), 16,   15, [PY, "src/watchdog.py"]),
     ("review-post",  range(0, 5), 16,   20, [PY, "src/daily_posts.py", "review"]),
     ("weekly-learn", [6],         18,   0,  [PY, "src/learn.py", "--meta"]),
+    # Phase D: state backup nightly after the cycle; restore drill weekly —
+    # a backup that has never been restored is a hope, not a backup.
+    ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
+    ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),
 ]
 # news-brain runs hourly at :25 between these ET hours (market-day awareness)
 NEWS_HOURS = range(9, 16)

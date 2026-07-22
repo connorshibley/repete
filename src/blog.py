@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import disclaimer
+
 log = logging.getLogger("blog")
 
 OUT_PATH = "blog.html"
@@ -107,6 +109,7 @@ advice. <a href="index.html">dashboard</a> ·
 <a href="journal.html">trade journal</a> ·
 <a href="https://x.com/Repete2026">@Repete2026 on X ↗</a></p>
 {body}
+<p class=small>{html.escape(disclaimer.DISCLAIMER)}</p>
 </div></body></html>"""
     with open(out_path, "w") as f:
         f.write(doc)

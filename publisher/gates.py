@@ -3,17 +3,16 @@
 Checkout stays refused until EVERY gate passes, exactly like the trading
 gates: pre-registered thresholds, checked automatically, reasons published.
 """
+import os
+import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "src"))
 
-DISCLAIMER = (
-    "Repete is a PAPER-TRADING experiment. All fills are simulated; no real "
-    "money is traded. Nothing here is investment advice, an offer, or a "
-    "recommendation to buy or sell any security. Content is impersonal and "
-    "published on a regular schedule to all subscribers alike. Past "
-    "performance — simulated or otherwise — does not indicate future "
-    "results. Do your own research; consult a licensed advisor before "
-    "investing.")
+# Single source of truth (Phase C): src/disclaimer.py. Re-exported here so
+# existing `from publisher.gates import DISCLAIMER` callers keep working.
+from disclaimer import DISCLAIMER  # noqa: E402,F401
 
 
 def history_days(records: list[dict]) -> int:

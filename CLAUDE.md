@@ -73,6 +73,18 @@ src/store.py     Event-store backend behind one 2-method interface (2026-07-22, 
 src/health.py    One status object (heartbeat age, HALT, degradations today, slo_breach,
                  backend, open positions) for the watchdog, container HEALTHCHECK and a
                  future status page. Read-only.
+src/disclaimer.py Single source of the paper-trading/not-advice disclaimer (2026-07-22).
+                 Dashboard, journal, blog footers render it; publisher/gates.py
+                 re-exports it. Edit the text HERE only.
+src/evidence.py  Audit pack exporter (Phase C, 2026-07-22): `python src/evidence.py`
+                 writes a dated bundle (summary.md, performance.json, lineage.json,
+                 invariants.json) — per-trade decision lineage + machine-checked
+                 invariant spot checks. Offline + read-only by design (no broker,
+                 no keys); a missing stream is noted, never a crash.
+src/log.py       Structured JSON logging w/ secret redaction (Phase D, 2026-07-22):
+                 attach_json_handler() mirrors logs to logs/agent.jsonl; env values
+                 with secret-looking names are scrubbed to [REDACTED]. Additive —
+                 the human-readable launchd logs are untouched.
 src/memory.py    Retrieval layer: similar-setups trade sample for the judge (2026-07-21,
                  deterministic strategy/regime/symbol/indicator match — losers still
                  force-included; balanced random sample for signal-less callers),
@@ -144,7 +156,18 @@ publisher/       Phase B subscription publication (2026-07-22, PRODUCT.md): Fast
                  + reasoning/debate/confidence + journal), dry-run email outbox,
                  DRAFT legal pages. Checkout is refused in code until gates.revenue_gate
                  passes (invariant #10). Own mutable state in publisher_data/ (gitignored),
-                 NEVER in memory/.
+                 NEVER in memory/. Per-IP token-bucket rate limiting (Phase D,
+                 publisher/ratelimit.py — strictest on /auth/request-link, the
+                 email-sending endpoint; knobs under publisher.rate_limit).
+docs/            Ops docs (Phase D, 2026-07-22): runbooks.md, incident_response.md,
+                 secrets_rotation.md, slo.md, soc2_readiness.md (readiness map, NOT a
+                 compliance claim), go_live_checklist.md (the ordered laptop->live-product
+                 list — gates are never waived by enthusiasm).
+scripts/backup.sh + scripts/restore_drill.py  State backup (scheduler 17:00 ET, keeps
+                 14; .env never archived) + weekly restore drill (Sat 10:00) — a backup
+                 that has never been restored is a hope, not a backup.
+.github/workflows/ci.yml  Tests + pip-audit dependency CVE scan on every push/PR
+                 (suite is offline; no secrets in CI ever).
 src/main.py      Orchestrator: state -> signal -> judge -> rails -> execute -> ledger -> learn -> post.
 config.yaml      All parameters. .env holds secrets (never commit).
 ```

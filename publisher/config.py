@@ -30,6 +30,14 @@ DEFAULTS = {
     "email": {"dry_run": True, "from": "repete@localhost"},
     "billing": {"paid_price_usd_month": 15},
     "free_delay_days": 1,            # free tier sees decisions delayed
+    # Per-IP token buckets (Phase D). request-link is strictest: it sends
+    # email, so it is the abuse magnet. capacity = burst, per minute = refill.
+    "rate_limit": {
+        "enabled": True,
+        "auth_per_minute": 3, "auth_burst": 5,
+        "billing_per_minute": 6, "billing_burst": 10,
+        "global_per_minute": 60, "global_burst": 120,
+    },
 }
 
 

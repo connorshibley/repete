@@ -56,6 +56,8 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(),
               logging.FileHandler("logs/agent.log", mode="a")],
 )
+import log as structlog  # noqa: E402 — after basicConfig on purpose
+structlog.attach_json_handler()  # JSON mirror w/ secret redaction (Phase D)
 log = logging.getLogger("main")
 
 

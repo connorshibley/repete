@@ -445,6 +445,8 @@ def main():
         print("\nVerdict: gate metrics look satisfied — re-run the backtest and "
               "review the trials log before even considering the live switch.")
 
+    print("\nAudit pack (Phase C): python src/evidence.py --out evidence/")
+
 
 if __name__ == "__main__":
     main()

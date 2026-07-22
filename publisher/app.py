@@ -15,10 +15,24 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from publisher import auth, billing, config, content, digest, gates, legal
+from publisher.ratelimit import Limiter
 from publisher.readonly import ReadOnlyLedger, agent_paths
 from publisher.subscribers import SubscriberDB
 
 app = FastAPI(title="Repete — publisher", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Per-IP token buckets (Phase D). 429 before any handler runs."""
+    if not hasattr(request.app.state, "limiter"):
+        request.app.state.limiter = Limiter(
+            _cfg(request)["publisher"].get("rate_limit") or {})
+    ip = request.client.host if request.client else "unknown"
+    if not request.app.state.limiter.check(request.url.path, ip):
+        return JSONResponse({"detail": "rate limited — slow down"},
+                            status_code=429)
+    return await call_next(request)
 
 
 # ---- wiring (overridable in tests via app.state) ----

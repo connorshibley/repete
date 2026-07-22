@@ -62,7 +62,7 @@ def pub_env(tmp_path, monkeypatch):
     app.state.secret = b"test-secret-key"
     client = TestClient(app)
     yield client, cfg, tmp_path
-    for attr in ("cfg", "db", "ledger", "secret"):
+    for attr in ("cfg", "db", "ledger", "secret", "limiter"):
         if hasattr(app.state, attr):
             delattr(app.state, attr)
 

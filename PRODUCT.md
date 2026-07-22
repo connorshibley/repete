@@ -1,8 +1,9 @@
 # PRODUCT.md — turning Repete into a subscription publication
 
-Status: **Phase A in progress.** Nothing is for sale. No money may be
-collected until the gates in §Revenue below are met and an attorney has
-reviewed the model.
+Status: **Phases A–D built (2026-07-22).** Nothing is for sale. No money may
+be collected until the gates in §Revenue below are met and an attorney has
+reviewed the model. The ordered path from here to a live product is
+`docs/go_live_checklist.md`.
 
 ---
 
@@ -113,16 +114,34 @@ Env vars: PUBLISHER_SESSION_SECRET (required), RESEND_API_KEY (real email),
 STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET (real billing). Absent keys =
 dry-run/stub — behavior flips via environment, never code.
 
-### Phase C — Trust & compliance artifacts
-Disclaimer component on every surface; ToS / Privacy / Risk Disclosure
-scaffolding marked `DRAFT — REQUIRES ATTORNEY REVIEW`; `src/evidence.py`
-exporting an audit pack (invariant proof, decision lineage, monthly
-performance, model-version segments).
+### Phase C — Trust & compliance artifacts ✅ built (2026-07-22)
+- **One canonical disclaimer** (`src/disclaimer.py`): dashboard, journal,
+  and blog footers render it; `publisher/gates.py` re-exports it — the
+  agent's pages and the publisher can never drift apart.
+- **Audit pack exporter** (`src/evidence.py`): `python src/evidence.py`
+  writes a dated bundle — `summary.md` (gates + counts + model version),
+  `performance.json` (report card, monthly scorecard, model-version
+  segments), `lineage.json` (per-trade chain: entry decision → judge
+  verdict → exit outcome), `invariants.json` (machine-checked spot checks:
+  interlock, stream integrity, outcome embargo, every-entry-judged,
+  disclaimer presence). Offline and read-only; exportable with zero keys.
+- Legal-page scaffolding was already shipped in Phase B
+  (`publisher/legal.py`, headed DRAFT — REQUIRES ATTORNEY REVIEW).
 
-### Phase D — Enterprise hardening
-SLOs + runbooks, dependency scanning in CI, secrets rotation, automated
-backups **with a restore drill**, rate limiting, structured logging with no
-secrets, incident response doc, SOC 2 readiness checklist.
+### Phase D — Enterprise hardening ✅ built (2026-07-22)
+- **CI** (`.github/workflows/ci.yml`): pytest + pip-audit CVE scan on every
+  push/PR; the suite is offline so CI holds zero secrets.
+- **Backups with a restore drill**: `scripts/backup.sh` (nightly 17:00 ET
+  via the scheduler, keeps 14, never archives .env) +
+  `scripts/restore_drill.py` (Sat 10:00 — extracts the newest archive and
+  proves it parses record-for-record; FAIL exits nonzero).
+- **Rate limiting** (`publisher/ratelimit.py`): per-IP token buckets,
+  strictest on the email-sending endpoint; 429 from middleware.
+- **Structured logging with secret redaction** (`src/log.py`):
+  JSON-lines mirror at logs/agent.jsonl; secret-named env values scrubbed.
+- **Ops docs** (`docs/`): runbooks, incident response, secrets rotation,
+  SLOs, SOC 2 readiness map (explicitly not a compliance claim), and the
+  real-world go-live checklist.
 
 ### Phase E — Product surface
 Authenticated subscriber dashboard (reusing `dashboard.py` renderers),
