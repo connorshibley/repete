@@ -1,0 +1,29 @@
+# CI (Phase D, 2026-07-22): tests + dependency CVE scan on every push/PR.
+# The suite is fully offline by design (no secrets configured here, ever).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -r requirements.txt -r requirements-publisher.txt
+          pip install pytest pip-audit
+      - name: Dependency CVE scan (pip-audit)
+        # Advisory, not blocking: a new CVE in a transitive dep should show
+        # up loudly in the log without freezing trading-agent development.
+        continue-on-error: true
+        run: pip-audit -r requirements.txt -r requirements-publisher.txt
+      - name: Tests (offline)
+        run: python -m pytest tests/ -q
