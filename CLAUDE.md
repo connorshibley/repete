@@ -136,6 +136,15 @@ src/dashboard.py Self-contained dashboard.html — dark terminal theme, hero tot
                  to https://connorshibley.github.io/trading-agent-dashboard/ (public repo).
                  The news brain (market_context) refreshes hourly 9:25-15:25 ET on
                  claude-haiku-4-5 (news.model) via com.trading-agent.newsbrain.
+publisher/       Phase B subscription publication (2026-07-22, PRODUCT.md): FastAPI
+                 service reading agent state via ReadOnlyLedger (no write methods —
+                 invariant #9 is an AttributeError, and the compose mount is :ro).
+                 Magic-link auth (token hashes only), Stripe stub/live billing,
+                 tiered feed (free: 1-day delay, no judge reasoning; paid: same-day
+                 + reasoning/debate/confidence + journal), dry-run email outbox,
+                 DRAFT legal pages. Checkout is refused in code until gates.revenue_gate
+                 passes (invariant #10). Own mutable state in publisher_data/ (gitignored),
+                 NEVER in memory/.
 src/main.py      Orchestrator: state -> signal -> judge -> rails -> execute -> ledger -> learn -> post.
 config.yaml      All parameters. .env holds secrets (never commit).
 ```

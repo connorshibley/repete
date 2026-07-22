@@ -22,3 +22,21 @@ services:
       timeout: 30s
       start_period: 1m
       retries: 2
+
+  # Publisher (Phase B): read-only against memory/, own state volume.
+  #   docker compose --profile publisher up -d
+  publisher:
+    build: .
+    profiles: ["publisher"]
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements-publisher.txt &&
+             uvicorn publisher.app:app --host 0.0.0.0 --port 8080"
+    ports: ["8080:8080"]
+    volumes:
+      - ./memory:/app/memory:ro        # READ-ONLY mount — invariant #9 at
+                                       # the filesystem level, not just code
+      - ./publisher_data:/app/publisher_data
+      - ./requirements-publisher.txt:/app/requirements-publisher.txt:ro
+      - ./publisher:/app/publisher:ro

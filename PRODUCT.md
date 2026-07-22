@@ -94,11 +94,24 @@ one-trade record. Build now, charge later.
   today, SLO breach, storage backend, open positions) for the watchdog,
   container healthcheck, and future status page.
 
-### Phase B — Publisher platform (next)
-FastAPI service in `publisher/`, importing the agent's stores read-only.
-Magic-link auth, Stripe checkout + webhooks + entitlements, tiered content
-(free = delayed summary, paid = same-day detail + judge reasoning), email
-digests, and the revenue gate enforced in code.
+### Phase B — Publisher platform ✅ built (2026-07-22)
+FastAPI service in `publisher/`, importing the agent's stores through a
+`ReadOnlyLedger` that has no write methods. Magic-link auth (no passwords,
+token hashes only), Stripe checkout + webhooks + entitlements (stub mode
+without keys), tiered content (free = 1-day delay, judge reasoning
+withheld; paid = same-day + full reasoning/debate/confidence + journal),
+dry-run email digests (outbox.jsonl unless RESEND_API_KEY set), DRAFT
+legal pages, and the revenue gate enforced at the checkout boundary.
+
+Run it:
+```bash
+PUBLISHER_SESSION_SECRET=$(python -c "import secrets; print(secrets.token_hex(32))") \
+  uvicorn publisher.app:app --port 8080          # local
+docker compose --profile publisher up -d          # container (memory/ mounted :ro)
+```
+Env vars: PUBLISHER_SESSION_SECRET (required), RESEND_API_KEY (real email),
+STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET (real billing). Absent keys =
+dry-run/stub — behavior flips via environment, never code.
 
 ### Phase C — Trust & compliance artifacts
 Disclaimer component on every surface; ToS / Privacy / Risk Disclosure
