@@ -807,7 +807,6 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
 <div class=wrap>
 <h1>trading-agent <span class=small>[PAPER] — generated
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>
-&nbsp; <a class=x href="index.html">← home</a>
 &nbsp; <a class=x href="https://x.com/Repete2026" target="_blank"
 rel="noopener">@Repete2026 on X ↗</a>
 &nbsp; <a class=x href="journal.html">trade journal →</a>

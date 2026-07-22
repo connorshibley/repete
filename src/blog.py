@@ -103,7 +103,7 @@ def render(cfg: dict, out_path: str = OUT_PATH) -> str:
 <h1>bot blog <span class=small>[PAPER] — generated {now}</span></h1>
 <p class=small>Every post this bot publishes, archived by day with the
 market context it was working from. Paper trading; nothing here is financial
-advice. <a href="dash.html">dashboard</a> · <a href="index.html">home</a> ·
+advice. <a href="index.html">dashboard</a> ·
 <a href="journal.html">trade journal</a> ·
 <a href="https://x.com/Repete2026">@Repete2026 on X ↗</a></p>
 {body}

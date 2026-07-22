@@ -138,7 +138,7 @@ def render(cfg: dict, out_path: str = OUT_PATH,
 <p class=small>Every trade this bot makes, explained: the opportunity, the
 strategy's logic, the AI judge's view, and the risk plan. Paper trading —
 nothing here is financial advice.
-<a href="dash.html">← dashboard</a> · <a href="index.html">home</a> ·
+<a href="index.html">← dashboard</a> ·
 <a href="blog.html">blog</a> ·
 <a href="https://x.com/Repete2026">@Repete2026 on X ↗</a></p>
 {body}
