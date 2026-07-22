@@ -22,17 +22,19 @@ TERMINAL = ("refuted", "retired")
 _LEGACY_BULLET = re.compile(r"^- \*\*(\d{4}-\d{2}-\d{2})\*\*(?: \(trade ([^)]+)\))?: (.+)$")
 
 
+import store as store_mod
+
+
 class LessonStore:
     def __init__(self, path: str):
         self.path = path
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        self._store = store_mod.open_store(path)
 
     # ---- writes (append-only) ----
 
     def append(self, record: dict):
         record["ts"] = datetime.now(timezone.utc).isoformat()
-        with open(self.path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        self._store.append(record)
 
     def add_lesson(self, hypothesis: str, scope: dict, source: str) -> str:
         lesson_id = f"ls-{uuid.uuid4().hex[:8]}"
@@ -57,10 +59,7 @@ class LessonStore:
     # ---- reads (replay) ----
 
     def _records(self) -> list[dict]:
-        if not os.path.exists(self.path):
-            return []
-        with open(self.path) as f:
-            return [json.loads(line) for line in f if line.strip()]
+        return self._store.read_all()
 
     def replay(self) -> dict:
         """lesson_id -> current state (lesson fields + status + evidence)."""

@@ -12,12 +12,15 @@ from datetime import datetime, timezone
 
 import uuid
 
+import store as store_mod
+
 
 class Ledger:
     def __init__(self, path: str):
         self.path = path
         self.model_version: str | None = None  # set once per cycle (modelver)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Backend chosen once at startup (store.configure); JSONL by default.
+        self._store = store_mod.open_store(path)
 
     def set_model_version(self, version: str | None):
         """Stamp every subsequent record with the decision-surface
@@ -28,8 +31,7 @@ class Ledger:
         record["ts"] = datetime.now(timezone.utc).isoformat()
         if self.model_version:
             record.setdefault("model_version", self.model_version)
-        with open(self.path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        self._store.append(record)
 
     # ---- decision records ----
 
@@ -97,10 +99,7 @@ class Ledger:
     # ---- reads ----
 
     def all_records(self) -> list[dict]:
-        if not os.path.exists(self.path):
-            return []
-        with open(self.path) as f:
-            return [json.loads(line) for line in f if line.strip()]
+        return self._store.read_all()
 
     def open_buys(self) -> dict:
         """trade_id -> decision record for executed buys with no outcome yet."""

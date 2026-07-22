@@ -64,7 +64,15 @@ src/risk.py      Hard rails: sizing (meanrev: stop-distance risk sizing, gate 20
                  the live-side mirror of the enablement gate, registered before any strategy
                  was near the threshold). Degradation SLO: ops.max_degradations_per_day
                  fail-open events in one day -> slo_breach event + macOS alert (main.py).
-src/ledger.py    Append-only JSONL audit trail. Outcomes written only after close (outcome embargo).
+src/ledger.py    Append-only audit trail. Outcomes written only after close (outcome embargo).
+src/store.py     Event-store backend behind one 2-method interface (2026-07-22, backlog #4):
+                 JsonlStore (DEFAULT, unchanged) | SqliteStore (container/server deploys).
+                 store.configure(cfg) picks it ONCE at cycle start; a config typo falls
+                 back to jsonl on purpose. Ledger/Lessons/Judgments/PostExit are all
+                 backend-agnostic. Migrate + verify: scripts/migrate_jsonl_to_sqlite.py.
+src/health.py    One status object (heartbeat age, HALT, degradations today, slo_breach,
+                 backend, open positions) for the watchdog, container HEALTHCHECK and a
+                 future status page. Read-only.
 src/memory.py    Retrieval layer: similar-setups trade sample for the judge (2026-07-21,
                  deterministic strategy/regime/symbol/indicator match — losers still
                  force-included; balanced random sample for signal-less callers),
@@ -157,7 +165,13 @@ config.yaml      All parameters. .env holds secrets (never commit).
    `memory/lessons.jsonl` — never hand-edit it.
 7. **X posts disclose [PAPER]** while paper trading. Never remove the disclosure.
 8. **Secrets stay in .env** and out of git. Never print keys to logs.
-9. If the owner asks to go live, walk them through the go-live gate in GUIDE.md §9
+9. **The publisher layer is READ-ONLY.** Nothing in a subscriber/billing/email/web
+   surface may write to the ledger or influence a trading decision — a cycle must
+   behave identically whether the publisher runs or not (see PRODUCT.md). Publishing
+   that could affect trading would stop the track record from being evidence.
+10. **No money before the revenue gates.** PRODUCT.md: >=30 closed trades, >=3 months
+   live, attorney review, legal pages published. Same discipline as the trading gates.
+11. If the owner asks to go live, walk them through the go-live gate in GUIDE.md §9
    first (2–3 months paper, ≥30 closed trades, beats buy-and-hold) instead of just flipping it.
 
 ## Conventions

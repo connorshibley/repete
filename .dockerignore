@@ -1,0 +1,15 @@
+# Build context hygiene: never ship secrets, state, or local tooling.
+.env
+.git
+.venv
+.site
+memory/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+dashboard.html
+journal.html
+blog.html
+landing.html

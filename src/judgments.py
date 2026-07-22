@@ -18,15 +18,17 @@ from datetime import datetime, timezone
 MIN_RESOLVED_FOR_SIGNAL = 30  # below this, calibration is labeled noise
 
 
+import store as store_mod
+
+
 class JudgmentStore:
     def __init__(self, path: str):
         self.path = path
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        self._store = store_mod.open_store(path)
 
     def _append(self, record: dict):
         record["ts"] = datetime.now(timezone.utc).isoformat()
-        with open(self.path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        self._store.append(record)
 
     def log_judgment(self, trade_id: str, symbol: str, action: str, verdict: str,
                      scale: float, price: float, regime: str | None, kind: str,
@@ -54,10 +56,7 @@ class JudgmentStore:
                       "exit_reason": exit_reason, "assessment": assessment})
 
     def _records(self) -> list[dict]:
-        if not os.path.exists(self.path):
-            return []
-        with open(self.path) as f:
-            return [json.loads(line) for line in f if line.strip()]
+        return self._store.read_all()
 
     def replay(self) -> dict:
         """judgment_id -> judgment with attached resolution (or None)."""

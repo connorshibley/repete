@@ -324,6 +324,12 @@ reporting:
   heat_gap_atr_fraction: 0.5     # review.py heat report: modeled stop gap-through
                                  # (stops do not fill AT the stop) as a fraction of ATR
 
+storage:                 # EVENT STORE BACKEND (2026-07-22, backlog #4)
+  backend: jsonl         # jsonl (default, unchanged) | sqlite (container/server
+                         # deploys: atomic appends, one file to back up). The
+                         # audit trail stays APPEND-ONLY either way.
+  sqlite_path: memory/agent.db
+
 memory:
   ledger_path: memory/ledger.jsonl
   learnings_path: memory/learnings.md

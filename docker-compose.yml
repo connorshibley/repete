@@ -1,0 +1,24 @@
+# Always-on agent (2026-07-22). Secrets come from .env on the HOST — the
+# file is never copied into the image and stays out of git.
+#
+#   docker compose up -d          # run the scheduler forever
+#   docker compose run --rm agent python src/main.py     # one cycle
+#   docker compose run --rm agent python src/health.py   # status
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/New_York
+    volumes:
+      # State is a volume, not image content: the audit trail must survive
+      # every rebuild and redeploy.
+      - ./memory:/app/memory
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "src/health.py"]
+      interval: 5m
+      timeout: 30s
+      start_period: 1m
+      retries: 2

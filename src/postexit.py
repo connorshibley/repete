@@ -39,21 +39,20 @@ def _cfg(cfg: dict) -> dict:
     return {**DEFAULTS, **(cfg.get("learning", {}).get("postexit") or {})}
 
 
+import store as store_mod
+
+
 class PostExitStore:
     def __init__(self, path: str):
         self.path = path
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        self._store = store_mod.open_store(path)
 
     def append(self, record: dict):
         record["ts"] = datetime.now(timezone.utc).isoformat()
-        with open(self.path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        self._store.append(record)
 
     def _records(self) -> list[dict]:
-        if not os.path.exists(self.path):
-            return []
-        with open(self.path) as f:
-            return [json.loads(line) for line in f if line.strip()]
+        return self._store.read_all()
 
     def replay(self) -> dict:
         """trade_id -> track state {track fields, marks: {day: mark}, verdict}."""

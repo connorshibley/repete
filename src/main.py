@@ -30,6 +30,7 @@ import postexit
 import preflight
 import regime as regime_mod
 import risk
+import store
 import strategies
 import strategy
 import x_poster
@@ -353,6 +354,9 @@ def _run_cycle():
         except Exception:  # noqa: BLE001
             pass
         return
+
+    # Storage backend is chosen ONCE, before any store is constructed.
+    store.configure(cfg)
 
     ledger = Ledger(cfg["memory"]["ledger_path"])
     # Decision-surface fingerprint: every record this cycle carries the
