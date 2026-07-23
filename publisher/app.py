@@ -190,7 +190,8 @@ def checkout(request: Request, email: str = Depends(require_session)):
 async def webhook(request: Request):
     payload = await request.body()
     out = billing.handle_webhook(_cfg(request), _db(request), payload,
-                                 request.headers.get("stripe-signature"))
+                                 request.headers.get("stripe-signature"),
+                                 _ledger(request))
     if not out["ok"]:
         raise HTTPException(400, detail=out)
     return out

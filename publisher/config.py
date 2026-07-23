@@ -23,12 +23,14 @@ DEFAULTS = {
     "data_dir": "publisher_data",
     "attorney_signoff": False,       # flipped only after counsel review
     "legal_pages_final": False,      # flipped when ToS/Privacy/Risk are final
-    "revenue": {
-        "min_closed_trades": 30,
-        "min_history_days": 90,
-    },
+    # NOTE: the numeric revenue-gate thresholds are NOT config — they are
+    # hardcoded constants in publisher/gates.py (MIN_CLOSED_TRADES /
+    # MIN_HISTORY_DAYS) so a config edit can't lower the invariant-#10 bar.
     "email": {"dry_run": True, "from": "repete@localhost"},
-    "billing": {"paid_price_usd_month": 15},
+    "billing": {"paid_price_usd_month": 15,
+                # An unsigned stub webhook must not grant entitlements in a real
+                # deployment; enable only for offline testing.
+                "stub_webhook_grants": False},
     "free_delay_days": 1,            # free tier sees decisions delayed
     # Per-IP token buckets (Phase D). request-link is strictest: it sends
     # email, so it is the abuse magnet. capacity = burst, per minute = refill.

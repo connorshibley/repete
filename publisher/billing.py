@@ -49,9 +49,17 @@ def create_checkout(cfg: dict, ledger, db, email: str) -> dict:
 
 
 def handle_webhook(cfg: dict, db, payload: bytes,
-                   sig_header: str | None) -> dict:
+                   sig_header: str | None, ledger=None) -> dict:
     """Grant/revoke entitlements from billing events. In live mode the
-    signature is verified or the event is rejected — no exceptions."""
+    signature is verified or the event is rejected — no exceptions.
+
+    Two guards protect invariant #10 (no entitlements before the gates):
+      1. A grant is refused while the revenue gate is closed — defense in depth
+         alongside the gated create_checkout (revocations always proceed).
+      2. Stub mode (no Stripe keys) accepts UNSIGNED JSON from anyone, so it
+         must not hand out entitlements in a real deployment: stub grants are
+         inert unless publisher.billing.stub_webhook_grants is explicitly set
+         (tests / intentional offline testing)."""
     if stripe_mode() == "live":
         import stripe
         try:
@@ -75,15 +83,33 @@ def handle_webhook(cfg: dict, db, payload: bytes,
     if not email:
         return {"ok": False, "error": "no_email"}
 
-    if etype in ("checkout.session.completed",
-                 "invoice.payment_succeeded"):
+    granting = etype in ("checkout.session.completed",
+                         "invoice.payment_succeeded")
+    revoking = etype in ("customer.subscription.deleted",
+                         "invoice.payment_failed")
+
+    if granting:
+        # Guard 2: an unsigned stub webhook must never grant in production.
+        if stripe_mode() == "stub" and not (
+                cfg["publisher"].get("billing") or {}).get(
+                    "stub_webhook_grants"):
+            return {"ok": False, "error": "stub_webhook_grants_disabled",
+                    "detail": "stub billing webhook is inert unless "
+                              "publisher.billing.stub_webhook_grants is set — "
+                              "configure real Stripe keys for production"}
+        # Guard 1: no entitlement before the revenue gate opens.
+        from publisher.gates import revenue_gate
+        open_, reasons = revenue_gate(cfg, ledger) if ledger is not None \
+            else (False, ["no ledger available to evaluate the revenue gate"])
+        if not open_:
+            return {"ok": False, "error": "revenue_gate_closed",
+                    "reasons": reasons}
         db.upsert_subscriber(email)
         db.grant(email, "paid",
                  source=f"stripe:{data.get('subscription') or data.get('id')}")
         return {"ok": True, "granted": email}
-    if etype in ("customer.subscription.deleted",
-                 "invoice.payment_failed"):
-        db.revoke(email, "paid")
+    if revoking:
+        db.revoke(email, "paid")   # revocation is always safe, gate or not
         return {"ok": True, "revoked": email}
     return {"ok": True, "ignored": etype,
             "at": datetime.now(timezone.utc).isoformat()}

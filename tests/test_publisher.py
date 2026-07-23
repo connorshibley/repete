@@ -247,19 +247,106 @@ def test_entitlement_expiry_downgrades(pub_env):
     assert db.tier("exp@x.com") == "free"
 
 
-# ---- billing stub webhook ----
+# ---- billing stub webhook (invariant #10 guards) ----
 
-def test_stub_webhook_grants_and_revokes(pub_env):
-    client, cfg, tmp_path = pub_env
-    evt = {"type": "checkout.session.completed",
-           "data": {"object": {"customer_email": "buyer@x.com",
-                               "subscription": "sub_1"}}}
-    r = client.post("/billing/webhook", content=json.dumps(evt))
+@pytest.fixture()
+def open_gate_env(tmp_path, monkeypatch):
+    """A publisher env with the revenue gate OPEN (30 closed trades, 120d
+    history, attestations set) and stub webhook grants enabled for testing."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PUBLISHER_SESSION_SECRET", "test-secret-key")
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    first = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    _seed_agent_state(tmp_path, n_closed=30, first_ts=first)
+    (tmp_path / "config.yaml").write_text(json.dumps({
+        "mode": "paper",
+        "memory": {"ledger_path": "memory/ledger.jsonl"},
+        "x_posting": {"journal_path": "memory/journal.jsonl"},
+        "publisher": {"attorney_signoff": True, "legal_pages_final": True,
+                      "billing": {"stub_webhook_grants": True}},
+    }))
+    cfg = pconfig.load(str(tmp_path))
+    app.state.cfg = cfg
+    app.state.db = SubscriberDB(str(tmp_path / "publisher_data" / "pub.db"))
+    app.state.ledger = ReadOnlyLedger("memory/ledger.jsonl", cfg)
+    app.state.secret = b"test-secret-key"
+    yield TestClient(app), cfg, tmp_path
+    for attr in ("cfg", "db", "ledger", "secret", "limiter"):
+        if hasattr(app.state, attr):
+            delattr(app.state, attr)
+
+
+def _grant_evt():
+    return {"type": "checkout.session.completed",
+            "data": {"object": {"customer_email": "buyer@x.com",
+                                "subscription": "sub_1"}}}
+
+
+def test_stub_webhook_refused_while_gate_closed(pub_env):
+    """Invariant #10: a stub webhook must not grant entitlements while the
+    revenue gate is closed (the audit's ungated-grant bypass)."""
+    client, cfg, tmp_path = pub_env  # gate closed (1 trade, no attestations)
+    r = client.post("/billing/webhook", content=json.dumps(_grant_evt()))
+    assert r.status_code == 400
+    assert app.state.db.tier("buyer@x.com") == "free"  # never granted
+
+
+def test_stub_webhook_inert_without_optin_even_when_gate_open(
+        tmp_path, monkeypatch):
+    """An unsigned stub webhook must not grant unless explicitly enabled, even
+    with the gate open — protects a production deploy that forgot Stripe keys."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PUBLISHER_SESSION_SECRET", "test-secret-key")
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    first = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    _seed_agent_state(tmp_path, n_closed=30, first_ts=first)
+    (tmp_path / "config.yaml").write_text(json.dumps({
+        "memory": {"ledger_path": "memory/ledger.jsonl"},
+        "publisher": {"attorney_signoff": True, "legal_pages_final": True},
+    }))  # stub_webhook_grants defaults False
+    cfg = pconfig.load(str(tmp_path))
+    app.state.cfg = cfg
+    app.state.db = SubscriberDB(str(tmp_path / "publisher_data" / "pub.db"))
+    app.state.ledger = ReadOnlyLedger("memory/ledger.jsonl", cfg)
+    app.state.secret = b"test-secret-key"
+    try:
+        r = TestClient(app).post("/billing/webhook",
+                                 content=json.dumps(_grant_evt()))
+        assert r.status_code == 400 and "stub_webhook_grants_disabled" in r.text
+        assert app.state.db.tier("buyer@x.com") == "free"
+    finally:
+        for attr in ("cfg", "db", "ledger", "secret", "limiter"):
+            if hasattr(app.state, attr):
+                delattr(app.state, attr)
+
+
+def test_stub_webhook_grants_and_revokes_when_gate_open(open_gate_env):
+    client, cfg, tmp_path = open_gate_env
+    r = client.post("/billing/webhook", content=json.dumps(_grant_evt()))
     assert r.status_code == 200 and app.state.db.tier("buyer@x.com") == "paid"
     evt2 = {"type": "customer.subscription.deleted",
             "data": {"object": {"customer_email": "buyer@x.com"}}}
     client.post("/billing/webhook", content=json.dumps(evt2))
-    assert app.state.db.tier("buyer@x.com") == "free"
+    assert app.state.db.tier("buyer@x.com") == "free"  # revoke always proceeds
+
+
+def test_revenue_thresholds_not_config_overridable(tmp_path, monkeypatch):
+    """Invariant #10: lowering publisher.revenue.* in config must NOT open the
+    gate — the numeric thresholds are hardcoded constants in gates.py."""
+    monkeypatch.chdir(tmp_path)
+    _seed_agent_state(tmp_path, n_closed=3)  # only 3 closed trades
+    (tmp_path / "config.yaml").write_text(json.dumps({
+        "memory": {"ledger_path": "memory/ledger.jsonl"},
+        "publisher": {"attorney_signoff": True, "legal_pages_final": True,
+                      "revenue": {"min_closed_trades": 1,      # attempt to
+                                  "min_history_days": 0}},     # weaken the gate
+    }))
+    cfg = pconfig.load(str(tmp_path))
+    led = Ledger(str(tmp_path / "memory" / "ledger.jsonl"))
+    open_, reasons = gates.revenue_gate(cfg, led)
+    assert not open_                                    # override ignored
+    assert any("gate: 30" in r for r in reasons)        # hardcoded 30 still wins
 
 
 # ---- digest / email ----
