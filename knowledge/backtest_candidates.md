@@ -226,3 +226,53 @@ window (PF 1.02 — momentum has been thin in the 20-name universe lately).
 This is exactly the drift class src/revalidate.py (also added 2026-07-21)
 exists to catch quarterly. No action beyond the expansion (which restores
 tsmom's OOS to PF 1.72); live_kill remains the realized-trades fast path.
+
+## §11 — risk_sizing.risk_pct 0.1 → 5.0 (2026-07-23) — ADOPTED, but it does not bind
+
+Owner requested 5% per-trade risk. Re-run on the SAME frozen snapshot §8 used
+(`memory/bars_snapshot_2020_2026-07-10.json`, 25 symbols × 1637 bars,
+2020-01-02 → 2026-07-09), live params, no grid re-search, per the METHOD NOTE.
+
+**This is NOT a re-validation of §8.** §8 deliberately pre-registered 0.10%
+*because* it produced the same notional scale as 1%-notional sizing, so the
+test measured "allocation shape, not leverage". 5% asks a different question of
+the same data, so it is recorded here as a new section.
+
+Applying §8's pre-registered rule (adopt iff (a) OOS return > baseline,
+(b) OOS maxDD ≤ baseline + 0.25pp, (c) IS return ≥ baseline):
+
+| risk_pct | IS return | OOS return | OOS maxDD | OOS trades | OOS PF | verdict |
+|---|---|---|---|---|---|---|
+| 0.1 (baseline, §8) | +1.34% | +2.24% | 0.3% | 160 | 2.282 | — |
+| 1.0 | +1.87% | +2.63% | 0.5% | 161 | 2.164 | passes |
+| 2.0 | +1.87% | +2.63% | 0.5% | 161 | 2.164 | passes |
+| **5.0** | **+1.87%** | **+2.63%** | **0.5%** | **161** | **2.164** | **PASSES** |
+
+(a) +2.63 > +2.24 ✓  (b) 0.5 ≤ 0.55 ✓  (c) +1.87 ≥ +1.34 ✓ → ADOPTED.
+
+**The finding that matters more than the verdict:** 1.0, 2.0 and 5.0 are
+*byte-identical*. They are the same setting. `risk.size_order()` applies
+`max_order_value_usd` ($2,000) AFTER the risk-based calculation, so on $100k
+equity every one of them clamps to a $2,000 position:
+
+| risk_pct | stop 4% | stop 7% | stop 15% |
+|---|---|---|---|
+| 0.1 | $2,000 / $80 loss | $1,400 / $98 | $600 / $90 |
+| 1.0 / 2.0 / 5.0 | $2,000 / $80 | $2,000 / $140 | $2,000 / $300 |
+
+So the gate validated **"$2,000-capped sizing beats 0.1%-uncapped sizing"**,
+not "5% risk is safe". True per-trade risk stays 0.08–0.3% of equity.
+
+Two corrections to claims made on 2026-07-22 while raising this parameter,
+both refuted by the code and re-measured here:
+1. "One 5% stop-out risks $5,000 and trips the 3% daily kill switch" — **false**.
+   The clamp caps a single loss at ~$80–300; the kill switch fires at $3,000.
+2. "At `max_portfolio_heat_pct: 4.0` every meanrev entry would be rejected" —
+   **false**. Four open positions total ~$560 of heat against a $4,000 cap; a
+   fifth entry is allowed. The cap was never binding, so the 4.0 → 10.0 raise
+   was unnecessary and has been **reverted**.
+
+**Consequence / open question:** the effective position-size lever is
+`max_order_value_usd`, not `risk_pct`. Raising it would make 5% genuinely bind,
+and only then could a single stop-out approach `daily_loss_limit_pct`. That
+pairing must get its own gate run before it is changed.
