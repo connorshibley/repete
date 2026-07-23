@@ -91,7 +91,7 @@ def feed(cfg: dict, ledger, tier: str,
         cfg["publisher"]["free_delay_days"],
     }
     if paid:
-        journal = read_stream(agent_paths(cfg)["journal"])
+        journal = read_stream(agent_paths(cfg)["journal"], cfg)
         out["journal"] = [{"trade_id": e.get("trade_id"),
                            "ts": e.get("ts"), "title": e.get("title"),
                            "text": e.get("text")} for e in journal[-10:]]

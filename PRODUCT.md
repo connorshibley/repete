@@ -161,3 +161,20 @@ python scripts/migrate_jsonl_to_sqlite.py --verify    # backend parity check
 Switching backends: migrate, verify, then set `storage.backend: sqlite` in
 `config.yaml`. JSONL stays the default and the fallback — a config typo can
 never silently move the audit trail (there is a test for that).
+
+Persistence and publishing in the container:
+- `docker-compose.yml` mounts `./memory`, `./logs`, **and `./backups`** as
+  volumes — backups must survive a rebuild/redeploy, not live in the container's
+  ephemeral layer.
+- The scheduler chains `scripts/publish_dashboard.sh` after the cycle and the
+  plan/review posts, so the public dashboard/journal are pushed the same way
+  the laptop path pushes them. Publishing needs a `.site/.git` checkout with
+  push credentials mounted into the container; absent that, publish is a clean
+  no-op.
+- `tzdata` is pinned in `requirements.txt` so the scheduler's timezone handling
+  never depends on the base image shipping zoneinfo data.
+
+Laptop (launchd) path: render and install the jobs for the current checkout
+with `sh scripts/install_launchd.sh --load` — the committed plists carry a
+`{{AGENT_ROOT}}` placeholder so a moved or freshly-cloned repo never runs a
+stale absolute path.

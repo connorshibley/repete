@@ -146,26 +146,42 @@ src/dashboard.py Self-contained dashboard.html — dark terminal theme, hero tot
                  Regenerated at every scheduled
                  touchpoint and published with journal.html via scripts/publish_dashboard.sh
                  to https://connorshibley.github.io/trading-agent-dashboard/ (public repo).
+                 Both the laptop (run_cycle.sh) and container (scheduler.py chains the
+                 publish after the cycle/posts) paths push; publish is a clean no-op
+                 without a .site/.git checkout + push creds.
                  The news brain (market_context) refreshes hourly 9:25-15:25 ET on
                  claude-haiku-4-5 (news.model) via com.trading-agent.newsbrain.
 publisher/       Phase B subscription publication (2026-07-22, PRODUCT.md): FastAPI
-                 service reading agent state via ReadOnlyLedger (no write methods —
-                 invariant #9 is an AttributeError, and the compose mount is :ro).
-                 Magic-link auth (token hashes only), Stripe stub/live billing,
-                 tiered feed (free: 1-day delay, no judge reasoning; paid: same-day
-                 + reasoning/debate/confidence + journal), dry-run email outbox,
-                 DRAFT legal pages. Checkout is refused in code until gates.revenue_gate
-                 passes (invariant #10). Own mutable state in publisher_data/ (gitignored),
+                 service reading agent state via ReadOnlyLedger, backed by a
+                 genuinely read-only store (store.read_only_reader — read_all only,
+                 no append; sqlite opened mode=ro) so invariant #9 is a structural
+                 AttributeError, not just the compose :ro mount. /healthz reads
+                 read-only too (health.status(read_only=True)) — it never runs
+                 store.configure or issues DDL. Magic-link auth (token hashes only),
+                 Stripe stub/live billing, tiered feed (free: 1-day delay, no judge
+                 reasoning; paid: same-day + reasoning/debate/confidence + journal),
+                 dry-run email outbox, DRAFT legal pages. Checkout is refused in code
+                 until gates.revenue_gate passes (invariant #10); the numeric
+                 thresholds are HARDCODED constants (gates.MIN_CLOSED_TRADES /
+                 MIN_HISTORY_DAYS), not config knobs, and the billing webhook refuses
+                 to grant while the gate is closed (unsigned stub grants need an
+                 explicit opt-in). Own mutable state in publisher_data/ (gitignored),
                  NEVER in memory/. Per-IP token-bucket rate limiting (Phase D,
                  publisher/ratelimit.py — strictest on /auth/request-link, the
-                 email-sending endpoint; knobs under publisher.rate_limit).
+                 email-sending endpoint; keys on X-Forwarded-For only behind
+                 publisher.trust_proxy; knobs under publisher.rate_limit).
 docs/            Ops docs (Phase D, 2026-07-22): runbooks.md, incident_response.md,
                  secrets_rotation.md, slo.md, soc2_readiness.md (readiness map, NOT a
                  compliance claim), go_live_checklist.md (the ordered laptop->live-product
                  list — gates are never waived by enthusiasm).
 scripts/backup.sh + scripts/restore_drill.py  State backup (scheduler 17:00 ET, keeps
                  14; .env never archived) + weekly restore drill (Sat 10:00) — a backup
-                 that has never been restored is a hope, not a backup.
+                 that has never been restored is a hope, not a backup. In the container,
+                 backups/ is a mounted volume so archives survive rebuild/redeploy.
+scripts/install_launchd.sh  Renders the launchd plist templates ({{AGENT_ROOT}}
+                 placeholder) for the current checkout, plutil-lints, installs to
+                 ~/Library/LaunchAgents, optional --load. The plists ship path-agnostic
+                 so a moved/cloned repo never runs a stale absolute path.
 .github/workflows/ci.yml  Tests + pip-audit dependency CVE scan on every push/PR
                  (suite is offline; no secrets in CI ever).
 src/main.py      Orchestrator: state -> signal -> judge -> rails -> execute -> ledger -> learn -> post.

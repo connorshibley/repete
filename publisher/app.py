@@ -15,21 +15,43 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from publisher import auth, billing, config, content, digest, gates, legal
-from publisher.ratelimit import Limiter
+from publisher.ratelimit import Limiter, client_key
 from publisher.readonly import ReadOnlyLedger, agent_paths
 from publisher.subscribers import SubscriberDB
 
 app = FastAPI(title="Repete — publisher", docs_url=None, redoc_url=None)
 
 
+def _trust_proxy(cfg: dict) -> bool:
+    return bool(cfg["publisher"].get("trust_proxy"))
+
+
+def _client_ip(request: Request, cfg: dict) -> str:
+    host = request.client.host if request.client else None
+    return client_key(host, request.headers.get("x-forwarded-for"),
+                      _trust_proxy(cfg))
+
+
+def _is_https(request: Request, cfg: dict) -> bool:
+    """True when the effective client scheme is https, so session cookies get
+    Secure. Behind a trusted proxy the app sees http; trust X-Forwarded-Proto
+    only when trust_proxy is set (else it is attacker-controlled)."""
+    if request.url.scheme == "https":
+        return True
+    if _trust_proxy(cfg):
+        return request.headers.get("x-forwarded-proto", "").lower() == "https"
+    return False
+
+
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     """Per-IP token buckets (Phase D). 429 before any handler runs."""
+    cfg = _cfg(request)
     if not hasattr(request.app.state, "limiter"):
         request.app.state.limiter = Limiter(
-            _cfg(request)["publisher"].get("rate_limit") or {})
-    ip = request.client.host if request.client else "unknown"
-    if not request.app.state.limiter.check(request.url.path, ip):
+            cfg["publisher"].get("rate_limit") or {})
+    if not request.app.state.limiter.check(request.url.path,
+                                           _client_ip(request, cfg)):
         return JSONResponse({"detail": "rate limited — slow down"},
                             status_code=429)
     return await call_next(request)
@@ -53,8 +75,9 @@ def _db(request: Request) -> SubscriberDB:
 
 def _ledger(request: Request) -> ReadOnlyLedger:
     if not hasattr(request.app.state, "ledger"):
+        cfg = _cfg(request)
         request.app.state.ledger = ReadOnlyLedger(
-            agent_paths(_cfg(request))["ledger"])
+            agent_paths(cfg)["ledger"], cfg)
     return request.app.state.ledger
 
 
@@ -98,7 +121,9 @@ def healthz(request: Request):
     sys.path.insert(0, os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
     import health
-    s = health.status(_cfg(request))
+    # read_only: the publisher must never mutate the process-wide storage
+    # backend or issue DDL against agent state (invariant #9).
+    s = health.status(_cfg(request), read_only=True)
     return JSONResponse(s, status_code=200 if s["healthy"] else 503)
 
 
@@ -144,6 +169,7 @@ def verify(request: Request, token: str):
     resp = RedirectResponse("/account", status_code=303)
     resp.set_cookie(cfg["publisher"]["session_cookie"], cookie,
                     httponly=True, samesite="lax",
+                    secure=_is_https(request, cfg),
                     max_age=cfg["publisher"]["session_ttl_hours"] * 3600)
     return resp
 
@@ -187,7 +213,8 @@ def checkout(request: Request, email: str = Depends(require_session)):
 async def webhook(request: Request):
     payload = await request.body()
     out = billing.handle_webhook(_cfg(request), _db(request), payload,
-                                 request.headers.get("stripe-signature"))
+                                 request.headers.get("stripe-signature"),
+                                 _ledger(request))
     if not out["ok"]:
         raise HTTPException(400, detail=out)
     return out

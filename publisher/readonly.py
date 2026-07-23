@@ -14,10 +14,16 @@ import store as store_mod  # noqa: E402
 
 
 class ReadOnlyLedger:
-    """all_records / open_buys / closed_trades — and nothing else."""
+    """all_records / open_buys / closed_trades — and nothing else.
 
-    def __init__(self, path: str):
-        self._store = store_mod.open_store(path)
+    Backed by a genuinely read-only store (no append method; sqlite opened
+    mode=ro), so invariant #9 is structural: a write from the publisher is an
+    AttributeError, not a policy we merely promise to honor. Pass `cfg` so the
+    reader honors the agent's configured backend without mutating it."""
+
+    def __init__(self, path: str, cfg: dict | None = None):
+        self._store = (store_mod.read_only_reader(cfg, path) if cfg is not None
+                       else store_mod.open_store_readonly(path))
 
     def all_records(self) -> list[dict]:
         return self._store.read_all()
@@ -48,9 +54,11 @@ class ReadOnlyLedger:
         return out
 
 
-def read_stream(path: str) -> list[dict]:
+def read_stream(path: str, cfg: dict | None = None) -> list[dict]:
     """Read any agent JSONL/sqlite stream (journal, posts) read-only."""
-    return store_mod.open_store(path).read_all()
+    reader = (store_mod.read_only_reader(cfg, path) if cfg is not None
+              else store_mod.open_store_readonly(path))
+    return reader.read_all()
 
 
 def agent_paths(cfg: dict) -> dict:

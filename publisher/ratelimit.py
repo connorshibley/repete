@@ -8,6 +8,20 @@ import threading
 import time
 
 
+def client_key(client_host: str | None, xff_header: str | None,
+               trust_proxy: bool) -> str:
+    """The per-client rate-limit key. Behind a trusted reverse proxy every
+    request's direct peer is the proxy, so keying on client_host alone lumps
+    all users into one bucket (self-DoS) — use the last X-Forwarded-For hop
+    (what the trusted proxy observed) instead. Without trust_proxy, XFF is
+    attacker-controlled and MUST be ignored. Assumes a single trusted proxy."""
+    if trust_proxy and xff_header:
+        parts = [p.strip() for p in xff_header.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+    return client_host or "unknown"
+
+
 class TokenBucket:
     def __init__(self, per_minute: float, burst: float):
         self.rate = per_minute / 60.0

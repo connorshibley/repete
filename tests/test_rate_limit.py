@@ -42,6 +42,23 @@ def test_buckets_are_per_key():
     assert b.allow("2.2.2.2", t) is True      # independent bucket
 
 
+def test_client_key_ignores_xff_without_trust():
+    from publisher.ratelimit import client_key
+    # XFF is attacker-controlled without a trusted proxy — never key on it.
+    assert client_key("10.0.0.1", "1.2.3.4", trust_proxy=False) == "10.0.0.1"
+    assert client_key(None, None, trust_proxy=False) == "unknown"
+
+
+def test_client_key_uses_last_xff_hop_when_trusted():
+    from publisher.ratelimit import client_key
+    assert client_key("10.0.0.1", "1.2.3.4", trust_proxy=True) == "1.2.3.4"
+    # multi-hop: the last entry is what the trusted proxy observed
+    assert client_key("10.0.0.1", "9.9.9.9, 1.2.3.4", trust_proxy=True) \
+        == "1.2.3.4"
+    # trusted but header absent -> fall back to the direct peer
+    assert client_key("10.0.0.1", None, trust_proxy=True) == "10.0.0.1"
+
+
 def test_limiter_routes_and_disable():
     rl = {"enabled": True, "auth_per_minute": 1, "auth_burst": 1,
           "billing_per_minute": 60, "billing_burst": 2,
