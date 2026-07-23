@@ -1,0 +1,53 @@
+# Fly.io deployment for the always-on agent (Phase E ops, 2026-07-23).
+#
+#   flyctl launch --no-deploy --copy-config --config deploy/fly.toml
+#   flyctl volumes create repete_state --size 1
+#   flyctl secrets set ALPACA_API_KEY=... (see deploy/SECRETS.md)
+#   flyctl deploy
+#
+# Secrets are NEVER in this file — they go through `flyctl secrets set`.
+
+app = "repete-trading-agent"          # rename if the name is taken
+primary_region = "ewr"                # near US markets; latency is not critical
+                                      # (daily bars), but keep it US-East anyway
+
+[build]
+  dockerfile = "../Dockerfile"
+
+[env]
+  # Timezone only. scripts/scheduler.py resolves ET via ZoneInfo regardless,
+  # and tzdata is pinned in requirements.txt so this never depends on the base
+  # image shipping zoneinfo.
+  TZ = "America/New_York"
+
+# One machine, always on. This is a scheduler, not a web service: it must NOT
+# autostop, or it would sleep through the 15:45 ET cycle — the exact failure
+# the container was adopted to eliminate.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[processes]
+  app = "python scripts/scheduler.py"
+
+# State must outlive every deploy: memory/ IS the track record.
+[mounts]
+  source = "repete_state"
+  destination = "/app/state"
+
+# The image writes to memory/, logs/ and backups/ under /app. Symlink them onto
+# the volume on boot so a redeploy never orphans the ledger. (Fly runs one
+# machine here, so there is no multi-writer concern — the agent is a single
+# writer by design.)
+[deploy]
+  release_command = "sh -c 'mkdir -p /app/state/memory /app/state/logs /app/state/backups'"
+
+# Healthcheck mirrors the Dockerfile's: src/health.py exits non-zero when the
+# agent is degraded (stale heartbeat, HALT engaged, SLO breach).
+[checks]
+  [checks.health]
+    type = "command"
+    command = "python src/health.py"
+    interval = "5m"
+    timeout = "30s"
+    grace_period = "2m"

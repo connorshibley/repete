@@ -9,9 +9,14 @@ Status legend: [ ] open · [x] done · [~] partially
 
 ## Stage 1 — Run it like a service (do this first; no gate required)
 
-- [~] **Always-on host.** Move off the laptop: any small VPS/mini-PC,
-  `docker compose up -d`. The container, scheduler, and healthcheck already
-  exist (Phase A). Laptop launchd remains the fallback.
+- [~] **Always-on host.** Move off the laptop. Ready-to-run artifacts are in
+  `deploy/` (2026-07-23): `deploy/README.md` (Fly.io **or** VPS, both running
+  the same image and scheduler), `deploy/SECRETS.md` (every env var, what it
+  unlocks, what degrades without it), `deploy/deploy.sh` (one command; refuses
+  to start half-configured), `deploy/fly.toml`, `deploy/repete.service`.
+  **Copy `memory/` across before the first cycle** or the track record restarts
+  from zero. Laptop launchd remains the fallback
+  (`sh scripts/install_launchd.sh --load`).
 - [x] **Backups scheduled** (nightly 17:00 ET in scripts/scheduler.py) and
   **restore drill passing** (`python scripts/restore_drill.py`).
 - [ ] **Alerts reach a phone.** Watchdog currently posts macOS
