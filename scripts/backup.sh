@@ -21,7 +21,27 @@ mkdir -p "$DEST"
 TARGETS="memory config.yaml"
 [ -d publisher_data ] && TARGETS="$TARGETS publisher_data"
 
-tar -czf "$DEST/agent-backup-$STAMP.tar.gz" $TARGETS
+# Manifest: per-stream record counts AT BACKUP TIME. The restore drill compares
+# the extracted archive against these, which is what makes a cleanly truncated
+# archive detectable — counting alone cannot, since an archive legitimately has
+# fewer records than live.
+MANIFEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$MANIFEST_DIR"' EXIT
+{
+  printf '{"created":"%s","streams":{' "$STAMP"
+  first=1
+  for f in memory/*.jsonl; do
+    [ -e "$f" ] || continue
+    n=$(grep -c . "$f" 2>/dev/null || echo 0)
+    [ $first -eq 1 ] || printf ','
+    printf '"%s":%s' "$(basename "$f")" "$n"
+    first=0
+  done
+  printf '}}'
+} > "$MANIFEST_DIR/backup_manifest.json"
+
+tar -czf "$DEST/agent-backup-$STAMP.tar.gz" $TARGETS \
+    -C "$MANIFEST_DIR" backup_manifest.json
 echo "wrote $DEST/agent-backup-$STAMP.tar.gz ($(du -h "$DEST/agent-backup-$STAMP.tar.gz" | cut -f1))"
 
 # prune to the newest 14
