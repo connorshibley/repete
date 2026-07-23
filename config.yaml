@@ -135,7 +135,18 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
   max_position_pct: 10.0         # no single position may exceed this % of equity
   max_order_value_usd: 2000      # absolute per-order dollar cap
-  max_trades_per_day: 3          # circuit breaker on order rate (swing bot: entries are rare)
+  max_trades_per_day: 5          # circuit breaker on order rate. Raised 3 -> 5 by
+                                 # §19b (2026-07-23). This counter is GLOBAL across
+                                 # the ensemble, but the backtester simulates one
+                                 # strategy at a time, so no gate could ever measure
+                                 # it — measured directly instead: over the OOS
+                                 # window the enabled strategies wanted 447 entries
+                                 # on 231 days, and a cap of 3 refused 39 of them
+                                 # (8.7%) on 29 days. A cap of 5 refuses 3 (0.7%);
+                                 # 8 and 12 refuse NOTHING, so 5 is the smallest
+                                 # value that captures the gain. Per-trade risk,
+                                 # heat, correlation, concentration and the
+                                 # daily-loss kill switch are all unchanged.
   daily_loss_limit_pct: 3.0      # if daily P&L drops below -3%, flatten + HALT
   max_open_positions: 8          # GLOBAL ceiling over the whole book. Raised
                                  # 5 -> 8 by §13 (2026-07-23) so meanrev's
