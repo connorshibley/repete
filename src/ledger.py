@@ -39,7 +39,8 @@ class Ledger:
                      indicators: dict, llm_review: dict | None,
                      executed: bool, detail: str = "", order: dict | None = None,
                      entry_price: float | None = None, qty: int | None = None,
-                     regime: str | None = None, strategy: str | None = None) -> str:
+                     regime: str | None = None, strategy: str | None = None,
+                     entry_ts: str | None = None) -> str:
         trade_id = str(uuid.uuid4())[:8]
         self._append({
             "type": "decision",
@@ -56,6 +57,10 @@ class Ledger:
             "order": order,
             "entry_price": entry_price,
             "qty": qty,
+            # The position's REAL fill time when it differs from this record's
+            # write time (adopted positions). `ts` keeps its audit meaning —
+            # when the record was appended — so age checks read entry_ts first.
+            "entry_ts": entry_ts,
             "outcome": None,               # embargoed until close — see close_trade()
         })
         return trade_id

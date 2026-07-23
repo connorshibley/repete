@@ -94,7 +94,11 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         return verdict
     except Exception as e:  # noqa: BLE001 — any LLM failure degrades to rules
         log.warning("LLM review failed (%s) — proceeding rule-based", e)
-        return fallback
+        # Mark the OUTAGE case so the caller can tell it apart from a judge that
+        # genuinely approved (and from the judge being intentionally disabled).
+        # Without this an outage records as a real "approve" and the calibration
+        # scoreboard credits the judge for decisions it never made.
+        return {**fallback, "degraded": str(e)[:200]}
 
 
 def write_x_post(trade: dict, cfg: dict) -> str | None:

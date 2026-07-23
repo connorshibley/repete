@@ -69,3 +69,49 @@ def test_adopted_position_excluded_from_fill_quality(env):
                                    positions=positions)
     rec = next(iter(ledger.open_buys().values()))
     assert (rec.get("order") or {}).get("id") is None
+
+
+# ---- adopted positions must keep their REAL entry time ----
+
+class _FillTimeBroker:
+    """Broker whose closed_orders reports the original BUY fill timestamp."""
+
+    def __init__(self, filled_at):
+        self.filled_at = filled_at
+
+    def closed_orders(self, symbol, limit=20):
+        return [{"id": "o-1", "side": "OrderSide.BUY", "status": "filled",
+                 "type": "OrderType.MARKET", "filled_at": self.filled_at,
+                 "filled_avg_price": 450.0, "filled_qty": 10.0}]
+
+
+def test_adopted_position_keeps_real_entry_time(env):
+    """Regression: adoption stamped the record at adoption time, so a genuinely
+    old position looked brand new and the swing guard blocked its exit for
+    another min_holding_days. Alpaca's Position carries no timestamp, so the
+    real fill time is recovered from the closed BUY order."""
+    from datetime import datetime, timedelta, timezone
+    ledger, cfg = env
+    real_entry = (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()
+    broker = _FillTimeBroker(real_entry)
+    main.adopt_untracked_positions(
+        broker=broker, ledger=ledger, cfg=cfg,
+        positions={"SPY": {"qty": 10, "avg_entry": 450.0,
+                           "market_value": 4500.0}})
+    rec = next(iter(ledger.open_buys().values()))
+    assert rec["entry_ts"] == real_entry            # true fill time recorded
+    assert rec["ts"] != real_entry                  # audit ts stays write-time
+    assert main.position_entry_ts(rec) == real_entry
+
+
+def test_adoption_without_broker_falls_back_to_write_time(env):
+    """Fail-open: no broker / no recoverable fill time must not crash adoption;
+    the record simply carries no entry_ts and age falls back to `ts`."""
+    ledger, cfg = env
+    main.adopt_untracked_positions(
+        broker=None, ledger=ledger, cfg=cfg,
+        positions={"SPY": {"qty": 10, "avg_entry": 450.0,
+                           "market_value": 4500.0}})
+    rec = next(iter(ledger.open_buys().values()))
+    assert rec.get("entry_ts") is None
+    assert main.position_entry_ts(rec) == rec["ts"]

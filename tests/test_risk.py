@@ -1,6 +1,9 @@
 """risk.py touches cwd-relative files (HALT, memory/.trade_counts.json),
 so every test here runs chdir'd into tmp_path.
 """
+import glob
+import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -206,3 +209,29 @@ def test_heat_cap_not_binding_for_clamped_meanrev_entries(cfg):
     heat = risk.portfolio_heat(open_trades, cfg, acct["equity"])
     cap = acct["equity"] * cfg["risk"]["max_portfolio_heat_pct"] / 100
     assert heat < cap, f"heat ${heat:,.0f} unexpectedly >= cap ${cap:,.0f}"
+
+
+# ---- trade counter must fail CLOSED, not open ----
+
+def test_corrupt_trade_counter_fails_closed(cfg, tmp_path, monkeypatch):
+    """The daily trade cap is a rail. A corrupt counter file used to be
+    swallowed as 0, silently un-capping max_trades_per_day. It must instead be
+    treated as at-limit so the rail keeps binding."""
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("memory", exist_ok=True)
+    with open(risk._TRADECOUNT_FILE, "w") as f:
+        f.write("{not valid json")
+    assert risk._trades_today() >= cfg["risk"]["max_trades_per_day"]
+
+
+def test_trade_counter_write_is_atomic(cfg, tmp_path, monkeypatch):
+    """record_trade must never leave a truncated file behind: it writes to a
+    temp file and renames, so a crash mid-write keeps the previous good value."""
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("memory", exist_ok=True)
+    risk.record_trade()
+    risk.record_trade()
+    assert risk._trades_today() == 2
+    with open(risk._TRADECOUNT_FILE) as f:
+        json.load(f)                      # parses => not truncated
+    assert not glob.glob(risk._TRADECOUNT_FILE + ".tmp*")   # no litter

@@ -44,18 +44,59 @@ def run(cfg: dict) -> list[str]:
         if not os.environ.get(key):
             fails.append(f"env {key} missing")
 
+    # The regime block is indexed directly inside the cycle (main.run_cycle ->
+    # regime.compute_regime), so a missing key or a nonsensical period is a
+    # config error that belongs here rather than as a mid-cycle exception.
+    rg = (cfg.get("learning") or {}).get("regime")
+    if not isinstance(rg, dict):
+        fails.append("learning.regime block missing from config")
+    else:
+        for key, floor in (("sma_period", 1), ("vol_period", 2)):
+            v = rg.get(key)
+            if not isinstance(v, int) or v < floor:
+                fails.append(f"learning.regime.{key} must be an int >= {floor} "
+                             f"({v!r}) — vol_period < 2 divides by zero")
+
     ledger_path = cfg.get("memory", {}).get("ledger_path", "memory/ledger.jsonl")
     mem_dir = os.path.dirname(ledger_path) or "."
     if os.path.isdir(mem_dir) and not os.access(mem_dir, os.W_OK):
         fails.append(f"memory dir {mem_dir} not writable")
-    tail = _last_nonempty_line(ledger_path)
-    if tail is not None:
+    fails.extend(_ledger_tail_fails(cfg, ledger_path))
+    return fails
+
+
+def _ledger_tail_fails(cfg: dict, ledger_path: str) -> list[str]:
+    """Integrity of the LIVE audit trail, whichever backend holds it.
+
+    Preflight deliberately runs before store.configure(), so it must resolve the
+    backend itself — reading the raw .jsonl under a sqlite deployment validated
+    a file the agent no longer writes. store.read_only_reader() resolves from
+    cfg without mutating the process-wide backend and cannot write."""
+    try:
+        import store as store_mod
+        backend, _ = store_mod.backend_kind(cfg)
+    except Exception:  # noqa: BLE001 — store unavailable: fall back to the file
+        backend = "jsonl"
+
+    if backend == "jsonl":
+        tail = _last_nonempty_line(ledger_path)
+        if tail is None:
+            return []
         try:
             json.loads(tail)
         except ValueError:
-            fails.append(f"ledger tail line is not valid JSON "
-                         f"(partial write / corruption): {tail[:80]!r}")
-    return fails
+            return [f"ledger tail line is not valid JSON "
+                    f"(partial write / corruption): {tail[:80]!r}"]
+        return []
+
+    try:
+        import store as store_mod
+        records = store_mod.read_only_reader(cfg, ledger_path).read_all()
+    except Exception as e:  # noqa: BLE001
+        return [f"ledger unreadable via {backend} backend: {e}"]
+    if records and not isinstance(records[-1], dict):
+        return [f"ledger tail record is not a JSON object ({backend} backend)"]
+    return []
 
 
 def _last_nonempty_line(path: str) -> str | None:

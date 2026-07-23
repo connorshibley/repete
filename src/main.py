@@ -95,6 +95,19 @@ def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
     order -> latest daily close (flagged as an estimate)."""
     symbol = open_rec["symbol"]
     order = open_rec.get("order") or {}
+    # A stop-only (OTO) entry has NO take-profit leg, so a filled leg can only
+    # be the stop. Without this, a leg whose `type` the broker omitted fell
+    # through to "take_profit" and corrupted exit-reason analytics.
+    stop_only = (str(order.get("order_class", "")).lower() == "oto"
+                 or order.get("take_profit_price") is None)
+
+    def _leg_reason(leg_type: str | None) -> str:
+        t = str(leg_type or "").lower()
+        if "stop" in t:
+            return "stop_loss"
+        if "limit" in t:
+            return "take_profit"
+        return "stop_loss" if stop_only else "take_profit"   # type unavailable
 
     for leg_id in order.get("leg_ids", []):
         try:
@@ -103,12 +116,10 @@ def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
             log.warning("Leg lookup failed for %s: %s", leg_id, e)
             continue
         if "filled" in leg["status"].lower() and leg["filled_avg_price"]:
-            reason = "stop_loss" if "stop" in str(leg.get("type", "")).lower() else "take_profit"
-            return leg["filled_avg_price"], reason
+            return leg["filled_avg_price"], _leg_reason(leg.get("type"))
         for sub in leg.get("legs", []):
             if "filled" in sub["status"].lower() and sub["filled_avg_price"]:
-                reason = "stop_loss" if "stop" in sub["type"].lower() else "take_profit"
-                return sub["filled_avg_price"], reason
+                return sub["filled_avg_price"], _leg_reason(sub.get("type"))
 
     try:
         for o in broker.closed_orders(symbol):
@@ -165,6 +176,29 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
             ledger.log_event("reconcile_error", f"{symbol} trade {tid}: {e}")
 
 
+def position_entry_ts(rec: dict) -> str | None:
+    """When a position was actually ENTERED, for age-based rules (swing guard,
+    max_hold_days, chandelier high-water). Prefers the recovered real fill time
+    over the ledger write time — they differ for adopted positions, where
+    stamping write-time would reset the holding clock and block a genuinely old
+    position's exit for another min_holding_days."""
+    return rec.get("entry_ts") or rec.get("ts")
+
+
+def _recover_fill_ts(broker, symbol: str) -> str | None:
+    """Real BUY fill time from the broker's closed orders (Alpaca's Position
+    model carries no timestamp). Fail-open: None on any problem."""
+    if broker is None:
+        return None
+    try:
+        for o in broker.closed_orders(symbol):
+            if str(o.get("side", "")).lower().endswith("buy") and o.get("filled_at"):
+                return o["filled_at"]
+    except Exception as e:  # noqa: BLE001 — adoption must never crash a cycle
+        log.warning("Fill-time lookup failed for %s: %s", symbol, e)
+    return None
+
+
 def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
                               positions: dict):
     """Complement to reconcile_closed_positions: a broker position with NO
@@ -186,13 +220,17 @@ def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
             entry = pos.get("avg_entry")
             if not entry:  # defensive: derive from market value if absent
                 entry = (pos.get("market_value", 0.0) / qty) if qty else 0.0
+            fill_ts = _recover_fill_ts(broker, symbol)
             tid = ledger.log_decision(
                 symbol, "buy", "adopted: broker position with no ledger record",
                 {}, None, executed=True,
                 order={"id": None, "symbol": symbol, "adopted": True},
                 entry_price=float(entry), qty=qty,
                 strategy=strategies.DEFAULT_OWNER,
-                detail="adopted untracked broker position")
+                entry_ts=fill_ts,
+                detail="adopted untracked broker position"
+                       + (f" (real fill {fill_ts})" if fill_ts else
+                          " (fill time unrecoverable — age measured from adoption)"))
             ledger.log_event("position_adopted",
                              f"{symbol}: qty {qty} @ {float(entry):.2f} "
                              f"(trade {tid})")
@@ -232,7 +270,7 @@ def update_trailing_stops(broker, ledger, cfg: dict, open_trades: dict,
         if not leg or not bars or not rec.get("entry_price"):
             continue
         try:
-            entry_ts = rec.get("ts") or ""
+            entry_ts = position_entry_ts(rec) or ""
             high_water = max([rec["entry_price"]]
                              + [b["high"] for b in bars if b["ts"] > entry_ts])
             new_stop = risk.trail_stop(high_water,
@@ -479,6 +517,13 @@ def _run_cycle():
                                         strategy=sig.strategy, signal=sig,
                                         positions=positions, account=account)
             + (f"\n\n{extra_context}" if extra_context else ""), cfg)
+        if review.get("degraded"):
+            # The judge was UNREACHABLE, not permissive. Ledger it as a
+            # degradation so the SLO counts it and review.py can distinguish
+            # "approved" from "approved because the judge was down".
+            ledger.log_event("degradation",
+                             f"llm_judge: review unavailable for {symbol}, "
+                             f"proceeding rule-based ({review['degraded']})")
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False, detail="LLM veto",
@@ -790,7 +835,7 @@ def _run_cycle():
             entry_ts, open_rec = None, None
             for rec in open_trades.values():
                 if rec["symbol"] == symbol:
-                    entry_ts, open_rec = rec.get("ts"), rec
+                    entry_ts, open_rec = position_entry_ts(rec), rec
                     break
             owner = ((open_rec or {}).get("strategy")
                      or strategies.DEFAULT_OWNER)

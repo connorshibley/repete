@@ -41,13 +41,23 @@ def engage_halt(reason: str):
     log.critical("HALT ENGAGED: %s", reason)
 
 
+# A corrupt counter must not silently un-cap the day's trading. Absent file =
+# genuinely no trades yet (fine); unparseable file = we do not know, so the
+# rail assumes the worst. Same polarity as preflight: state integrity fails SAFE.
+_TRADECOUNT_UNKNOWN = 10 ** 6
+
+
 def _trades_today() -> int:
     try:
         with open(_TRADECOUNT_FILE) as f:
             data = json.load(f)
         return data.get(str(date.today()), 0)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return 0
+    except FileNotFoundError:
+        return 0                      # first run today — no trades yet
+    except (json.JSONDecodeError, ValueError, OSError) as e:
+        log.critical("trade counter unreadable (%s) — treating the daily cap "
+                     "as REACHED until it is repaired", e)
+        return _TRADECOUNT_UNKNOWN    # fail CLOSED: the cap keeps binding
 
 
 def record_trade():
@@ -56,12 +66,23 @@ def record_trade():
         with open(_TRADECOUNT_FILE) as f:
             counts = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        pass
+        pass                          # a fresh count is written below regardless
     key = str(date.today())
     counts = {key: counts.get(key, 0) + 1}   # keep only today
     os.makedirs(os.path.dirname(_TRADECOUNT_FILE), exist_ok=True)
-    with open(_TRADECOUNT_FILE, "w") as f:
-        json.dump(counts, f)
+    # Atomic: write a temp file, fsync, then rename. `open(..., "w")` truncates
+    # first, so a crash mid-write previously left an empty/partial file — which
+    # the reader then swallowed as 0 and the daily cap stopped binding.
+    tmp = f"{_TRADECOUNT_FILE}.tmp{os.getpid()}"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(counts, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _TRADECOUNT_FILE)
+    finally:
+        if os.path.exists(tmp):       # rename failed — never leave litter
+            os.unlink(tmp)
 
 
 def daily_loss_breached(account: dict, cfg: dict) -> bool:
