@@ -308,6 +308,58 @@ def test_halt_file_blocks_cycle_entirely(cycle_env):
     assert any(e["event"] == "halted_cycle_skipped" for e in events)
 
 
+def test_bracket_failure_refuses_naked_entry(cycle_env):
+    """If the protective bracket can't be placed, the entry must be REFUSED —
+    never downgraded to a naked market order. The quantity may have been stop-
+    distance-sized (meanrev), and a young position with no broker-side stop can
+    only be exited by the daily-loss kill switch (the swing guard blocks
+    strategy exits before min_holding_days)."""
+    cfg, install = cycle_env
+
+    class BracketFailsBroker(FakeCycleBroker):
+        def bracket_market_order(self, *a, **k):
+            raise RuntimeError("bracket rejected by broker")
+
+    broker = install(BracketFailsBroker(make_bars(BUY_CLOSES)))
+
+    main.run_cycle()
+
+    assert broker.submitted == []            # no naked market order placed
+    led = Ledger(cfg["memory"]["ledger_path"])
+    assert led.open_buys() == {}             # nothing opened
+    decisions = [r for r in led.all_records()
+                 if r.get("type") == "decision" and r.get("symbol") == "SPY"]
+    assert decisions and decisions[-1]["executed"] is False
+    assert "bracket" in decisions[-1]["detail"].lower()
+
+
+def test_kill_switch_engages_halt_even_when_flatten_fails(cycle_env):
+    """A broker error during the kill-switch flatten must NOT leave the daily-
+    loss breach un-halted. HALT is engaged and the kill_switch event recorded
+    BEFORE the flatten is attempted, so the next scheduled cycle is blocked even
+    if close_all_positions timed out; the flatten failure is itself ledgered."""
+    cfg, install = cycle_env
+
+    class BreachedFlattenFailsBroker(FakeCycleBroker):
+        def account(self):  # -5% day, below the -3% daily_loss_limit_pct
+            return {"equity": 95_000.0, "cash": 95_000.0,
+                    "last_equity": 100_000.0, "buying_power": 95_000.0}
+
+        def flatten_all(self):
+            raise RuntimeError("broker timeout closing positions")
+
+    broker = install(BreachedFlattenFailsBroker(make_bars(BUY_CLOSES)))
+
+    main.run_cycle()  # must NOT raise, despite flatten_all throwing
+
+    assert risk.check_halt(), "HALT must be engaged even when flatten fails"
+    led = Ledger(cfg["memory"]["ledger_path"])
+    events = [r["event"] for r in led.all_records() if r["type"] == "event"]
+    assert "kill_switch" in events
+    assert "kill_switch_flatten_failed" in events
+    assert broker.submitted == []  # no entries after a kill switch
+
+
 def test_executed_order_carries_idempotency_key(cycle_env):
     """Crash-rerun protection: orders carry a deterministic per-symbol/side/
     day client_order_id so the broker rejects a duplicate submission."""
