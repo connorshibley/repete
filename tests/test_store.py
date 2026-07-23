@@ -116,14 +116,27 @@ def test_lessons_and_judgments_work_on_sqlite(tmp_path):
 
 def test_health_status_shape_and_problems(tmp_path, monkeypatch, cfg):
     import health
+    import ledger as ledger_mod
     from datetime import datetime, timedelta, timezone
     monkeypatch.chdir(tmp_path)
     (tmp_path / "memory").mkdir()
+
+    now = datetime(2026, 7, 22, 20, 0, tzinfo=timezone.utc)   # Wednesday
+
+    # Freeze the ledger's append clock to `now` so the degradation event lands
+    # on the same UTC day the health check treats as "today". Without this the
+    # event is stamped with the real wall-clock date, so the assertion below
+    # (degradations_today == 1) fails on every real-world day after 2026-07-22.
+    class _FrozenClock:
+        @staticmethod
+        def now(tz=None):
+            return now
+    monkeypatch.setattr(ledger_mod, "datetime", _FrozenClock)
+
     led = Ledger(cfg["memory"]["ledger_path"])
     led.log_event("cycle_complete", '{"equity": 100.0}')
     led.log_event("degradation", "drift_guard: test")
 
-    now = datetime(2026, 7, 22, 20, 0, tzinfo=timezone.utc)   # Wednesday
     (tmp_path / "memory" / "heartbeat").write_text(
         (now - timedelta(hours=2)).isoformat())
     s = health.status(cfg, now=now)
