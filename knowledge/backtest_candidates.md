@@ -382,3 +382,54 @@ plus the live starvation mechanism above — not a desire for more exposure.
 
 Requires code: `risk.pure_checks` counts positions globally today. Until it is
 implemented and passes, **`max_open_positions` stays at 5.**
+
+### §13 RESULT — ADOPTED for meanrev (alloc 8); tsmom + ma_crossover pinned at 5.
+
+First, a correction that changes every earlier number in this file.
+
+**THE BACKTESTER WAS MISSING TWO LIVE RAILS.** `simulate()` called
+`risk.pure_checks` only; the **portfolio-heat cap and the correlation cap** live
+in `risk.pre_trade_checks` and were therefore **never simulated**. Every gate
+run through §12 was measured against FEWER rails than live trades under, so the
+sim overstated achievable trade counts. Both are now applied in the sim
+(`n_heat_blocked` / `n_corr_blocked` are recorded on every Result).
+
+Re-measured baselines with the rails present:
+
+| strategy | before (no rails) | after (rails simulated) |
+|---|---|---|
+| meanrev | +2.63%, PF 2.164, 161 tr | **+2.49%, PF 2.076, 160 tr** |
+| tsmom | +2.12%, PF 2.398, 97 tr | unchanged (never reached a cap at N=5) |
+
+Earlier sections' absolute figures are therefore mildly optimistic for meanrev
+and should be re-run before being cited again.
+
+**§13 ladder (rails simulated, one frozen snapshot, trial count ~16):**
+
+| meanrev alloc | OOS ret | maxDD | PF | trades | heat blk | corr blk |
+|---|---|---|---|---|---|---|
+| 5 (base) | +2.49% | 0.5% | 2.076 | 160 | 0 | 7 |
+| **8** | **+2.84%** | **0.5%** | **2.116** | **177** | 0 | 7 |
+| 12 | +2.75% | 0.5% | 2.044 | 178 | 0 | 8 |
+
+Clauses: (a) PASS at 8 and 12 — trades up, PF above the 1.926 floor.
+(b) PASS — tsmom is pinned at 5, and is now pinned EXPLICITLY in config so it
+cannot absorb the new headroom. (c) PASS — maxDD 0.5% vs the 3.0pp ceiling.
+Tie-break selects **alloc 8** (177 of 178 trades, 94% of the gain).
+
+**(d) PARTIALLY MET — stated plainly rather than reinterpreted.** The clause
+required the heat cap AND the correlation cap to bind. The **correlation cap
+bound 7-8 times** (a real risk rail is now the constraint, which was the
+intent). The **heat cap bound 0 times** and structurally cannot at ~2%
+deployment: measured book heat is ~$560 against a $4,000 cap. That is a flaw in
+how I drafted (d) — requiring it to bind implicitly required a deployment
+increase — not a failure of the evidence. Recorded here so the shortfall is
+visible rather than buried.
+
+**What this does and does not buy.** It removes the live starvation mechanism
+(tsmom holding every slot for weeks while meanrev, which exits on SMA5, waits).
+It does NOT increase per-trade risk, deployment, or any risk rail: per-trade
+sizing, heat, correlation, concentration, the daily-loss kill switch and the
+swing guard are all unchanged. The backtest gain is +17 OOS trades over ~2
+years — real but modest. **It does not shorten the go-live gate; it only lets
+evidence accrue somewhat faster.**

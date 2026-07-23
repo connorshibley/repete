@@ -235,3 +235,49 @@ def test_trade_counter_write_is_atomic(cfg, tmp_path, monkeypatch):
     with open(risk._TRADECOUNT_FILE) as f:
         json.load(f)                      # parses => not truncated
     assert not glob.glob(risk._TRADECOUNT_FILE + ".tmp*")   # no litter
+
+
+# ---- §13: per-strategy slot allocation ----
+
+def _pos(n):
+    return {f"S{i}": {"market_value": 500.0, "qty": 1} for i in range(n)}
+
+
+def _open(strategy, n):
+    return {f"t{i}": {"symbol": f"S{i}", "strategy": strategy,
+                      "qty": 1, "entry_price": 100.0, "order": {}}
+            for i in range(n)}
+
+
+def test_per_strategy_slot_cap_blocks_only_that_strategy(cfg):
+    """meanrev must keep its own slots even when tsmom fills the book."""
+    cfg["risk"]["max_open_positions"] = 10
+    cfg.setdefault("strategies", {}).setdefault("tsmom", {})["max_open_positions"] = 3
+    acct = _acct_100k()
+    # tsmom already holds 3 of its 3 -> blocked
+    with pytest.raises(risk.RiskRejection, match="max open positions for tsmom"):
+        risk.pre_trade_checks("buy", "NEW", 5, 100.0, acct, _pos(3), cfg,
+                              open_trades=_open("tsmom", 3), strategy="tsmom")
+    # meanrev has no allocation configured -> unaffected by tsmom's book
+    risk.pre_trade_checks("buy", "NEW", 5, 100.0, acct, _pos(3), cfg,
+                          open_trades=_open("tsmom", 3), strategy="meanrev")
+
+
+def test_global_cap_still_wins_over_a_larger_allocation(cfg):
+    """The per-strategy number can only TIGHTEN — never exceed the global cap."""
+    cfg["risk"]["max_open_positions"] = 5
+    cfg.setdefault("strategies", {}).setdefault("meanrev", {})["max_open_positions"] = 99
+    with pytest.raises(risk.RiskRejection, match="max open positions reached"):
+        risk.pre_trade_checks("buy", "NEW", 5, 100.0, _acct_100k(), _pos(5), cfg,
+                              open_trades=_open("meanrev", 5), strategy="meanrev")
+
+
+def test_no_allocation_configured_behaves_exactly_as_before(cfg):
+    """Absent strategies.<name>.max_open_positions, nothing changes."""
+    cfg["risk"]["max_open_positions"] = 5
+    cfg["strategies"] = {"tsmom": {}, "meanrev": {}}
+    risk.pre_trade_checks("buy", "NEW", 5, 100.0, _acct_100k(), _pos(4), cfg,
+                          open_trades=_open("tsmom", 4), strategy="tsmom")
+    with pytest.raises(risk.RiskRejection, match="max open positions reached"):
+        risk.pre_trade_checks("buy", "NEW", 5, 100.0, _acct_100k(), _pos(5), cfg,
+                              open_trades=_open("tsmom", 5), strategy="tsmom")

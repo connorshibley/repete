@@ -73,11 +73,18 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     priority: 1
     fast_period: 10
     slow_period: 30
+    max_open_positions: 5   # §13: untested at wider allocation — held at the
+                            # status quo so it cannot absorb meanrev's headroom.
   tsmom:               # time-series momentum (Moskowitz/Ooi/Pedersen)
     enabled: true      # PASSED gate 2026-07-15: OOS +1.45%, PF 2.56, 51 trades
     priority: 2        # (exposure-matched benchmark; see memory/backtest_trials.jsonl)
     momentum_bars: 63  # in-sample grid winner — never re-picked after OOS
     skip_bars: 0
+    max_open_positions: 5   # §13 clause (b): tsmom is HELD at 5 on purpose.
+                            # §12 showed its PF collapses as slots rise
+                            # (2.398 -> 1.977 -> 1.730) while return rises — the
+                            # extra trades are risk bought at a worse rate. It
+                            # must not absorb the new headroom.
     trend_sma_period: 200
     index_sma_period: 0   # SPY<SMA50 entry gate: adopted 2026-07-16, REVERTED
                           # 2026-07-17 — the IS win didn't replicate on a
@@ -107,6 +114,13 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     trend_sma_period: 200
     exit_sma_period: 5
     max_hold_days: 7
+    max_open_positions: 8   # §13 slot allocation (2026-07-23). meanrev exits on
+                            # SMA5 and cycles fast, but a SHARED pool let tsmom
+                            # hold every slot for weeks and starve it — the live
+                            # cause of ~0 evidence velocity (146 buy signals, 6
+                            # executions, 68 blocked on max_open_positions).
+                            # Gate: OOS trades 160->177, PF 2.076->2.116,
+                            # maxDD unchanged 0.5%. The global cap still binds.
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
@@ -114,7 +128,11 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   max_order_value_usd: 2000      # absolute per-order dollar cap
   max_trades_per_day: 3          # circuit breaker on order rate (swing bot: entries are rare)
   daily_loss_limit_pct: 3.0      # if daily P&L drops below -3%, flatten + HALT
-  max_open_positions: 5
+  max_open_positions: 8          # GLOBAL ceiling over the whole book. Raised
+                                 # 5 -> 8 by §13 (2026-07-23) so meanrev's
+                                 # allocation can actually be used; per-strategy
+                                 # allocations under strategies.<name> only ever
+                                 # TIGHTEN this. tsmom stays pinned at 5.
   max_bar_age_days: 4            # FRESHNESS GUARD: refuse to trade if the newest bar is
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data

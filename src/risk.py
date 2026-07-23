@@ -396,7 +396,9 @@ def correlated_position_count(cand_bars: list[dict], open_bars_map: dict,
 
 def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
-                regime_label: str | None = None):
+                regime_label: str | None = None,
+                strategy: str | None = None,
+                strategy_open: int | None = None):
     """The side-effect-free subset of the rails (no HALT/trade-count file I/O).
 
     Shared with the offline backtester so simulated fills obey the exact same
@@ -414,6 +416,18 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     if action == "buy":
         if len(positions) >= r["max_open_positions"] and symbol not in positions:
             raise RiskRejection(f"max open positions reached ({r['max_open_positions']})")
+        # Per-strategy slot allocation (§13). The global cap above is still a
+        # hard ceiling over the whole book; this only ever makes a strategy's
+        # own limit TIGHTER. Rationale (§12 + live evidence): a single shared
+        # pool lets a slow trend strategy hold every slot for weeks and starve a
+        # fast mean-reversion one, which is what stalled evidence velocity.
+        # Absent config, behaviour is exactly as before.
+        strat_cap = ((cfg.get("strategies") or {}).get(strategy) or {}
+                     ).get("max_open_positions") if strategy else None
+        if (strat_cap and strategy_open is not None
+                and strategy_open >= strat_cap and symbol not in positions):
+            raise RiskRejection(
+                f"max open positions for {strategy} reached ({strat_cap})")
         existing = positions.get(symbol, {}).get("market_value", 0.0)
         if existing + order_value > account["equity"] * r["max_position_pct"] / 100:
             raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}")
@@ -438,15 +452,22 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      regime_label: str | None = None,
                      bars_map: dict | None = None,
                      open_trades: dict | None = None,
-                     candidate_stop: float | None = None):
+                     candidate_stop: float | None = None,
+                     strategy: str | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
         raise RiskRejection("HALT file present — trading disabled")
     if _trades_today() >= cfg["risk"]["max_trades_per_day"]:
         raise RiskRejection(f"max trades per day reached ({cfg['risk']['max_trades_per_day']})")
 
+    # Count THIS strategy's currently-open positions for its slot allocation.
+    strategy_open = None
+    if strategy and open_trades is not None:
+        strategy_open = sum(1 for rec in open_trades.values()
+                            if rec.get("strategy") == strategy)
     pure_checks(action, symbol, qty, price, account, positions, cfg,
-                regime_label=regime_label)
+                regime_label=regime_label, strategy=strategy,
+                strategy_open=strategy_open)
 
     # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
     # risk must stay under max_portfolio_heat_pct of equity. Entries only.

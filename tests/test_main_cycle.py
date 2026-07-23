@@ -484,3 +484,33 @@ def test_zero_qty_rejection_names_the_real_cause(cycle_env, monkeypatch):
     assert "account too small" not in detail          # the false message is gone
     assert "truncated" in detail or "below one share" in detail
     assert broker.submitted == []                     # nothing was rounded UP
+
+
+def test_slow_strategy_cannot_starve_the_fast_one(cycle_env, cfg):
+    """§13 end-to-end: with tsmom holding its full allocation, a meanrev entry
+    must still be admitted. Before per-strategy slots, tsmom holding all 5
+    global slots blocked every other strategy — the live cause of ~0 evidence
+    velocity (146 buy signals -> 6 executions, 68 blocked on max_open_positions)."""
+    cfg2, install = cycle_env
+    cfg2["risk"]["max_open_positions"] = 8
+    strats = cfg2.setdefault("strategies", {})
+    strats.setdefault("tsmom", {})["max_open_positions"] = 5
+    strats.setdefault("meanrev", {})["max_open_positions"] = 8
+    import yaml as _y
+    with open("config.yaml", "w") as f:
+        _y.safe_dump(cfg2, f)
+
+    acct = {"equity": 100_000.0, "cash": 100_000.0,
+            "last_equity": 100_000.0, "buying_power": 100_000.0}
+    # tsmom is at its allocation (5); the book still has global headroom (8).
+    tsmom_open = {f"t{i}": {"symbol": f"S{i}", "strategy": "tsmom", "qty": 1,
+                            "entry_price": 100.0, "order": {}} for i in range(5)}
+    positions = {f"S{i}": {"market_value": 100.0, "qty": 1} for i in range(5)}
+
+    # tsmom is blocked by its OWN allocation...
+    with pytest.raises(risk.RiskRejection, match="max open positions for tsmom"):
+        risk.pre_trade_checks("buy", "NEW", 1, 100.0, acct, positions, cfg2,
+                              open_trades=tsmom_open, strategy="tsmom")
+    # ...while meanrev, which holds none, still gets in.
+    risk.pre_trade_checks("buy", "NEW", 1, 100.0, acct, positions, cfg2,
+                          open_trades=tsmom_open, strategy="meanrev")
