@@ -106,6 +106,15 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     skip_bars: 21             # skip most recent month (short-term reversal)
     buy_top_fraction: 0.25
     exit_below_fraction: 0.50
+  donchian:            # §17 candidate: N-bar breakout, M-bar exit (Turtle asymmetry)
+    enabled: false     # DISABLED until it passes the walk-forward enablement gate.
+                       # Params below are the pre-registered starting point, NOT
+                       # a fitted result — 20/10 is the classical Turtle pair and
+                       # SMA200 mirrors the filter meanrev already relies on.
+    priority: 5
+    entry_channel_bars: 20
+    exit_channel_bars: 10
+    trend_sma_period: 200
   meanrev:             # Connors RSI-2 dip-buying, SMA200-filtered
     enabled: true      # PASSED gate 2026-07-15: OOS +1.40%, PF 2.19, 71% win, 171 trades
     priority: 4

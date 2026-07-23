@@ -529,3 +529,106 @@ INCUMBENT**; the rules passing inside the noise band is not a result.
   `enablement_gate`; it may only be enabled if it passes cleanly.
 
 Running trial count entering §14: ~13 registered comparisons plus grid arms.
+
+### §14–§17 RESULTS (2026-07-23) — FOUR CANDIDATES RUN, **ZERO ADOPTED**
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…, 38 symbols,
+62,244 bars). Rules were committed in the preceding commit; results in this one.
+
+**§14 xsmom re-test — NOT ENABLED.**
+On the 38-name universe xsmom clears the standing `enablement_gate` outright:
+OOS **+2.91%, PF 3.067, 46 trades, maxDD 1.1%** — the highest profit factor of
+any strategy in this repo. It fails the significance clause: mean $+63.33/trade
+with a 95% CI of **[-19.68, +186.65]**, P(mean>0) = 87.5%. Per the pre-registered
+rule (deterministic pass + inconclusive bootstrap = keep the incumbent), it
+**stays disabled.** The highest PF in the repo is also its least certain number;
+46 trades with 51.6% of gross profit in 3 of them is not 46 pieces of evidence.
+
+**§15 exit rules — REJECTED.**
+`max_hold_days` 5/7/14 x `exit_sma_period` 3/5/10 (5 arms). IS winner `hold14`
+(+3.94% IS, the best of the five). Out of sample it is a dead heat with the
+incumbent: **+2.99% vs +3.00%**, per-trade difference **-$0.04**, CI
+[-17.76, +17.55]. All five arms land within 0.6pp of each other OOS.
+
+Worth recording: the arm that looked best **out of sample** was `exit_sma3`
+(+3.29%, PF 1.754). Selecting on OOS would have "adopted" it. Selection happens
+in-sample only, which is the entire reason that did not happen. The finding is
+that the largest ungated surface in the system turns out to be a **flat**
+surface — the incumbent 7-day / SMA5 exits are fine, and nothing here is worth
+changing.
+
+**§16 chandelier ATR multiple — REJECTED BY NOISE (the interesting one).**
+Arms 2.0 / 2.5 / 3.0(incumbent) / 4.0 on tsmom. IS winner `trail2.5`, and out of
+sample it beats the incumbent on **every single point estimate**:
+
+| arm | OOS ret | PF | maxDD | trades |
+|---|---|---|---|---|
+| 3.0 (incumbent) | +2.07% | 2.170 | 0.64% | 93 |
+| **2.5 (selected)** | **+2.54%** | **2.558** | **0.46%** | **110** |
+| 2.0 | +2.02% | 1.865 | 0.88% | 158 |
+| 4.0 | +2.32% | 2.562 | 0.65% | 76 |
+
+Every deterministic rule passes. The bootstrap does not: per-trade difference
+**$+0.77**, CI **[-36.50, +37.29]**. Higher return, higher PF, lower drawdown,
+more trades — and all of it inside the noise band at n≈100 with fat-tailed trend
+P&L. **Incumbent kept at 3.0.**
+
+This is the case the significance clause exists for, and the honest reading is
+uncomfortable: with ~100 trades of trend P&L, this method cannot distinguish a
+genuine 23% return improvement from luck. That is a statement about how little
+these sample sizes support, not about 2.5 being wrong. **§16 is the strongest
+candidate to re-test once live trades exist** — flagged, not adopted.
+
+**§17 Donchian breakout — REJECTED, stays disabled.**
+New strategy (`src/strategies/donchian.py`, 20-bar entry / 10-bar exit / SMA200
+filter — the classical Turtle pair, chosen before running, not fitted). OOS
+**+1.54%** against an exposure-matched bar of **+1.95%** — fails by 0.41pp, plus
+PF ex-top-3 of **0.874**, i.e. it loses money without its three best trades.
+
+The mechanism did behave as predicted in the module docstring (34% win rate,
+PF 1.584 — win rarely, win large). It simply is not good enough. Code and tests
+are kept: the strategy is registered, `enabled: false`, and a test pins it that
+way, so the failure is documented rather than deleted.
+
+## §18 — Concentration + bootstrap edge report (2026-07-23) — NEW STANDING DIAGNOSTIC
+
+`scripts/edge_report.py`. Profit factor answers "did it make money here"; it does
+not answer "on how many independent events does that rest". Those two questions
+rank the strategies **in nearly opposite order**:
+
+| strategy | PF | top3% of gross profit | PF ex-top3 | median trade | edge vs zero |
+|---|---|---|---|---|---|
+| xsmom | 3.067 | 51.6% | 1.484 | -$36.96 | not shown (87.5%) |
+| ma_crossover | 2.400 | 54.7% | **1.087** | -$25.42 | not shown (97.1%) |
+| tsmom | 2.170 | 32.0% | 1.475 | -$14.48 | **at uncorrected only** (99.0%) |
+| meanrev | 1.638 | **6.6%** | 1.531 | **+$15.98** | **at uncorrected only** (99.0%) |
+| donchian | 1.584 | 44.8% | **0.874** | -$21.17 | not shown (84.7%) |
+
+Read by headline PF the ranking is xsmom > ma_crossover > tsmom > meanrev.
+Read by how broadly the profit is earned it is close to the reverse. **meanrev
+is the only strategy whose median trade makes money**, and the only one whose
+result does not depend on a handful of events.
+
+**The finding that matters most, and it is not a comfortable one:** after
+Bonferroni-correcting for the five strategies compared, **not one of them has an
+OOS per-trade edge distinguishable from zero.** meanrev and tsmom clear the
+uncorrected 5% bar (P(mean>0) = 99.0% each); ma_crossover, xsmom and donchian do
+not clear even that.
+
+What this does and does not mean:
+- It is **not** "the strategies are worthless". Every point estimate is positive,
+  and absence of evidence at n=46–266 is not evidence of absence.
+- It **is** "the backtest cannot certify any of these edges", and no gate that
+  looked only at return/PF/drawdown would ever have said so. §1–§17 all passed
+  through gates that could not see this.
+- **ma_crossover is the weakest by evidence and is currently ENABLED** (PF 2.400
+  is 54.7% three trades; PF ex-top-3 is 1.087, i.e. break-even). It is left
+  enabled — disabling it weakens nothing and would cut trade velocity, and the
+  decision belongs to the owner — but it should not be described as a validated
+  edge. It is the ensemble's baseline/teaching device, and it is performing like
+  one.
+- It is the sharpest possible argument for the standing invariant: **the live
+  forward record is the only holdout**, and 30 closed trades is the point at
+  which any of this starts to be checkable.
+
+Running trial count after §18: ~18 registered comparisons plus grid arms.
