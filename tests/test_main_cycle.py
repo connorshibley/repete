@@ -274,6 +274,35 @@ def test_ensemble_exit_is_owner_only(cycle_env, cfg):
     assert holds  # the hold decision is attributed to the owning strategy
 
 
+def test_portfolio_heat_counts_same_cycle_entries(cycle_env, cfg):
+    """Regression: the portfolio-heat cap must count entries executed earlier in
+    the SAME cycle. It read open_trades once at cycle start, so a second buy
+    measured heat against an empty book and could collectively breach
+    max_portfolio_heat_pct (the correlation cap already saw same-cycle entries
+    via `positions` — this closes the inconsistency)."""
+    cfg2, install = cycle_env
+    cfg2["symbols"] = ["SPY", "QQQ"]
+    cfg2["risk"]["max_open_positions"] = 5
+    cfg2["risk"]["max_trades_per_day"] = 5
+    # Each bracketed entry risks ~$366 (qty 50 x (20 - stop ~12.67)). Cap at
+    # $500 (0.5% of 100k): the first passes; the second only breaches once the
+    # first same-cycle entry's stop-risk is counted.
+    cfg2["risk"]["max_portfolio_heat_pct"] = 0.5
+    import yaml
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(cfg2, f)
+    broker = install(FakeCycleBroker(make_bars(BUY_CLOSES)))  # both symbols buy
+
+    main.run_cycle()
+
+    assert len(broker.submitted) == 1  # second entry blocked by the heat cap
+    led = Ledger(cfg2["memory"]["ledger_path"])
+    blocked = [r for r in led.all_records()
+               if r.get("type") == "decision" and r.get("executed") is False
+               and "portfolio heat" in (r.get("detail") or "").lower()]
+    assert blocked
+
+
 def test_max_open_positions_counts_same_cycle_entries(cycle_env, cfg):
     """Regression: entries executed earlier in the SAME cycle must count
     toward max_open_positions (the cap was read once at cycle start)."""

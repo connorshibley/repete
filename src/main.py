@@ -637,6 +637,17 @@ def _run_cycle():
                                        review, executed=True, order=order,
                                        entry_price=price, qty=qty, detail=detail_tag,
                                        regime=regime_label, strategy=sig.strategy)
+        if sig.action == "buy":
+            # Mirror this entry into the in-cycle open-trades view so the
+            # portfolio-heat cap counts same-cycle entries too — otherwise a
+            # later buy this cycle measures heat against the stale cycle-start
+            # book. (max_open_positions and the correlation cap already see
+            # same-cycle entries via `positions`; this closes the gap.)
+            open_trades[trade_id] = {
+                "symbol": symbol, "action": "buy", "strategy": sig.strategy,
+                "qty": qty, "entry_price": price, "order": order,
+                "outcome": None,
+            }
         if sig.action == "buy":  # judge accountability: approvals get scored on close
             memory.judgments.log_judgment(
                 trade_id, symbol, "buy", review["verdict"], review.get("scale", 1.0),
