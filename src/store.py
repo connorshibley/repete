@@ -114,3 +114,74 @@ class SqliteStore:
                 "SELECT data FROM events WHERE stream = ? ORDER BY id",
                 (self.stream,)).fetchall()
         return [json.loads(r[0]) for r in rows]
+
+
+# --- Read-only stores (CLAUDE.md invariant #9) -----------------------------
+# The publisher and health checks must NEVER be able to write to agent state.
+# These stores expose read_all() and nothing else — no append method at all,
+# so a publisher write is an AttributeError (structural, not conventional), and
+# the sqlite handle is opened mode=ro so it can issue no DDL/WAL/commit even if
+# a read-only filesystem mount is ever missing.
+
+def backend_kind(cfg: dict | None) -> tuple[str, str]:
+    """(backend, sqlite_path) resolved from cfg WITHOUT mutating the
+    process-wide backend — so a read-only caller can't flip the agent's
+    storage as a side effect (the /healthz DDL vector)."""
+    scfg = (cfg or {}).get("storage") or {}
+    kind = str(scfg.get("backend", "jsonl")).lower()
+    kind = kind if kind in ("jsonl", "sqlite") else "jsonl"
+    return kind, scfg.get("sqlite_path", "memory/agent.db")
+
+
+class _JsonlReadOnly:
+    """read_all() only — no append. Reads empty if the file is absent."""
+
+    def __init__(self, path: str):
+        self._path = path
+
+    def read_all(self) -> list[dict]:
+        try:
+            with open(self._path) as f:
+                return [json.loads(line) for line in f if line.strip()]
+        except FileNotFoundError:
+            return []
+
+
+class _SqliteReadOnly:
+    """SELECT-only SQLite: opened mode=ro (no CREATE/PRAGMA/commit), no append.
+    A missing DB reads empty rather than being created."""
+
+    def __init__(self, db_path: str, stream: str):
+        self.stream = stream
+        if not os.path.exists(db_path):
+            self._conn = None
+            return
+        self._conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True,
+                                     check_same_thread=False)
+
+    def read_all(self) -> list[dict]:
+        if self._conn is None:
+            return []
+        with _LOCK:
+            rows = self._conn.execute(
+                "SELECT data FROM events WHERE stream = ? ORDER BY id",
+                (self.stream,)).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+
+def open_store_readonly(path: str):
+    """Read-only store for the process-wide backend (defaults to jsonl when
+    configure() was never called, e.g. in the publisher process)."""
+    if _BACKEND["kind"] == "sqlite":
+        return _SqliteReadOnly(_BACKEND["sqlite_path"], stream_name(path))
+    return _JsonlReadOnly(path)
+
+
+def read_only_reader(cfg: dict | None, path: str):
+    """Read-only store honoring cfg's backend locally, without touching the
+    process-wide backend. This is what the publisher and /healthz use: correct
+    backend, zero write capability, no global side effect."""
+    kind, db = backend_kind(cfg)
+    if kind == "sqlite":
+        return _SqliteReadOnly(db, stream_name(path))
+    return _JsonlReadOnly(path)

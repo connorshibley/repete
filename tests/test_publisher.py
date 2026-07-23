@@ -105,6 +105,41 @@ def test_publisher_never_writes_agent_state(pub_env):
     assert not hasattr(ro, "log_event")
 
 
+def test_readonly_ledger_store_is_structurally_read_only():
+    """Invariant #9 must be an AttributeError, not a convention: the store
+    backing ReadOnlyLedger has no append method at all."""
+    ro = ReadOnlyLedger("memory/ledger.jsonl")   # no cfg -> jsonl read-only
+    assert not hasattr(ro._store, "append")
+    with pytest.raises(AttributeError):
+        ro._store.append({"type": "event", "event": "injected"})
+    assert not hasattr(ro, "log_decision") and not hasattr(ro, "log_event")
+
+
+def test_healthz_readonly_never_writes_or_reconfigures_under_sqlite(
+        tmp_path, monkeypatch):
+    """The publisher's /healthz path must not flip the process-wide storage
+    backend or issue DDL against agent state (the SqliteStore DDL write vector
+    the audit flagged). With sqlite configured but no agent.db present, a
+    read-only status must report the backend, leave the global untouched, and
+    create no database file."""
+    monkeypatch.chdir(tmp_path)
+    import store as store_mod
+    import health
+    (tmp_path / "memory").mkdir()
+    cfg = {"mode": "paper",
+           "memory": {"ledger_path": "memory/ledger.jsonl"},
+           "storage": {"backend": "sqlite", "sqlite_path": "memory/agent.db"}}
+    store_mod.configure(None)                          # global backend = jsonl
+    try:
+        s = health.status(cfg, read_only=True)
+        assert s["storage_backend"] == "sqlite"        # reported from cfg
+        assert store_mod.current_backend() == "jsonl"  # global NOT flipped
+        assert not (tmp_path / "memory" / "agent.db").exists()  # no DDL/write
+        assert s["open_positions"] == 0
+    finally:
+        store_mod.configure(None)
+
+
 # ---- invariant #10: revenue gates ----
 
 def test_gate_closed_today_with_reasons(pub_env):

@@ -35,8 +35,27 @@ def heartbeat_age_hours(path: str = HEARTBEAT_FILE,
     return (now - ts).total_seconds() / 3600
 
 
-def status(cfg: dict | None = None, now: datetime | None = None) -> dict:
-    """Everything an operator (or a status page) needs in one object."""
+def _open_buys_count(records: list[dict]) -> int:
+    """Open executed buys, matching ledger.open_buys / ReadOnlyLedger — an
+    outcome record closes its trade. Used by the read-only status path."""
+    open_ids: set = set()
+    for r in records:
+        if (r.get("type") == "decision" and r.get("executed")
+                and r.get("action") == "buy"):
+            open_ids.add(r.get("trade_id"))
+        elif r.get("type") == "outcome":
+            open_ids.discard(r.get("trade_id"))
+    return len(open_ids)
+
+
+def status(cfg: dict | None = None, now: datetime | None = None,
+           read_only: bool = False) -> dict:
+    """Everything an operator (or a status page) needs in one object.
+
+    read_only=True (the publisher's /healthz path): never call
+    store.configure() and never construct a writable store — reading agent
+    state must not be able to flip the process backend or issue DDL
+    (invariant #9). The agent's own CLI/watchdog use read_only=False."""
     now = now or datetime.now(timezone.utc)
     if cfg is None:
         try:
@@ -64,12 +83,17 @@ def status(cfg: dict | None = None, now: datetime | None = None) -> dict:
 
     try:
         import store as store_mod
-        store_mod.configure(cfg)
-        out["storage_backend"] = store_mod.current_backend()
-        from ledger import Ledger
-        led = Ledger(cfg.get("memory", {}).get("ledger_path",
-                                               "memory/ledger.jsonl"))
-        records = led.all_records()
+        ledger_path = cfg.get("memory", {}).get("ledger_path",
+                                                "memory/ledger.jsonl")
+        if read_only:
+            backend, _ = store_mod.backend_kind(cfg)
+            out["storage_backend"] = backend
+            records = store_mod.read_only_reader(cfg, ledger_path).read_all()
+        else:
+            store_mod.configure(cfg)
+            out["storage_backend"] = store_mod.current_backend()
+            from ledger import Ledger
+            records = Ledger(ledger_path).all_records()
         today = now.strftime("%Y-%m-%d")
         for r in records:
             if r.get("type") != "event":
@@ -81,7 +105,7 @@ def status(cfg: dict | None = None, now: datetime | None = None) -> dict:
                     out["degradations_today"] += 1
                 elif r.get("event") == "slo_breach":
                     out["slo_breach_today"] = True
-        out["open_positions"] = len(led.open_buys())
+        out["open_positions"] = _open_buys_count(records)
     except Exception as e:  # noqa: BLE001
         out["problems"].append(f"ledger unreadable: {e}")
 

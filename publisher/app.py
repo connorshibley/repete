@@ -53,8 +53,9 @@ def _db(request: Request) -> SubscriberDB:
 
 def _ledger(request: Request) -> ReadOnlyLedger:
     if not hasattr(request.app.state, "ledger"):
+        cfg = _cfg(request)
         request.app.state.ledger = ReadOnlyLedger(
-            agent_paths(_cfg(request))["ledger"])
+            agent_paths(cfg)["ledger"], cfg)
     return request.app.state.ledger
 
 
@@ -98,7 +99,9 @@ def healthz(request: Request):
     sys.path.insert(0, os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
     import health
-    s = health.status(_cfg(request))
+    # read_only: the publisher must never mutate the process-wide storage
+    # backend or issue DDL against agent state (invariant #9).
+    s = health.status(_cfg(request), read_only=True)
     return JSONResponse(s, status_code=200 if s["healthy"] else 503)
 
 
