@@ -6,3 +6,8 @@ python-dotenv>=1.0
 pandas>=2.0
 yfinance>=0.2  # earnings calendar (earnings-blackout filter)
 lxml>=5  # yfinance get_earnings_dates dependency
+tzdata>=2024.1  # make scripts/scheduler.py's ZoneInfo("America/New_York") self-
+                # sufficient. The current python:3.11-slim happens to ship a
+                # system tzdata deb, but that varies by Debian release / base
+                # image; this pin guarantees zoneinfo data so scheduler startup
+                # can never raise ZoneInfoNotFoundError.
