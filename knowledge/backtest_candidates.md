@@ -632,3 +632,53 @@ What this does and does not mean:
   which any of this starts to be checkable.
 
 Running trial count after §18: ~18 registered comparisons plus grid arms.
+
+## §19 — Faster entries (2026-07-23) — RULE PRE-REGISTERED, results in the next commit
+
+**Motivation (owner request, plus a divergence nobody had noticed).** The owner
+asked for the agent to enter "as soon as it sees an opportunity" rather than
+waiting for a fixed time. Investigating that surfaced a structural
+**live-vs-backtest divergence**:
+
+- `backtest.py` computes signals on the **close of bar i** and fills at the
+  **open of bar i+1**. Every gate number in this file rests on that model.
+- The live scheduler runs one cycle at **15:45 ET** and fills **immediately**,
+  at today's close — a full bar earlier than the research assumes.
+
+So the live bot has never traded the model it was validated against. A cycle at
+the **open**, reading the last COMPLETED daily bar, is therefore not a
+compromise between "faster" and "faithful" — it is *both*.
+
+**§19a — 09:35 ET open cycle. SHIPPED (no gate required).** This is not a
+strategy change: same strategies, same params, same rails. It changes *when*
+the existing signals are acted on, and it moves live behaviour toward the
+backtest rather than away from it. `datacheck.drop_forming_bar()` trims today's
+partial bar (mid-session `broker.bars()` returns a forming bar whose close is
+just the current price); the 15:45 cycle deliberately does NOT opt in, because
+15 minutes before the bell the forming bar is effectively the close, which is
+what every gate measured. 9 tests pin the guard, including one that fails if
+the scheduler ever drops the `--open-cycle` flag.
+
+Explicitly NOT done: intraday re-evaluation every N minutes. That runs
+RSI(2)/SMA200 against a partial bar — an input no gate has measured — and
+`config.yaml:63` warns against exactly it. The owner asked for faster; faster
+was available without going there.
+
+**§19b — `max_trades_per_day` 3 -> 5 / 8 / 12. PRE-REGISTERED, NOT YET RUN.**
+The cap is enforced in the simulator (`backtest.py`, `fills_by_date`), so it is
+honestly testable. With meanrev now allocated 8 slots (§13) and a second daily
+cycle, a cap of 3 is more likely to bind than it was.
+
+**PRE-REGISTERED RULE (written before running):** adopt the largest N whose
+IS-selected arm, out of sample, satisfies ALL of —
+(a) return >= baseline (N=3) return,
+(b) PF >= 1.30 AND >= baseline PF - 0.15,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute,
+(d) >= 15 closed trades,
+**and** the Bonferroni-corrected bootstrap CI on per-trade P&L excludes zero in
+the candidate's favour. Deterministic pass + inconclusive interval = **KEEP THE
+INCUMBENT** (this clause has already rejected §16, where the candidate beat the
+incumbent on every point estimate). If several N pass, prefer the SMALLEST that
+captures most of the trade-count gain.
+
+Running trial count entering §19: ~18 registered comparisons plus grid arms.

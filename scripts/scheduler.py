@@ -38,6 +38,13 @@ JOBS = [
     ("news-brain",   range(0, 5), None, 25, [PY, "src/market_context.py"]),
     ("plan-post",    range(0, 5), 9,    35,
      ["sh", "-c", f"{PY} src/daily_posts.py plan && {_PUBLISH}"]),
+    # 09:35 ET open cycle (2026-07-23). Entries that were true at yesterday's
+    # close used to wait until 15:45 today; this acts on them ~6 hours sooner.
+    # --open-cycle drops today's still-forming bar, so signals come from the
+    # last COMPLETED daily bar — which is precisely the backtester's model
+    # (signal on close of bar i, fill at open of bar i+1). Same rails.
+    ("open-cycle",   range(0, 5), 9,    35,
+     ["sh", "-c", f"{PY} src/main.py --open-cycle && {_PUBLISH}"]),
     ("cycle",        range(0, 5), 15,   45,
      ["sh", "-c", f"{PY} src/main.py && {_PUBLISH}"]),
     ("catch-up",     range(0, 5), 15,   55, [PY, "src/watchdog.py", "--catchup"]),

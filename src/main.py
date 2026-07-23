@@ -334,9 +334,16 @@ def record_fill_quality(broker, ledger: Ledger, max_checks: int = 20):
         log.error("fill-quality pass failed: %s", e)
 
 
-def run_cycle():
+def run_cycle(completed_bars_only: bool = False):
+    """One trading cycle.
+
+    `completed_bars_only` drops today's still-forming daily bar before signals
+    are computed (see datacheck.drop_forming_bar). The 15:45 cycle leaves it
+    False — at 15 minutes to the close the forming bar is effectively the
+    close, which is what every gate measured. The 09:35 open cycle sets it
+    True, because a five-minute-old stub is not a daily bar."""
     try:
-        _run_cycle()
+        _run_cycle(completed_bars_only=completed_bars_only)
     finally:
         write_heartbeat()
 
@@ -371,7 +378,7 @@ def check_degradation_slo(ledger: Ledger, cfg: dict):
         log.warning("SLO check failed: %s", e)
 
 
-def _run_cycle():
+def _run_cycle(completed_bars_only: bool = False):
     load_dotenv()
     with open("config.yaml") as f:
         cfg = yaml.safe_load(f)
@@ -763,6 +770,8 @@ def _run_cycle():
     for symbol in scan_symbols:
         try:
             fetched = broker.bars(symbol, cfg["strategy"]["timeframe"], lookback)
+            if completed_bars_only:
+                fetched = datacheck.drop_forming_bar(fetched)
             if fetched:
                 all_bars[symbol] = fetched
         except Exception as e:  # noqa: BLE001 — data failure: skip symbol, log it
@@ -978,4 +987,8 @@ def _run_cycle():
 
 
 if __name__ == "__main__":
-    run_cycle()
+    # --open-cycle: the 09:35 ET pass. Same rails, same strategies, but it
+    # reads only COMPLETED daily bars, so it acts on yesterday's close the way
+    # the backtester does. Entries that were true at the close no longer wait
+    # until 15:45 the next day.
+    run_cycle(completed_bars_only="--open-cycle" in sys.argv)

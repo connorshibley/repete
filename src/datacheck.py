@@ -13,8 +13,46 @@ not spam the degradation SLO). The rail fires ONLY when both vendors report
 the same session and disagree.
 """
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger("datacheck")
+
+ET = ZoneInfo("America/New_York")
+# Regular-session close. A daily bar dated today is still FORMING until then.
+MARKET_CLOSE = (16, 0)
+
+
+def drop_forming_bar(bars: list[dict], now: datetime | None = None) -> list[dict]:
+    """Trim a still-forming daily bar off the end of `bars`.
+
+    Why this exists (2026-07-23). `broker.bars()` windows the request to *now*,
+    so during the session the last "daily bar" is today's PARTIAL bar: its
+    close is simply the current price, and its high/low are only the range so
+    far. At 15:45 that is close enough to the real close that the 15:45 cycle
+    has always been fine. At 09:35 it is a five-minute-old stub, and feeding it
+    to RSI(2)/SMA200 would be trading an input no backtest has ever measured.
+
+    The backtester computes signals on the close of bar i and fills at the open
+    of bar i+1 (`backtest.py` module docstring). So a cycle that runs at the
+    open against the last COMPLETED bar is not an approximation of the
+    research — it is exactly the research's model.
+
+    Pure and timezone-explicit: a bar is forming iff its date is today in ET
+    and the regular session has not closed yet. Weekends and post-close hours
+    leave the list untouched, so the 15:45 path is unaffected unless a caller
+    opts in.
+    """
+    if not bars:
+        return bars
+    now = now or datetime.now(ET)
+    now = now.astimezone(ET)
+    if (now.hour, now.minute) >= MARKET_CLOSE:
+        return bars                      # session done — today's bar is final
+    last_date = (bars[-1].get("ts") or "")[:10]
+    if last_date == now.date().isoformat():
+        return bars[:-1]
+    return bars
 
 
 def divergence_reason(alpaca_ts: str, alpaca_close: float,
