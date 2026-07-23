@@ -140,3 +140,69 @@ def test_daily_loss_breached(cfg, account):
 def test_daily_loss_not_breached(cfg, account):
     account["equity"] = 99_000.0  # -1%
     assert not risk.daily_loss_breached(account, cfg)
+
+
+# ---- §11: risk_pct is clamped by max_order_value_usd ----
+
+def _acct_100k():
+    return {"equity": 100_000.0, "cash": 100_000.0,
+            "last_equity": 100_000.0, "buying_power": 100_000.0}
+
+
+def test_risk_pct_is_clamped_by_max_order_value(cfg):
+    """knowledge/backtest_candidates.md §11: risk_pct 1.0/2.0/5.0 are the SAME
+    setting at the current caps — size_order applies max_order_value_usd after
+    the risk-based calculation, so all three clamp to the same position. If this
+    ever fails, the effective position-size lever changed and §11's conclusion
+    (and the kill-switch interaction) must be re-derived."""
+    cfg["risk"]["max_order_value_usd"] = 2000
+    cfg["risk"]["max_position_pct"] = 10.0
+    price, stop = 100.0, 93.0                      # 7% stop distance
+    sizes = {}
+    for rp in (1.0, 2.0, 5.0):
+        cfg["risk"]["risk_sizing"] = {"enabled": True, "risk_pct": rp,
+                                      "strategies": ["meanrev"]}
+        sizes[rp] = risk.size_order(_acct_100k(), price, cfg,
+                                    strategy="meanrev", stop_price=stop)
+    assert len(set(sizes.values())) == 1, f"expected identical sizing, got {sizes}"
+    assert sizes[5.0] * price == 2000          # clamped to the per-order cap
+
+
+def test_single_trade_loss_cannot_trip_the_kill_switch(cfg):
+    """A single clamped stop-out must stay well under daily_loss_limit_pct —
+    the 2026-07-22 claim that 5% risk would HALT the bot on its first loser was
+    wrong, and this pins the real relationship."""
+    cfg["risk"]["max_order_value_usd"] = 2000
+    cfg["risk"]["daily_loss_limit_pct"] = 3.0
+    cfg["risk"]["risk_sizing"] = {"enabled": True, "risk_pct": 5.0,
+                                  "strategies": ["meanrev"]}
+    acct = _acct_100k()
+    kill_switch_dollars = acct["equity"] * cfg["risk"]["daily_loss_limit_pct"] / 100
+    for stop_frac in (0.04, 0.07, 0.15, 0.30):
+        price = 100.0
+        stop = price * (1 - stop_frac)
+        qty = risk.size_order(acct, price, cfg, strategy="meanrev",
+                              stop_price=stop)
+        loss = qty * (price - stop)
+        assert loss < kill_switch_dollars, (
+            f"stop {stop_frac:.0%}: single loss ${loss:,.0f} would trip the "
+            f"${kill_switch_dollars:,.0f} kill switch")
+
+
+def test_heat_cap_not_binding_for_clamped_meanrev_entries(cfg):
+    """§11 correction: at max_portfolio_heat_pct 4.0 a full book of clamped
+    meanrev positions does NOT breach the cap, so raising it to 10.0 was
+    unnecessary."""
+    cfg["risk"]["max_order_value_usd"] = 2000
+    cfg["risk"]["max_portfolio_heat_pct"] = 4.0
+    cfg["risk"]["risk_sizing"] = {"enabled": True, "risk_pct": 5.0,
+                                  "strategies": ["meanrev"]}
+    acct = _acct_100k()
+    price, stop = 100.0, 93.0
+    qty = risk.size_order(acct, price, cfg, strategy="meanrev", stop_price=stop)
+    open_trades = {f"t{i}": {"symbol": f"S{i}", "qty": qty,
+                             "entry_price": price, "order": {"stop_price": stop}}
+                   for i in range(4)}
+    heat = risk.portfolio_heat(open_trades, cfg, acct["equity"])
+    cap = acct["equity"] * cfg["risk"]["max_portfolio_heat_pct"] / 100
+    assert heat < cap, f"heat ${heat:,.0f} unexpectedly >= cap ${cap:,.0f}"

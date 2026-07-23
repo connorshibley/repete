@@ -123,6 +123,13 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # stop-risk (sum of qty x entry-to-stop across the
                                  # book) + a new entry's risk may not exceed this % of
                                  # equity. Entries only. 0 disables.
+                                 # (Briefly raised to 10.0 on 2026-07-22 and REVERTED
+                                 # the same day: that change assumed a 5%-risk entry
+                                 # would breach a 4% cap. It cannot — max_order_value_usd
+                                 # clamps the position to $2k first, so a meanrev entry's
+                                 # true stop-risk is ~$80-300, and four open positions
+                                 # total ~$560 against a $4,000 cap. The cap was never
+                                 # binding; raising it weakened a rail for no reason.)
   data_crosscheck:               # SECOND-VENDOR PRICE CHECK (2026-07-21): SPY's
     enabled: true                # latest close compared Alpaca vs yfinance each
     max_divergence_pct: 0.5      # cycle. Same-session divergence beyond this % =>
@@ -189,7 +196,29 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # 0.2→0.3 within tolerance, IS improves; also
                                  # beats + replaces vol_target); REJECTED for
                                  # tsmom (maxDD 0.7→1.1 breaks the rule).
-    risk_pct: 0.1                # % of equity truly at risk entry-to-stop
+    risk_pct: 5.0                # % of equity truly at risk entry-to-stop —
+                                 # BUT SEE THE CLAMP NOTE BELOW: this value does
+                                 # NOT deliver 5% risk at the current caps.
+                                 # Owner override 2026-07-22 (was 0.1), re-validated
+                                 # 2026-07-23 on the §8 frozen snapshot — see
+                                 # knowledge/backtest_candidates.md §11. Passes the
+                                 # §8 rule vs the 0.1 baseline (OOS +2.63 vs +2.24,
+                                 # maxDD 0.5 vs 0.3 <= +0.25pp, IS +1.87 vs +1.34).
+                                 #
+                                 # CLAMP NOTE — the number is aspirational, not
+                                 # effective. size_order() applies
+                                 # max_order_value_usd ($2,000) AFTER this
+                                 # calculation, so on $100k equity a meanrev entry
+                                 # is capped at a $2,000 position and risks only
+                                 # ~$80-300 (0.08-0.3% of equity), not $5,000.
+                                 # risk_pct 1.0, 2.0 and 5.0 are BYTE-IDENTICAL in
+                                 # backtest for exactly this reason; only 0.1 (which
+                                 # sizes under the cap at wide stops) differs.
+                                 # => The real position-size lever is
+                                 # max_order_value_usd. Raising THAT would make this
+                                 # 5% genuinely bind, at which point a single
+                                 # stop-out could approach daily_loss_limit_pct (3.0)
+                                 # and this pairing needs its own gate run first.
     strategies: [meanrev]        # per-strategy scope from the gate
   reentry_cooldown:              # same-ticker re-entry cooldown after an exit
     days: 5                      # (anti-whipsaw). Gate 2026-07-19 (§9): ADOPTED
