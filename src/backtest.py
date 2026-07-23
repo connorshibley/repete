@@ -21,6 +21,7 @@ Usage:
 """
 import argparse
 import csv
+import gzip
 import itertools
 import json
 import os
@@ -164,9 +165,13 @@ def buy_and_hold_return(bars: list, slippage_bps: float, fee: float,
 
 def load_bars_file(path: str) -> dict:
     """JSON ({symbol: [bar,...]} or a bare list for one symbol named FILE) or
-    CSV (columns: symbol?,ts,open,high,low,close,volume) -> broker.bars shape."""
-    if path.endswith(".json"):
-        with open(path) as f:
+    CSV (columns: symbol?,ts,open,high,low,close,volume) -> broker.bars shape.
+
+    `.json.gz` is accepted so the committed gate snapshots stay ~1.8 MB rather
+    than ~7.8 MB (see scripts/build_snapshot.py)."""
+    if path.endswith((".json", ".json.gz")):
+        opener = gzip.open if path.endswith(".gz") else open
+        with opener(path, "rt") as f:
             data = json.load(f)
         if isinstance(data, list):
             return {"FILE": data}
@@ -511,6 +516,14 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
 
 # -------------------------------------------------------------- walk-forward
 
+def load_config(path: str = "config.yaml") -> dict:
+    """The live config, for callers that drive simulate() directly (e.g.
+    scripts/gate_compare.py). simulate() deep-copies before touching it."""
+    import yaml
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
 def append_trial(path: str, record: dict):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     record["logged_at"] = datetime.now(timezone.utc).isoformat()
@@ -618,9 +631,7 @@ def build_generic_grid(param_args: list, stop_mults, tp_mults) -> list:
 # ----------------------------------------------------------------------- CLI
 
 def main():
-    import yaml
-    with open("config.yaml") as f:
-        cfg = yaml.safe_load(f)
+    cfg = load_config()
     bt = cfg.get("backtest", {})
 
     p = argparse.ArgumentParser(description="Offline backtest (never touches the live ledger)")

@@ -433,3 +433,99 @@ sizing, heat, correlation, concentration, the daily-loss kill switch and the
 swing guard are all unchanged. The backtest gain is +17 OOS trades over ~2
 years — real but modest. **It does not shorten the go-live gate; it only lets
 evidence accrue somewhat faster.**
+
+## METHOD NOTE 3 — the §1–§13 snapshot is GONE; those numbers are unreproducible (2026-07-23)
+
+Every gate from §1 to §13 was scored on `memory/bars_snapshot_2020_2026-07-10.json`
+(25 symbols x 1637 bars). `memory/` is in `.gitignore`, so **the file was never
+committed and no longer exists on any machine reachable from this repo.**
+
+This is a process failure with a specific consequence: *the verdicts survive as
+prose, but nobody can re-derive them.* "Re-running §8 reproduces §8" is now an
+unfalsifiable claim. Sections §1–§13 should be read as **recorded history, not
+as re-checkable evidence.**
+
+Fixed going forward:
+- `scripts/build_snapshot.py` rebuilds snapshots from **yfinance** (no API keys,
+  so any future session can do it) into **`data/snapshots/` — committed** — with
+  a SHA256 in `MANIFEST.json`. `--verify` fails loudly on drift.
+- Snapshots are gzipped JSON (~1.8 MB vs ~7.8 MB); `backtest.load_bars_file`
+  accepts `.json.gz`.
+
+**The new snapshot is NOT a drop-in replacement.** yfinance serves
+split/dividend-ADJUSTED prices, the retired Alpaca snapshot served raw; and the
+new file carries all **38** current symbols where the old one had 25. Different
+universe AND different price basis. Therefore **no figure from §1–§13 may be
+compared against a figure from §14 onward.** Every section below re-measures its
+own baseline inside its own snapshot.
+
+### Re-baselined on `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…)
+
+38 symbols, 62,244 bars, live config, 70/30 walk-forward:
+
+| strategy | OOS return | PF | trades | maxDD | gate |
+|---|---|---|---|---|---|
+| meanrev | +3.00% | 1.638 | 266 | 0.8% | PASS |
+| tsmom | +2.07% | 2.170 | 93 | 0.6% | PASS |
+| ma_crossover | +2.94% | 2.400 | 88 | 1.1% | PASS |
+
+All three enabled strategies **re-pass the enablement gate on a different data
+vendor, a wider universe and an adjusted price basis.** That is a genuine
+robustness result — vendor-specific artifacts are one of the ways a backtest
+edge turns out to be nothing — and it is the strongest thing the backtests say.
+It is still not live evidence, and METHOD NOTE 2 still applies: this window has
+been mined, and the live forward record remains the only clean holdout.
+
+## METHOD NOTE 4 — multiple-testing correction is now arithmetic, not judgement (2026-07-23)
+
+METHOD NOTE 2 clause 4 promised the bar would rise with the trial count, but
+specified only "prefer a clear margin" — a judgement call, and judgement calls
+drift toward the answer you wanted. `src/significance.py` replaces it:
+
+- **Moving-block bootstrap** (block ~ sqrt(n)) over the OOS closed-trade P&L
+  sequence, so a single lucky market stretch cannot masquerade as edge the way
+  it would under naive per-trade resampling.
+- **Bonferroni correction**: K arms in a section are each judged at 0.05/K.
+- A candidate whose CI includes zero is reported **INCONCLUSIVE — not a pass.**
+
+Two honest limits, both recorded in the module docstring: the two arms share
+the same bars but are resampled independently, which *overstates* the variance
+(so passing is harder than it should be — safe direction); and no bootstrap can
+undo the fact that the OOS window itself has been mined.
+
+## §14–§17 — PRE-REGISTERED RULES, WRITTEN BEFORE ANY CANDIDATE WAS RUN
+
+Committed as its own commit, ahead of the results commit, so git timestamps
+prove the rules preceded the numbers.
+
+Protocol for all four, enforced by `scripts/gate_compare.py`:
+1. every arm runs in-sample; 2. the winner is picked **on IS only**;
+3. baseline and IS-winner run OOS; 4. the OOS difference goes through the
+Bonferroni-corrected block bootstrap with K = number of arms.
+
+**Deterministic rules (identical across the four sections):** adopt only if the
+IS-selected arm, out of sample, satisfies ALL of —
+(a) return >= baseline return,
+(b) PF >= 1.30 (standing bar) AND >= baseline PF - 0.15,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute
+    (`daily_loss_limit_pct`: a book that can lose more in a drawdown than the
+    kill switch tolerates in a day is leverage, not capacity),
+(d) >= 15 closed OOS trades.
+**Plus:** the bootstrap CI on per-trade P&L must exclude zero in the
+candidate's favour. Deterministic-pass + inconclusive-bootstrap = **KEEP THE
+INCUMBENT**; the rules passing inside the noise band is not a result.
+
+- **§14 xsmom re-test.** Rejected 2026-07-15 by 0.13pp on the 25-symbol
+  universe — the closest rejection in this repo — and never retried on the 38
+  names that lifted the other three. Judged by the standing `enablement_gate`,
+  since this is enable/don't-enable rather than a parameter change.
+- **§15 exit rules.** `max_hold_days: 7` and `exit_sma_period: 5` were adopted
+  at the original enablement and have **never been gated at all** — the largest
+  ungated surface in the system. Arms grid both.
+- **§16 chandelier ATR multiple.** §7 registered a single value (3.0) with no
+  grid; the swing literature spans 2.5–3.0. Arms: 2.0 / 2.5 / 3.0.
+- **§17 Donchian breakout.** The absent classical swing family. Fits existing
+  plumbing (single-asset, no cross-section, like meanrev). Judged by
+  `enablement_gate`; it may only be enabled if it passes cleanly.
+
+Running trial count entering §14: ~13 registered comparisons plus grid arms.
