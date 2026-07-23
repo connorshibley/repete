@@ -92,6 +92,8 @@ class Result:
     win_rate: float
     profit_factor: float
     max_drawdown_pct: float
+    n_heat_blocked: int = 0     # entries stopped by the portfolio-heat cap
+    n_corr_blocked: int = 0     # entries stopped by the correlation cap
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
@@ -309,6 +311,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     curve: list = []
     deployment: list = []
     guard_skips = 0
+    n_heat_blocked = 0      # §13: rails the sim previously ignored
+    n_corr_blocked = 0
     fills_by_date: dict = {}
     last_exit: dict = {}  # symbol -> exit ts (re-entry cooldown, §9)
     pending: list = []  # (symbol, action) to fill at that symbol's next open
@@ -359,10 +363,46 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                                       strategy=strategy_name,
                                       stop_price=stop)
                 try:
+                    # Single-strategy sim: every open position belongs to the
+                    # strategy under test, so its slot allocation (§13) is
+                    # exactly len(positions).
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
-                                     regime_label=regime_labels.get(ts))
+                                     regime_label=regime_labels.get(ts),
+                                     strategy=strategy_name,
+                                     strategy_open=len(acct.positions))
+                    # The heat + correlation caps live in pre_trade_checks,
+                    # which the sim cannot call (it does HALT/trade-count file
+                    # I/O). They were therefore NEVER simulated: every gate
+                    # through §12 was measured with fewer rails than live runs
+                    # with, so the sim overstated achievable trade count. Apply
+                    # them here so sim and live agree.
+                    _sim_open_trades = {
+                        s: {"qty": p["qty"], "entry_price": p["avg_entry"],
+                            "order": {"stop_price": p.get("stop")}}
+                        for s, p in acct.positions.items()}
+                    heat_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
+                    if heat_pct:
+                        eq = acct.equity(last_close)
+                        heat = risk.portfolio_heat(_sim_open_trades, cfg, eq)
+                        new_risk = (qty * max(fill - stop, 0.0) if stop
+                                    else eq * cfg["risk"].get(
+                                        "risk_per_trade_pct", 1.0) / 100)
+                        if heat + new_risk > eq * heat_pct / 100:
+                            n_heat_blocked += 1
+                            continue
+                    ccfg = cfg["risk"].get("correlation_cap") or {}
+                    if ccfg.get("enabled") and acct.positions:
+                        open_bars = {s: sym_bars[s][:idx[s][ts] + 1]
+                                     for s in acct.positions
+                                     if s != sym and ts in idx.get(s, {})}
+                        n_corr = risk.correlated_position_count(
+                            hist, open_bars, int(ccfg.get("lookback", 60)),
+                            float(ccfg.get("threshold", 0.85)))
+                        if n_corr >= int(ccfg.get("max_correlated", 2)):
+                            n_corr_blocked += 1
+                            continue
                 except risk.RiskRejection:
                     continue
                 acct.cash -= qty * fill + fee
@@ -457,6 +497,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         params={**params, "strategy": strategy_name},
         start=all_ts[0] if all_ts else "", end=final_ts,
         n_trades=len(closed), n_guard_skipped_exits=guard_skips,
+        n_heat_blocked=n_heat_blocked, n_corr_blocked=n_corr_blocked,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
         buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),
@@ -639,6 +680,10 @@ def main():
                         "(the live evidence-velocity bottleneck)")
     p.add_argument("--max-trades-day", type=int, default=None, metavar="N",
                    help="CANDIDATE: risk.max_trades_per_day rate limit")
+    p.add_argument("--strategy-max-positions", type=int, default=None,
+                   metavar="N",
+                   help="CANDIDATE §13: per-strategy slot allocation for the "
+                        "strategy under test (global cap still applies)")
     p.add_argument("--fee", type=float, default=bt.get("fee_per_trade_usd", 0.0))
     p.add_argument("--trials-path",
                    default=bt.get("trials_path", "memory/backtest_trials.jsonl"))
@@ -695,6 +740,15 @@ def main():
         if flag is not None:
             cfg["risk"][key] = flag
             print(f"(CANDIDATE on: {label} = {flag})")
+    if args.strategy_max_positions is not None:
+        cfg.setdefault("strategies", {}).setdefault(args.strategy, {})[
+            "max_open_positions"] = args.strategy_max_positions
+        # The per-strategy allocation can only TIGHTEN; lift the global ceiling
+        # so it is the allocation under test rather than the old global 5.
+        cfg["risk"]["max_open_positions"] = max(
+            cfg["risk"]["max_open_positions"], args.strategy_max_positions)
+        print(f"(CANDIDATE §13 on: {args.strategy} slot allocation = "
+              f"{args.strategy_max_positions})")
 
     if args.bars_file:
         sym_bars = load_bars_file(args.bars_file)

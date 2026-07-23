@@ -598,7 +598,8 @@ def _run_cycle():
                                   regime_label=regime_label,
                                   bars_map=all_bars, open_trades=open_trades,
                                   candidate_stop=(bracket_prices[0]
-                                                  if bracket_prices else None))
+                                                  if bracket_prices else None),
+                                  strategy=sig.strategy)
         except risk.RiskRejection as e:
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,
