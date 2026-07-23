@@ -483,3 +483,55 @@ def test_dashboard_never_writes_agent_state(pub_env):
     client.get("/dashboard")
     after = {p.name: p.read_bytes() for p in mem.iterdir()}
     assert before == after
+
+
+# ---- Phase E: public status page + marketing page ----
+
+def test_status_page_public_and_reports_health(pub_env):
+    client, cfg, tmp_path = pub_env
+    r = client.get("/status")                      # no session required
+    assert r.status_code == 200
+    assert "system status" in r.text
+    # no heartbeat has ever been written in this fixture -> honestly degraded
+    assert "DEGRADED" in r.text
+    assert "never" in r.text                       # heartbeat age
+    assert "PAPER-TRADING" in r.text               # disclaimer present
+
+
+def test_status_page_does_not_write_agent_state(pub_env):
+    client, cfg, tmp_path = pub_env
+    mem = tmp_path / "memory"
+    before = {p.name: p.read_bytes() for p in mem.iterdir()}
+    client.get("/status")
+    after = {p.name: p.read_bytes() for p in mem.iterdir()}
+    assert before == after
+
+
+def test_marketing_page_makes_no_performance_claims(pub_env):
+    """PRODUCT.md: no guarantees, no projected returns, no testimonials, and
+    the gate status stated honestly while subscriptions are closed."""
+    client, cfg, tmp_path = pub_env
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.text.lower()
+    # Promotional constructions that cannot appear inside an honest negation.
+    for banned in ("guaranteed return", "risk-free", "you will make",
+                   "beat the market", "act now", "limited time",
+                   "you should buy"):
+        assert banned not in body, f"marketing page must not say {banned!r}"
+    # The required disclosures must be present (they legitimately contain the
+    # words "guarantees"/"projected returns"/"testimonials" as NEGATIONS).
+    assert "no performance guarantees, no projected returns, and no "\
+           "testimonials" in body
+    assert "publication, not an advisory service" in body
+    assert "never tell you what to buy" in body
+    assert "not open yet" in body                  # gate honesty
+    assert "track record too small" in body        # the actual reason
+    assert "paper-trading" in body                 # disclaimer
+
+
+def test_marketing_page_shows_subscribe_only_when_gate_open(open_gate_env):
+    client, cfg, tmp_path = open_gate_env
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Subscribe" in r.text and "Subscriptions are not open" not in r.text
