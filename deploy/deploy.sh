@@ -1,0 +1,63 @@
+#!/bin/sh
+# One-command deploy for the VPS / docker-compose path (Phase E ops, 2026-07-23).
+#
+#   sh deploy/deploy.sh            build, start, verify
+#   sh deploy/deploy.sh --publisher   also start the subscriber site
+#
+# Refuses to run half-configured rather than starting a bot that cannot trade.
+set -eu
+
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+PROFILE=""
+[ "${1:-}" = "--publisher" ] && PROFILE="--profile publisher"
+
+say() { printf '\n== %s\n' "$1"; }
+fail() { printf 'DEPLOY ABORTED: %s\n' "$1" >&2; exit 1; }
+
+say "preflight"
+[ -f .env ] || fail ".env missing — cp .env.example .env and fill it in (see deploy/SECRETS.md)"
+for key in ALPACA_API_KEY ALPACA_SECRET_KEY; do
+  grep -qE "^${key}=.+" .env || fail "$key is empty in .env — the agent cannot trade without it"
+done
+# Loud, not fatal: the interlock is config + env, and this only reports.
+if grep -qE '^\s*mode:\s*live' config.yaml; then
+  printf 'WARNING: config.yaml says mode: live. Live also needs\n'
+  printf '         LIVE_TRADING_CONFIRMED=YES. Walk docs/go_live_checklist.md first.\n'
+fi
+chmod 600 .env 2>/dev/null || true
+
+say "state directories (must outlive every redeploy)"
+mkdir -p memory logs backups
+printf '  memory/  %s files\n' "$(ls -1 memory 2>/dev/null | wc -l | tr -d ' ')"
+if [ ! -s memory/ledger.jsonl ] && [ ! -s memory/agent.db ]; then
+  printf '  NOTE: no existing ledger found. If you meant to carry the track\n'
+  printf '        record over from another host, copy memory/ FIRST — see\n'
+  printf '        "Migrating your existing state" in deploy/README.md.\n'
+fi
+
+say "build"
+docker compose build
+
+say "start"
+# shellcheck disable=SC2086
+docker compose $PROFILE up -d
+
+say "verify"
+sleep 5
+docker compose ps
+printf '\n-- scheduler boot line --\n'
+docker compose logs --tail 20 agent | grep -i "scheduler up" \
+  || fail "scheduler did not report 'scheduler up' — check: docker compose logs agent"
+printf '\n-- health --\n'
+docker compose run --rm agent python src/health.py || true
+
+cat <<'EOF'
+
+Deployed. What to check next:
+  * after the first weekday 15:45 ET cycle, memory/heartbeat should be fresh
+    (a stale heartbeat is what "silently dead" looks like — see HEARTBEAT.md)
+  * after 17:00 ET, backups/ should hold a dated archive
+  * prove it restores:  docker compose run --rm agent python scripts/restore_drill.py
+
+To stop trading immediately at any point:   touch HALT
+EOF
