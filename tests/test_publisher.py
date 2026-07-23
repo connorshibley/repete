@@ -222,7 +222,11 @@ def test_session_cookie_tamper_rejected():
     secret = b"k"
     good = pauth.make_session(secret, "a@b.com", 1)
     assert pauth.verify_session(secret, good) == "a@b.com"
-    assert pauth.verify_session(secret, good[:-1] + "0") is None
+    # Flip the last signature char to a GUARANTEED-different one — a fixed
+    # replacement is a no-op whenever the hex signature already ends in it,
+    # which (with a time-based payload) made this test flaky ~1/16 of runs.
+    tampered = good[:-1] + ("0" if good[-1] != "0" else "1")
+    assert pauth.verify_session(secret, tampered) is None
     assert pauth.verify_session(b"other", good) is None
     assert pauth.verify_session(secret, None) is None
 
