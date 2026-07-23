@@ -21,6 +21,11 @@ DEFAULTS = {
     "session_ttl_hours": 24 * 30,
     "magic_link_ttl_minutes": 30,
     "data_dir": "publisher_data",
+    # Set True ONLY behind a trusted reverse proxy: then X-Forwarded-For keys
+    # the rate limiter (per real client, not the shared proxy IP) and
+    # X-Forwarded-Proto decides the session cookie's Secure flag. Left False,
+    # both headers are attacker-controlled and ignored.
+    "trust_proxy": False,
     "attorney_signoff": False,       # flipped only after counsel review
     "legal_pages_final": False,      # flipped when ToS/Privacy/Risk are final
     # NOTE: the numeric revenue-gate thresholds are NOT config — they are

@@ -193,6 +193,31 @@ def test_magic_link_single_use_and_expiry(pub_env):
                       follow_redirects=False).status_code == 400
 
 
+def test_session_cookie_not_secure_over_plain_http(pub_env):
+    """Without a trusted https proxy the cookie is not marked Secure (so it
+    works over http); the Secure flag is scheme-driven, not hardcoded off."""
+    client, cfg, tmp_path = pub_env
+    token = pauth.new_token()
+    app.state.db.issue_token("sec@example.com", "login", token, 30)
+    r = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert r.status_code == 303
+    assert "secure" not in r.headers.get("set-cookie", "").lower()
+
+
+def test_session_cookie_secure_behind_trusted_https_proxy(pub_env):
+    """Behind a trusted proxy terminating TLS (X-Forwarded-Proto: https) the
+    session cookie is marked Secure."""
+    client, cfg, tmp_path = pub_env
+    cfg["publisher"]["trust_proxy"] = True
+    token = pauth.new_token()
+    app.state.db.issue_token("sec2@example.com", "login", token, 30)
+    r = client.get(f"/auth/verify?token={token}",
+                   headers={"X-Forwarded-Proto": "https"},
+                   follow_redirects=False)
+    assert r.status_code == 303
+    assert "secure" in r.headers.get("set-cookie", "").lower()
+
+
 def test_session_cookie_tamper_rejected():
     secret = b"k"
     good = pauth.make_session(secret, "a@b.com", 1)
