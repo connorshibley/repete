@@ -276,3 +276,109 @@ both refuted by the code and re-measured here:
 `max_order_value_usd`, not `risk_pct`. Raising it would make 5% genuinely bind,
 and only then could a single stop-out approach `daily_loss_limit_pct`. That
 pairing must get its own gate run before it is changed.
+
+## METHOD NOTE 2 — the OOS window is contaminated (2026-07-23)
+
+The 70/30 walk-forward split puts OOS at **2024-07-23 → 2026-07-09**, and
+§1–§11 scored **~11 adopt/reject decisions on that same window**. It is
+therefore a SELECTION set, not a clean holdout: repeatedly choosing the variant
+that scores best on a fixed window is in-sample fitting one level up.
+
+Consequences, binding on all future work:
+1. Quoted OOS figures (incl. "OOS +2.63%, PF 2.16, 3.58x exposure-matched") are
+   an **upper bound on the true edge**, not evidence of it.
+2. The only clean holdout that exists is the **LIVE FORWARD RECORD** — which is
+   exactly what the go-live gate's 30-closed-trades requirement is for.
+3. Backtests here **generate hypotheses; only live trading confirms them.** No
+   deployment or risk increase may be justified by the mined OOS alone.
+4. Every new section must record the **running trial count**, and the bar rises
+   with it: with N prior comparisons, a marginal pass is more likely to be luck
+   than edge. Prefer candidates that pass by a clear margin.
+
+Trial count through §11: ~11 registered comparisons (plus grid arms inside them).
+
+## §12 — position-slot cap `max_open_positions` (2026-07-23) — RULE PRE-REGISTERED
+
+**Motivation (live evidence, not theory).** In 9 live days the bot generated
+**146 buy signals** and executed **6**. Since 07-17 the ONLY rail blocking
+entries is `max_open_positions: 5` (**68 blocks**); the five slots are
+permanently held by long-horizon tsmom index positions entered on one day.
+Meanwhile the actual RISK rails — portfolio heat (4%), correlation cap,
+concentration (10%) — have **never once evaluated a candidate**, because
+`max_open_positions` sits upstream of them in `risk.pre_trade_checks`. The
+book's real risk is nowhere near any of them (heat ~$560 of a $4,000 cap).
+
+So the binding constraint today is a **concurrency cap, not a risk cap**, and
+the bot is rejecting ~100% of its own signal supply. Its own counterfactual
+ledger scores the blocked trades **9 bad_veto / 1 good_veto**.
+
+At the observed rate (1 closed trade / 8.86 days) the go-live gate's 30 closed
+trades is **~8.7 months** away — and conditioned on the current book (5 slots
+held by trend positions with ratcheting trails, 0 entries in 7 days) the
+near-term rate is ~0.
+
+**Candidate:** raise `max_open_positions` 5 → 8 → 12, letting the heat and
+correlation caps become the real limit on concurrency.
+
+**PRE-REGISTERED RULE (written before running):** adopt the largest N such that
+(a) OOS return >= baseline (N=5) return,
+(b) OOS maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute (the
+    `daily_loss_limit_pct` ceiling — a book that can lose more than the kill
+    switch tolerates in one day is not a capacity gain, it is leverage),
+(c) OOS profit factor >= 1.3 (the standing gate bar) and >= baseline PF - 0.15,
+(d) OOS trade count strictly increases (the whole point is evidence velocity).
+If several N pass, prefer the SMALLEST that captures most of the trade-count
+gain — capacity we cannot yet justify with live evidence is not free.
+
+### §12 RESULT — SPLIT: meanrev PASSES, tsmom FAILS. Global raise NOT adopted.
+
+One frozen snapshot (`bars_snapshot_2020_2026-07-10.json`, 25 symbols, frozen
+earnings calendar), live params, no grid re-search. Trial count: ~13.
+
+| strategy | N | OOS ret | maxDD | PF | trades | verdict |
+|---|---|---|---|---|---|---|
+| meanrev | 5 (base) | +2.63% | 0.5% | 2.164 | 161 | — |
+| meanrev | **8** | **+3.03%** | 0.5% | **2.216** | **180** | **PASS** |
+| meanrev | 12 | +2.98% | 0.5% | 2.156 | 182 | PASS |
+| tsmom | 5 (base) | +2.12% | 0.6% | 2.398 | 97 | — |
+| tsmom | 8 | +2.47% | 0.7% | 1.977 | 156 | **FAIL (c)** |
+| tsmom | 12 | +2.64% | 1.1% | 1.730 | 230 | **FAIL (b)+(c)** |
+
+**tsmom fails clause (c):** PF 2.398 → 1.977 → 1.730, well under the 2.248
+floor, while win rate slips 43% → 39%. Its return RISES (+2.12 → +2.64), which
+is exactly the trap clause (c) was written to catch: the extra trades are not
+edge, they are more risk bought at a worse rate. At N=12 drawdown also nearly
+doubles, breaching (b). **Pre-registration did real work here** — on return
+alone tsmom's N=12 looks like the best cell in the table.
+
+**meanrev passes at both.** Per the tie-break (smallest N capturing most of the
+trade gain: N=8 captures 19 of 21 extra trades), the meanrev answer is **N=8**.
+
+**Why this cannot simply be adopted:** `max_open_positions` is GLOBAL. Raising
+it to 8 would admit mostly *tsmom* — the strategy that produces 93% of live buy
+signals and whose marginal trades are the ones that degrade. That is the
+opposite of the intent.
+
+**Root cause, visible in the live book:** tsmom is a trend follower holding
+positions for weeks (all 5 live slots, entered on one day, 7+ days held, trails
+ratcheting, no exit in sight). meanrev exits on SMA5 with `max_hold_days: 7` and
+would cycle fast — but can never get a slot. A single shared pool lets the
+slow strategy starve the fast one.
+
+## §13 — PER-STRATEGY slot allocation (2026-07-23) — PRE-REGISTERED, NOT YET RUN
+
+**Candidate:** replace the single global `max_open_positions` with a per-strategy
+allocation (e.g. `strategies.<name>.max_open_positions`), leaving the global
+value as a hard ceiling over the whole book. Rationale is §12's split result
+plus the live starvation mechanism above — not a desire for more exposure.
+
+**PRE-REGISTERED RULE:** adopt only if, on the frozen snapshot,
+(a) meanrev's allocation improves its OOS trade count with PF >= baseline - 0.15,
+(b) tsmom's allocation is NOT raised above 5 (§12 showed it degrades),
+(c) whole-book OOS maxDD <= 3.0pp absolute (`daily_loss_limit_pct` ceiling),
+(d) the portfolio-heat and correlation caps are shown to bind at least once in
+    the run — if a wider book never exercises the real risk rails, the slot
+    count was never the true constraint and the change is not justified.
+
+Requires code: `risk.pure_checks` counts positions globally today. Until it is
+implemented and passes, **`max_open_positions` stays at 5.**
