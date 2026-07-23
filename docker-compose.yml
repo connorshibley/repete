@@ -16,6 +16,11 @@ services:
       # every rebuild and redeploy.
       - ./memory:/app/memory
       - ./logs:/app/logs
+      # Backups too — scripts/backup.sh writes here nightly and the weekly
+      # restore drill reads it. Without this mount the archives live in the
+      # container's ephemeral layer and vanish on every rebuild/redeploy,
+      # defeating the "a backup that has never been restored is a hope" goal.
+      - ./backups:/app/backups
     healthcheck:
       test: ["CMD", "python", "src/health.py"]
       interval: 5m

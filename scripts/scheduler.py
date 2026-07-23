@@ -27,13 +27,23 @@ logging.basicConfig(
 log = logging.getLogger("scheduler")
 
 # (name, weekdays, hour, minute, argv) — weekdays: 0=Mon … 6=Sun
+# The content jobs (cycle, plan/review posts) chain scripts/publish_dashboard.sh
+# so the container publishes dashboard.html/journal.html to GitHub Pages the same
+# way the laptop's run_cycle.sh does. publish_dashboard.sh is idempotent and
+# no-ops (exit 0) when no .site/.git checkout is mounted, so this degrades
+# cleanly on a container without publishing configured. `&&` ties publish to a
+# clean job completion; main.py keeps its own failure logging.
+_PUBLISH = "sh scripts/publish_dashboard.sh"
 JOBS = [
     ("news-brain",   range(0, 5), None, 25, [PY, "src/market_context.py"]),
-    ("plan-post",    range(0, 5), 9,    35, [PY, "src/daily_posts.py", "plan"]),
-    ("cycle",        range(0, 5), 15,   45, [PY, "src/main.py"]),
+    ("plan-post",    range(0, 5), 9,    35,
+     ["sh", "-c", f"{PY} src/daily_posts.py plan && {_PUBLISH}"]),
+    ("cycle",        range(0, 5), 15,   45,
+     ["sh", "-c", f"{PY} src/main.py && {_PUBLISH}"]),
     ("catch-up",     range(0, 5), 15,   55, [PY, "src/watchdog.py", "--catchup"]),
     ("watchdog",     range(0, 5), 16,   15, [PY, "src/watchdog.py"]),
-    ("review-post",  range(0, 5), 16,   20, [PY, "src/daily_posts.py", "review"]),
+    ("review-post",  range(0, 5), 16,   20,
+     ["sh", "-c", f"{PY} src/daily_posts.py review && {_PUBLISH}"]),
     ("weekly-learn", [6],         18,   0,  [PY, "src/learn.py", "--meta"]),
     # Phase D: state backup nightly after the cycle; restore drill weekly —
     # a backup that has never been restored is a hope, not a backup.

@@ -42,6 +42,21 @@ def test_missing_or_short_bars_fail_open():
     assert risk.correlated_position_count(cand, open_map, 60, 0.85) == 0
 
 
+def test_correlation_aligns_by_date_not_position():
+    """Two symbols that are the SAME series on their shared trading days must
+    count as correlated even when their histories differ in length — alignment
+    is by calendar date, not list position. Regression: tail-zipping the two
+    return series pairs mismatched sessions and can hide co-moving names (the
+    dangerous direction: the cap silently fails to fire)."""
+    saw = [10, 11] * 6                  # alternating returns: a 1-bar phase
+    cand = make_bars(saw)              # shift flips correlation sign
+    longer = make_bars(saw + [10])     # same closes on the shared days, +1 bar
+    # By calendar date the 11 shared returns are identical -> correlation 1.0.
+    # By list position (tail zip) they are off by one bar -> anti-correlated.
+    assert risk.correlated_position_count(
+        cand, {"A": longer}, lookback=60, threshold=0.85) == 1
+
+
 def _cfg_with_cap(cfg, enabled=True):
     cfg["risk"]["correlation_cap"] = {"enabled": enabled, "lookback": 60,
                                       "threshold": 0.85, "max_correlated": 2}

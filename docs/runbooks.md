@@ -124,6 +124,11 @@ docker compose ps                        # container path
   health column.
 - Crash mid-cycle → the deterministic client_order_id makes a rerun safe:
   `python src/main.py` (or `docker compose run --rm agent python src/main.py`).
+- No jobs listed (`launchctl list | grep trading-agent` empty) → the launchd
+  jobs were never installed for this checkout. Install them with
+  `sh scripts/install_launchd.sh --load` — it renders the plist templates with
+  this checkout's real path (they ship a `{{AGENT_ROOT}}` placeholder so a moved
+  or freshly-cloned repo can't run stale paths) and bootstraps them.
 
 **Verify:** `python src/health.py` healthy; today's `cycle_complete` in the
 ledger.

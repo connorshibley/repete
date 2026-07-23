@@ -378,9 +378,19 @@ def _run_cycle():
 
     # --- Kill switch: daily loss limit ---
     if risk.daily_loss_breached(account, cfg):
-        broker.flatten_all()
-        risk.engage_halt("daily loss limit breached — all positions flattened")
-        ledger.log_event("kill_switch", "daily loss limit breached; flattened; HALT engaged")
+        # Engage HALT and record the breach BEFORE attempting the flatten. A
+        # broker error while closing (timeout/API outage) must not leave the
+        # daily-loss breach un-halted and unrecorded — otherwise the next
+        # scheduled cycle re-enters this path instead of being HALT-blocked.
+        risk.engage_halt("daily loss limit breached — flattening all positions")
+        ledger.log_event("kill_switch",
+                         "daily loss limit breached; HALT engaged; flattening")
+        try:
+            broker.flatten_all()
+        except Exception as e:  # noqa: BLE001 — HALT already set; report + stop
+            log.critical("flatten_all failed after kill switch: %s", e)
+            ledger.log_event("kill_switch_flatten_failed",
+                             f"{e} — positions may remain open; HALT engaged")
         return
 
     # Sync broker-side exits (bracket leg fills, flattens, manual closes)
@@ -582,17 +592,30 @@ def _run_cycle():
         coid = (f"ta-{symbol}-{sig.action}-"
                 f"{datetime.now(timezone.utc).strftime('%Y%m%d')}")
         try:
-            order = None
             if sig.action == "buy" and bracket_prices:
-                # Protective legs reuse the exact prices sizing saw above.
+                # Protective legs reuse the exact prices sizing saw above. If the
+                # bracket submission fails we must NOT fall back to a naked market
+                # order: the quantity may have been stop-distance-sized (meanrev),
+                # and a young position with no broker-side stop can only be exited
+                # by the daily-loss kill switch (the swing guard blocks strategy
+                # exits before min_holding_days). Refuse the entry instead.
                 try:
                     order = broker.bracket_market_order(symbol, qty,
                                                         *bracket_prices,
                                                         client_order_id=coid)
-                except Exception as e:  # noqa: BLE001 — degrade to plain order
-                    log.warning("%s: bracket order failed (%s) — falling back "
-                                "to plain market order", symbol, e)
-            if order is None:
+                except Exception as e:  # noqa: BLE001 — no naked stop-sized entry
+                    ledger.log_decision(
+                        symbol, sig.action, sig.reason, sig.indicators, review,
+                        executed=False,
+                        detail=f"bracket unavailable — refusing naked "
+                               f"stop-sized entry: {e}",
+                        regime=regime_label, strategy=sig.strategy)
+                    log.error("%s: bracket order failed (%s) — entry refused, "
+                              "no naked position opened", symbol, e)
+                    return "blocked"
+            else:
+                # Sells, and buys with brackets intentionally disabled (plain
+                # 1%-notional sizing, no stop leg by design).
                 order = broker.market_order(symbol, qty, sig.action,
                                             client_order_id=coid)
         except Exception as e:  # noqa: BLE001
@@ -614,6 +637,17 @@ def _run_cycle():
                                        review, executed=True, order=order,
                                        entry_price=price, qty=qty, detail=detail_tag,
                                        regime=regime_label, strategy=sig.strategy)
+        if sig.action == "buy":
+            # Mirror this entry into the in-cycle open-trades view so the
+            # portfolio-heat cap counts same-cycle entries too — otherwise a
+            # later buy this cycle measures heat against the stale cycle-start
+            # book. (max_open_positions and the correlation cap already see
+            # same-cycle entries via `positions`; this closes the gap.)
+            open_trades[trade_id] = {
+                "symbol": symbol, "action": "buy", "strategy": sig.strategy,
+                "qty": qty, "entry_price": price, "order": order,
+                "outcome": None,
+            }
         if sig.action == "buy":  # judge accountability: approvals get scored on close
             memory.judgments.log_judgment(
                 trade_id, symbol, "buy", review["verdict"], review.get("scale", 1.0),

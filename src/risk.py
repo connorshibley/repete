@@ -323,6 +323,23 @@ def daily_returns(bars: list[dict]) -> list[float]:
     return [(b - a) / a for a, b in zip(closes, closes[1:]) if a]
 
 
+def dated_daily_returns(bars: list[dict]) -> dict:
+    """Close-to-close returns keyed by the (later) bar's calendar date, so two
+    symbols with different-length histories align by DATE, not list position.
+    Tail-aligning raw return lists (as the old correlation path did) pairs
+    mismatched sessions whenever bar counts differ (trading halt, recent
+    listing, per-symbol stale-drop)."""
+    out: dict = {}
+    prev = None
+    for b in bars or []:
+        c = b.get("close")
+        day = (b.get("ts") or "")[:10]
+        if prev is not None and prev > 0 and c is not None and day:
+            out[day] = (c - prev) / prev
+        prev = c
+    return out
+
+
 def _pearson(xs: list[float], ys: list[float]) -> float | None:
     n = min(len(xs), len(ys))
     if n < 3:
@@ -343,10 +360,14 @@ def correlated_position_count(cand_bars: list[dict], open_bars_map: dict,
     2026-07-21 — 'co-moving names are one bet'). Pairwise Pearson correlation
     of daily returns over the last `lookback` bars; positions with missing or
     too-short bars are skipped (fail-open per symbol)."""
-    cand = daily_returns(cand_bars)[-lookback:]
+    cand = dated_daily_returns(cand_bars)
     count = 0
     for bars in open_bars_map.values():
-        rho = _pearson(cand, daily_returns(bars or [])[-lookback:])
+        other = dated_daily_returns(bars or [])
+        shared = sorted(set(cand) & set(other))[-lookback:]
+        if len(shared) < 3:
+            continue  # too little overlap — fail open per position
+        rho = _pearson([cand[d] for d in shared], [other[d] for d in shared])
         if rho is not None and rho >= threshold:
             count += 1
     return count
