@@ -44,7 +44,12 @@ JOBS = [
     ("watchdog",     range(0, 5), 16,   15, [PY, "src/watchdog.py"]),
     ("review-post",  range(0, 5), 16,   20,
      ["sh", "-c", f"{PY} src/daily_posts.py review && {_PUBLISH}"]),
-    ("weekly-learn", [6],         18,   0,  [PY, "src/learn.py", "--meta"]),
+    # Friday 17:30 ET, matching com.trading-agent.learn.plist. These two
+    # surfaces disagreed (launchd Friday 17:30 + review.py; container Sunday
+    # 18:00, no review), so the weekly report existed only on the laptop.
+    # weekdays are 0=Mon..6=Sun, so 4 = Friday.
+    ("weekly-learn", [4],         17,   30,
+     ["sh", "-c", f"{PY} src/learn.py --meta && {PY} src/review.py"]),
     # Phase D: state backup nightly after the cycle; restore drill weekly —
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),

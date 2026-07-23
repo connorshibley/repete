@@ -1,10 +1,15 @@
-# CI (Phase D, 2026-07-22): tests + dependency CVE scan on every push/PR.
+# CI (Phase D, 2026-07-22): tests + dependency CVE scan.
 # The suite is fully offline by design (no secrets configured here, ever).
 name: ci
 on:
-  push:
-    branches: [main]
+  push:            # every branch — this was `branches: [main]`, so a pushed
+                   # feature branch went unchecked until a PR was opened
   pull_request:
+
+# A newer push supersedes the previous run for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -19,7 +24,8 @@ jobs:
       - name: Install
         run: |
           pip install -r requirements.txt -r requirements-publisher.txt
-          pip install pytest pip-audit
+          pip install -r requirements-dev.txt      # the pinned pytest, not a floating one
+          pip install pip-audit
       - name: Dependency CVE scan (pip-audit)
         # Advisory, not blocking: a new CVE in a transitive dep should show
         # up loudly in the log without freezing trading-agent development.
@@ -27,3 +33,11 @@ jobs:
         run: pip-audit -r requirements.txt -r requirements-publisher.txt
       - name: Tests (offline)
         run: python -m pytest tests/ -q
+      - name: Backup + restore drill (smoke)
+        # A backup that has never been restored is a hope, not a backup — prove
+        # the round trip here too, not only on the weekly scheduled job.
+        run: |
+          mkdir -p memory
+          printf '{"type":"event","event":"ci"}\n' > memory/ledger.jsonl
+          sh scripts/backup.sh backups
+          python scripts/restore_drill.py

@@ -6,9 +6,16 @@ extracts the NEWEST archive into a temp dir and proves it is actually
 usable:
 
   1. every *.jsonl stream in the archive parses line-for-line as JSON;
-  2. record counts are >= the check-time floor (a truncated archive fails);
-  3. the ledger tail is valid JSON (same check preflight runs live);
-  4. config.yaml parses.
+  2. every stream matches the record count recorded in the archive's own
+     backup_manifest.json — this is what catches a CLEANLY truncated archive
+     (one whose remaining lines all parse). Counting against live state cannot:
+     an archive legitimately holds fewer records than live. Archives written
+     before manifests existed fall back to the weaker "not more than live" check
+     and say so;
+  3. under storage.backend: sqlite the archive is validated via agent.db
+     (a sqlite deployment has no .jsonl streams and must not fail for it);
+  4. the ledger tail is valid JSON (same check preflight runs live);
+  5. config.yaml parses.
 
 PASS -> exit 0, FAIL -> exit 1 (usable from cron/CI). Read-only against
 the live state; the extraction happens in a throwaway directory.
@@ -65,23 +72,56 @@ def drill(archive: str, live_memory: str | None = None) -> list[str]:
             except Exception as e:  # noqa: BLE001
                 fails.append(f"config.yaml does not parse: {e}")
 
+        # Manifest written by backup.sh: the authoritative per-stream counts at
+        # backup time. Comparing against it is the only way to detect a cleanly
+        # truncated archive.
+        manifest = {}
+        mpath = os.path.join(tmp, "backup_manifest.json")
+        if os.path.exists(mpath):
+            try:
+                with open(mpath) as f:
+                    manifest = (json.load(f) or {}).get("streams") or {}
+            except (ValueError, OSError) as e:
+                fails.append(f"backup_manifest.json does not parse: {e}")
+
         streams = glob.glob(os.path.join(tmp, "memory", "*.jsonl"))
-        if not streams:
-            fails.append("no JSONL streams in archive")
+        db_path = os.path.join(tmp, "memory", "agent.db")
+        if not streams and not os.path.exists(db_path):
+            fails.append("archive contains neither JSONL streams nor agent.db")
         for path in streams:
             name = os.path.basename(path)
             n, bad = scan_stream(path)
             if bad:
                 fails.append(f"{name}: {bad}/{n} lines unparseable")
+            # Two independent checks — they catch different faults, so both run.
+            # Manifest: the archive vs what it recorded at write time (catches a
+            # cleanly truncated archive).
+            if name in manifest and n != manifest[name]:
+                fails.append(
+                    f"{name}: archive holds {n} records but the manifest "
+                    f"recorded {manifest[name]} — archive is "
+                    f"{'truncated' if n < manifest[name] else 'inconsistent'}")
+            # Live: the archive predates now, so MORE records than live means
+            # it came from somewhere else (catches a wrong-source archive).
             if live_memory:
                 live = os.path.join(live_memory, name)
                 if os.path.exists(live):
                     live_n, _ = scan_stream(live)
-                    # The archive predates now — it may have FEWER records
-                    # than live, never more.
                     if n > live_n:
                         fails.append(f"{name}: archive has {n} records but "
                                      f"live has {live_n} — wrong source?")
+
+        # sqlite deployments keep the audit trail in agent.db, not .jsonl.
+        if os.path.exists(db_path):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                n_ev = conn.execute("SELECT count(*) FROM events").fetchone()[0]
+                conn.close()
+                if n_ev == 0:
+                    fails.append("agent.db in archive has zero events")
+            except Exception as e:  # noqa: BLE001
+                fails.append(f"agent.db in archive is unusable: {e}")
 
         ledger = os.path.join(tmp, "memory", "ledger.jsonl")
         if os.path.exists(ledger):

@@ -176,3 +176,33 @@ def test_scheduler_job_timing():
     # news-brain is hourly at :25 inside market hours only
     assert sched.due(jobs["news-brain"], datetime(2026, 7, 22, 11, 25, tzinfo=ET))
     assert not sched.due(jobs["news-brain"], datetime(2026, 7, 22, 3, 25, tzinfo=ET))
+
+
+def test_weekly_learn_matches_the_launchd_plist():
+    """The container scheduler and the launchd plist must agree on when the
+    weekly learn/review runs. They diverged (Friday 17:30 vs Sunday 18:00) and
+    the container never ran review.py at all, so the weekly report existed only
+    on the laptop."""
+    import importlib.util
+    import plistlib
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    here = os.path.dirname(__file__)
+    spec = importlib.util.spec_from_file_location(
+        "sched2", os.path.join(here, "..", "scripts", "scheduler.py"))
+    sched = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sched)
+    job = {j[0]: j for j in sched.JOBS}["weekly-learn"]
+
+    with open(os.path.join(here, "..", "scripts",
+                           "com.trading-agent.learn.plist"), "rb") as f:
+        cal = plistlib.load(f)["StartCalendarInterval"]
+    cal = cal[0] if isinstance(cal, list) else cal
+    # launchd Weekday: 0/7=Sun, 1=Mon..5=Fri  ->  scheduler: 0=Mon..6=Sun
+    assert job[2] == cal["Hour"] and job[3] == cal["Minute"]
+    assert job[1] == [cal["Weekday"] - 1]
+
+    ET = ZoneInfo("America/New_York")
+    fri = datetime(2026, 7, 24, cal["Hour"], cal["Minute"], tzinfo=ET)
+    assert fri.weekday() == 4 and sched.due(job, fri)
+    assert "review.py" in " ".join(job[4])       # the weekly report runs too
