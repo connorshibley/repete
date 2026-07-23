@@ -433,3 +433,313 @@ sizing, heat, correlation, concentration, the daily-loss kill switch and the
 swing guard are all unchanged. The backtest gain is +17 OOS trades over ~2
 years — real but modest. **It does not shorten the go-live gate; it only lets
 evidence accrue somewhat faster.**
+
+## METHOD NOTE 3 — the §1–§13 snapshot is GONE; those numbers are unreproducible (2026-07-23)
+
+Every gate from §1 to §13 was scored on `memory/bars_snapshot_2020_2026-07-10.json`
+(25 symbols x 1637 bars). `memory/` is in `.gitignore`, so **the file was never
+committed and no longer exists on any machine reachable from this repo.**
+
+This is a process failure with a specific consequence: *the verdicts survive as
+prose, but nobody can re-derive them.* "Re-running §8 reproduces §8" is now an
+unfalsifiable claim. Sections §1–§13 should be read as **recorded history, not
+as re-checkable evidence.**
+
+Fixed going forward:
+- `scripts/build_snapshot.py` rebuilds snapshots from **yfinance** (no API keys,
+  so any future session can do it) into **`data/snapshots/` — committed** — with
+  a SHA256 in `MANIFEST.json`. `--verify` fails loudly on drift.
+- Snapshots are gzipped JSON (~1.8 MB vs ~7.8 MB); `backtest.load_bars_file`
+  accepts `.json.gz`.
+
+**The new snapshot is NOT a drop-in replacement.** yfinance serves
+split/dividend-ADJUSTED prices, the retired Alpaca snapshot served raw; and the
+new file carries all **38** current symbols where the old one had 25. Different
+universe AND different price basis. Therefore **no figure from §1–§13 may be
+compared against a figure from §14 onward.** Every section below re-measures its
+own baseline inside its own snapshot.
+
+### Re-baselined on `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…)
+
+38 symbols, 62,244 bars, live config, 70/30 walk-forward:
+
+| strategy | OOS return | PF | trades | maxDD | gate |
+|---|---|---|---|---|---|
+| meanrev | +3.00% | 1.638 | 266 | 0.8% | PASS |
+| tsmom | +2.07% | 2.170 | 93 | 0.6% | PASS |
+| ma_crossover | +2.94% | 2.400 | 88 | 1.1% | PASS |
+
+All three enabled strategies **re-pass the enablement gate on a different data
+vendor, a wider universe and an adjusted price basis.** That is a genuine
+robustness result — vendor-specific artifacts are one of the ways a backtest
+edge turns out to be nothing — and it is the strongest thing the backtests say.
+It is still not live evidence, and METHOD NOTE 2 still applies: this window has
+been mined, and the live forward record remains the only clean holdout.
+
+## METHOD NOTE 4 — multiple-testing correction is now arithmetic, not judgement (2026-07-23)
+
+METHOD NOTE 2 clause 4 promised the bar would rise with the trial count, but
+specified only "prefer a clear margin" — a judgement call, and judgement calls
+drift toward the answer you wanted. `src/significance.py` replaces it:
+
+- **Moving-block bootstrap** (block ~ sqrt(n)) over the OOS closed-trade P&L
+  sequence, so a single lucky market stretch cannot masquerade as edge the way
+  it would under naive per-trade resampling.
+- **Bonferroni correction**: K arms in a section are each judged at 0.05/K.
+- A candidate whose CI includes zero is reported **INCONCLUSIVE — not a pass.**
+
+Two honest limits, both recorded in the module docstring: the two arms share
+the same bars but are resampled independently, which *overstates* the variance
+(so passing is harder than it should be — safe direction); and no bootstrap can
+undo the fact that the OOS window itself has been mined.
+
+## §14–§17 — PRE-REGISTERED RULES, WRITTEN BEFORE ANY CANDIDATE WAS RUN
+
+Committed as its own commit, ahead of the results commit, so git timestamps
+prove the rules preceded the numbers.
+
+Protocol for all four, enforced by `scripts/gate_compare.py`:
+1. every arm runs in-sample; 2. the winner is picked **on IS only**;
+3. baseline and IS-winner run OOS; 4. the OOS difference goes through the
+Bonferroni-corrected block bootstrap with K = number of arms.
+
+**Deterministic rules (identical across the four sections):** adopt only if the
+IS-selected arm, out of sample, satisfies ALL of —
+(a) return >= baseline return,
+(b) PF >= 1.30 (standing bar) AND >= baseline PF - 0.15,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute
+    (`daily_loss_limit_pct`: a book that can lose more in a drawdown than the
+    kill switch tolerates in a day is leverage, not capacity),
+(d) >= 15 closed OOS trades.
+**Plus:** the bootstrap CI on per-trade P&L must exclude zero in the
+candidate's favour. Deterministic-pass + inconclusive-bootstrap = **KEEP THE
+INCUMBENT**; the rules passing inside the noise band is not a result.
+
+- **§14 xsmom re-test.** Rejected 2026-07-15 by 0.13pp on the 25-symbol
+  universe — the closest rejection in this repo — and never retried on the 38
+  names that lifted the other three. Judged by the standing `enablement_gate`,
+  since this is enable/don't-enable rather than a parameter change.
+- **§15 exit rules.** `max_hold_days: 7` and `exit_sma_period: 5` were adopted
+  at the original enablement and have **never been gated at all** — the largest
+  ungated surface in the system. Arms grid both.
+- **§16 chandelier ATR multiple.** §7 registered a single value (3.0) with no
+  grid; the swing literature spans 2.5–3.0. Arms: 2.0 / 2.5 / 3.0.
+- **§17 Donchian breakout.** The absent classical swing family. Fits existing
+  plumbing (single-asset, no cross-section, like meanrev). Judged by
+  `enablement_gate`; it may only be enabled if it passes cleanly.
+
+Running trial count entering §14: ~13 registered comparisons plus grid arms.
+
+### §14–§17 RESULTS (2026-07-23) — FOUR CANDIDATES RUN, **ZERO ADOPTED**
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…, 38 symbols,
+62,244 bars). Rules were committed in the preceding commit; results in this one.
+
+**§14 xsmom re-test — NOT ENABLED.**
+On the 38-name universe xsmom clears the standing `enablement_gate` outright:
+OOS **+2.91%, PF 3.067, 46 trades, maxDD 1.1%** — the highest profit factor of
+any strategy in this repo. It fails the significance clause: mean $+63.33/trade
+with a 95% CI of **[-19.68, +186.65]**, P(mean>0) = 87.5%. Per the pre-registered
+rule (deterministic pass + inconclusive bootstrap = keep the incumbent), it
+**stays disabled.** The highest PF in the repo is also its least certain number;
+46 trades with 51.6% of gross profit in 3 of them is not 46 pieces of evidence.
+
+**§15 exit rules — REJECTED.**
+`max_hold_days` 5/7/14 x `exit_sma_period` 3/5/10 (5 arms). IS winner `hold14`
+(+3.94% IS, the best of the five). Out of sample it is a dead heat with the
+incumbent: **+2.99% vs +3.00%**, per-trade difference **-$0.04**, CI
+[-17.76, +17.55]. All five arms land within 0.6pp of each other OOS.
+
+Worth recording: the arm that looked best **out of sample** was `exit_sma3`
+(+3.29%, PF 1.754). Selecting on OOS would have "adopted" it. Selection happens
+in-sample only, which is the entire reason that did not happen. The finding is
+that the largest ungated surface in the system turns out to be a **flat**
+surface — the incumbent 7-day / SMA5 exits are fine, and nothing here is worth
+changing.
+
+**§16 chandelier ATR multiple — REJECTED BY NOISE (the interesting one).**
+Arms 2.0 / 2.5 / 3.0(incumbent) / 4.0 on tsmom. IS winner `trail2.5`, and out of
+sample it beats the incumbent on **every single point estimate**:
+
+| arm | OOS ret | PF | maxDD | trades |
+|---|---|---|---|---|
+| 3.0 (incumbent) | +2.07% | 2.170 | 0.64% | 93 |
+| **2.5 (selected)** | **+2.54%** | **2.558** | **0.46%** | **110** |
+| 2.0 | +2.02% | 1.865 | 0.88% | 158 |
+| 4.0 | +2.32% | 2.562 | 0.65% | 76 |
+
+Every deterministic rule passes. The bootstrap does not: per-trade difference
+**$+0.77**, CI **[-36.50, +37.29]**. Higher return, higher PF, lower drawdown,
+more trades — and all of it inside the noise band at n≈100 with fat-tailed trend
+P&L. **Incumbent kept at 3.0.**
+
+This is the case the significance clause exists for, and the honest reading is
+uncomfortable: with ~100 trades of trend P&L, this method cannot distinguish a
+genuine 23% return improvement from luck. That is a statement about how little
+these sample sizes support, not about 2.5 being wrong. **§16 is the strongest
+candidate to re-test once live trades exist** — flagged, not adopted.
+
+**§17 Donchian breakout — REJECTED, stays disabled.**
+New strategy (`src/strategies/donchian.py`, 20-bar entry / 10-bar exit / SMA200
+filter — the classical Turtle pair, chosen before running, not fitted). OOS
+**+1.54%** against an exposure-matched bar of **+1.95%** — fails by 0.41pp, plus
+PF ex-top-3 of **0.874**, i.e. it loses money without its three best trades.
+
+The mechanism did behave as predicted in the module docstring (34% win rate,
+PF 1.584 — win rarely, win large). It simply is not good enough. Code and tests
+are kept: the strategy is registered, `enabled: false`, and a test pins it that
+way, so the failure is documented rather than deleted.
+
+## §18 — Concentration + bootstrap edge report (2026-07-23) — NEW STANDING DIAGNOSTIC
+
+`scripts/edge_report.py`. Profit factor answers "did it make money here"; it does
+not answer "on how many independent events does that rest". Those two questions
+rank the strategies **in nearly opposite order**:
+
+| strategy | PF | top3% of gross profit | PF ex-top3 | median trade | edge vs zero |
+|---|---|---|---|---|---|
+| xsmom | 3.067 | 51.6% | 1.484 | -$36.96 | not shown (87.5%) |
+| ma_crossover | 2.400 | 54.7% | **1.087** | -$25.42 | not shown (97.1%) |
+| tsmom | 2.170 | 32.0% | 1.475 | -$14.48 | **at uncorrected only** (99.0%) |
+| meanrev | 1.638 | **6.6%** | 1.531 | **+$15.98** | **at uncorrected only** (99.0%) |
+| donchian | 1.584 | 44.8% | **0.874** | -$21.17 | not shown (84.7%) |
+
+Read by headline PF the ranking is xsmom > ma_crossover > tsmom > meanrev.
+Read by how broadly the profit is earned it is close to the reverse. **meanrev
+is the only strategy whose median trade makes money**, and the only one whose
+result does not depend on a handful of events.
+
+**The finding that matters most, and it is not a comfortable one:** after
+Bonferroni-correcting for the five strategies compared, **not one of them has an
+OOS per-trade edge distinguishable from zero.** meanrev and tsmom clear the
+uncorrected 5% bar (P(mean>0) = 99.0% each); ma_crossover, xsmom and donchian do
+not clear even that.
+
+What this does and does not mean:
+- It is **not** "the strategies are worthless". Every point estimate is positive,
+  and absence of evidence at n=46–266 is not evidence of absence.
+- It **is** "the backtest cannot certify any of these edges", and no gate that
+  looked only at return/PF/drawdown would ever have said so. §1–§17 all passed
+  through gates that could not see this.
+- **ma_crossover is the weakest by evidence and is currently ENABLED** (PF 2.400
+  is 54.7% three trades; PF ex-top-3 is 1.087, i.e. break-even). It is left
+  enabled — disabling it weakens nothing and would cut trade velocity, and the
+  decision belongs to the owner — but it should not be described as a validated
+  edge. It is the ensemble's baseline/teaching device, and it is performing like
+  one.
+- It is the sharpest possible argument for the standing invariant: **the live
+  forward record is the only holdout**, and 30 closed trades is the point at
+  which any of this starts to be checkable.
+
+Running trial count after §18: ~18 registered comparisons plus grid arms.
+
+## §19 — Faster entries (2026-07-23) — RULE PRE-REGISTERED, results in the next commit
+
+**Motivation (owner request, plus a divergence nobody had noticed).** The owner
+asked for the agent to enter "as soon as it sees an opportunity" rather than
+waiting for a fixed time. Investigating that surfaced a structural
+**live-vs-backtest divergence**:
+
+- `backtest.py` computes signals on the **close of bar i** and fills at the
+  **open of bar i+1**. Every gate number in this file rests on that model.
+- The live scheduler runs one cycle at **15:45 ET** and fills **immediately**,
+  at today's close — a full bar earlier than the research assumes.
+
+So the live bot has never traded the model it was validated against. A cycle at
+the **open**, reading the last COMPLETED daily bar, is therefore not a
+compromise between "faster" and "faithful" — it is *both*.
+
+**§19a — 09:35 ET open cycle. SHIPPED (no gate required).** This is not a
+strategy change: same strategies, same params, same rails. It changes *when*
+the existing signals are acted on, and it moves live behaviour toward the
+backtest rather than away from it. `datacheck.drop_forming_bar()` trims today's
+partial bar (mid-session `broker.bars()` returns a forming bar whose close is
+just the current price); the 15:45 cycle deliberately does NOT opt in, because
+15 minutes before the bell the forming bar is effectively the close, which is
+what every gate measured. 9 tests pin the guard, including one that fails if
+the scheduler ever drops the `--open-cycle` flag.
+
+Explicitly NOT done: intraday re-evaluation every N minutes. That runs
+RSI(2)/SMA200 against a partial bar — an input no gate has measured — and
+`config.yaml:63` warns against exactly it. The owner asked for faster; faster
+was available without going there.
+
+**§19b — `max_trades_per_day` 3 -> 5 / 8 / 12. PRE-REGISTERED, NOT YET RUN.**
+The cap is enforced in the simulator (`backtest.py`, `fills_by_date`), so it is
+honestly testable. With meanrev now allocated 8 slots (§13) and a second daily
+cycle, a cap of 3 is more likely to bind than it was.
+
+**PRE-REGISTERED RULE (written before running):** adopt the largest N whose
+IS-selected arm, out of sample, satisfies ALL of —
+(a) return >= baseline (N=3) return,
+(b) PF >= 1.30 AND >= baseline PF - 0.15,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute,
+(d) >= 15 closed trades,
+**and** the Bonferroni-corrected bootstrap CI on per-trade P&L excludes zero in
+the candidate's favour. Deterministic pass + inconclusive interval = **KEEP THE
+INCUMBENT** (this clause has already rejected §16, where the candidate beat the
+incumbent on every point estimate). If several N pass, prefer the SMALLEST that
+captures most of the trade-count gain.
+
+Running trial count entering §19: ~18 registered comparisons plus grid arms.
+
+### §19b RESULT — the gate could not answer this; measured directly. ADOPTED 3 -> 5.
+
+**The pre-registered rule was INAPPLICABLE, and saying so matters more than the
+verdict.** All four arms (3/5/8/12) came back **byte-identical** — same return,
+PF, drawdown and trade count to the last digit.
+
+The reason is a **second backtester/live divergence**, in the same family as the
+missing heat/correlation caps found in §13:
+
+| | live | backtest |
+|---|---|---|
+| `_trades_today()` counts | **the whole ensemble** (`risk.py`) | one strategy alone (`fills_by_date`) |
+| effective cap for meanrev | 3 shared with 3 other strategies | 3 all to itself |
+
+`simulate()` replays ONE strategy at a time, so a *global* rail is measured as a
+per-strategy rail. meanrev alone averages 0.54 entries/day and never reaches 3 —
+hence four identical arms. The instrument cannot see the parameter. Reporting
+"deterministic PASS, significance inconclusive" would have been a verdict
+generated by a broken measurement, so the rule is recorded as inapplicable
+rather than applied.
+
+**Measured directly instead.** Replaying the three ENABLED strategies over the
+OOS window and summing their entries per calendar date:
+
+- 447 entries across 231 entry-days, mean **1.94/day**
+- distribution: 122 days with 1, 41 with 2, 39 with 3, 22 with 4, 5 with 5,
+  1 with 6, 1 with 7
+
+| cap | binds on | entries refused |
+|---|---|---|
+| **3 (incumbent)** | 29 of 231 days | **39 (8.7%)** |
+| **5 (adopted)** | 2 of 231 days | 3 (0.7%) |
+| 8 | 0 days | 0 |
+| 12 | 0 days | 0 |
+
+**Adopted 5.** The pre-registered "prefer the SMALLEST N that captures most of
+the gain" clause decides it cleanly: 5 recovers 92% of what the cap was
+refusing, and 8 and 12 recover **literally nothing** beyond it. Raising further
+would be buying capacity that the evidence says is never used.
+
+Note what this claim is and is not. It is **not** "returns improve" — no edge
+estimate is involved and none is asserted. It is "the rate limiter was refusing
+8.7% of the entries the strategies had already decided on, and 5 stops that."
+That is a capacity measurement, which is why it is adoptable where §16's
+apparent improvement was not: §16 asked the data to certify a better edge and
+the data could not; this asks how often a counter fires, and the data answers
+exactly.
+
+**Upper-bound caveat:** the three strategies were replayed independently, so in
+a joint run they would compete for slots, heat and correlation headroom. 447 is
+an **upper bound** on combined demand and 8.7% an upper bound on what the cap
+costs. The direction of the error is against the change, not for it.
+
+**Known limitation, recorded not fixed:** the backtester still cannot model
+ensemble-wide rails (`max_trades_per_day`, and the global `max_open_positions`
+for the same reason). Fixing it means a joint multi-strategy simulator — a real
+piece of work, and out of scope here. Until then, any gate on a GLOBAL rail must
+be treated as structurally uninformative and measured the way §19b was.
+
+Running trial count after §19: ~19 registered comparisons plus grid arms.

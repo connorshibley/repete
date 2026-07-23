@@ -12,6 +12,8 @@ image, committed, or logged (`src/log.py` redacts secret-named env values, and
 | `ALPACA_SECRET_KEY` | **yes** | Same. |
 | `ANTHROPIC_API_KEY` | no | The LLM judge is skipped and every signal executes on **rules alone**. Trading continues — deterministic rails still apply — and the outage is ledgered as an `llm_judge:` degradation. |
 | `X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` | no | X posting is skipped. Never blocks trading. |
+| `ALERT_WEBHOOK_URL` | **strongly recommended off-laptop** | Alerts fall back to a macOS notification, which does not exist on a server — so a missed cycle, preflight failure or SLO breach is written to a log file and **nobody is told**. |
+| `HEARTBEAT_PING_URL` | **strongly recommended off-laptop** | No external monitor. Every other check runs ON the host, so if the container or machine dies there is nothing left to notice, and silence is indistinguishable from a quiet market. This is the only check that survives the host going away. Treat the URL as a secret. |
 | `LIVE_TRADING_CONFIRMED` | **set to `NO`** | Half of the live interlock. Live needs BOTH this `=YES` **and** `mode: live`. Leave it `NO`. |
 | `PUBLISHER_SESSION_SECRET` | publisher only | The publisher refuses to start rather than sign sessions with a default key. Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `RESEND_API_KEY` | publisher only | Email digests write to a dry-run outbox instead of sending. |

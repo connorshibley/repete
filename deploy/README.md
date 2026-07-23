@@ -45,9 +45,19 @@ flyctl secrets set \
   ANTHROPIC_API_KEY=... \
   X_API_KEY=... X_API_SECRET=... \
   X_ACCESS_TOKEN=... X_ACCESS_TOKEN_SECRET=... \
+  ALERT_WEBHOOK_URL=... HEARTBEAT_PING_URL=... \
   LIVE_TRADING_CONFIRMED=NO
 flyctl deploy
 ```
+
+**Do not skip the last two.** On the laptop the agent alerted through a macOS
+notification banner; on a Linux host that call does not exist, so without
+`ALERT_WEBHOOK_URL` every alert lands in a log file nobody reads. And every
+check the agent runs happens *on the host* — if the container is OOM-killed or
+the machine is powered off, nothing is left to notice, and a dead bot looks
+exactly like a quiet market. `HEARTBEAT_PING_URL` (a free healthchecks.io check
+works) is pinged after each cycle so an **outside** service tells you when the
+pings stop. It is the only monitor that survives the host dying.
 
 Verify (see *Verifying* below):
 

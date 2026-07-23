@@ -6,10 +6,11 @@ exits always route to the position's owning strategy regardless of enabled
 section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
-from strategies import ma_crossover, tsmom, xsmom, meanrev
+from strategies import ma_crossover, tsmom, xsmom, meanrev, donchian
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
-REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev)}
+REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
+                                donchian)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
