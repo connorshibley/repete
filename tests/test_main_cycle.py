@@ -417,3 +417,42 @@ def test_degradation_slo_breach_logged_once(cycle_env, monkeypatch):
     main.run_cycle()   # already breached today -> no second event
     breaches = [r for r in led.all_records() if r.get("event") == "slo_breach"]
     assert len(breaches) == 1 and len(notes) == 1
+
+
+def test_llm_outage_is_ledgered_as_degradation(cycle_env, monkeypatch):
+    """An unreachable judge must be distinguishable from a judge that approved.
+    Before this, an outage returned the same fallback as 'intentionally
+    disabled' and was recorded as a genuine approve — crediting the judge for a
+    decision it never made and hiding the outage from the degradation SLO."""
+    cfg, install = cycle_env
+    broker = install(FakeCycleBroker(make_bars(BUY_CLOSES)))
+
+    def _boom(*a, **k):
+        raise RuntimeError("anthropic 503")
+    monkeypatch.setattr(main.llm, "_client", _boom, raising=False)
+    monkeypatch.setattr(main.llm, "review_signal",
+                        lambda *a, **k: {"verdict": "approve", "scale": 1.0,
+                                         "cited_lessons": [], "bull_case": "",
+                                         "bear_case": "", "confidence": None,
+                                         "reasoning": "unavailable",
+                                         "degraded": "anthropic 503"})
+    main.run_cycle()
+
+    led = Ledger(cfg["memory"]["ledger_path"])
+    degs = [r for r in led.all_records()
+            if r.get("type") == "event" and r.get("event") == "degradation"
+            and (r.get("detail") or "").startswith("llm_judge:")]
+    assert degs, "LLM outage must be ledgered as a degradation"
+    assert "anthropic 503" in degs[0]["detail"]
+
+
+def test_llm_disabled_is_not_a_degradation(cycle_env):
+    """The intentionally-disabled path (llm.enabled false, as in tests) must
+    NOT emit a degradation — only genuine outages do."""
+    cfg, install = cycle_env
+    install(FakeCycleBroker(make_bars(BUY_CLOSES)))
+    main.run_cycle()
+    led = Ledger(cfg["memory"]["ledger_path"])
+    assert not [r for r in led.all_records()
+                if r.get("type") == "event" and r.get("event") == "degradation"
+                and (r.get("detail") or "").startswith("llm_judge:")]

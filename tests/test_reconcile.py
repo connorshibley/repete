@@ -198,3 +198,61 @@ def test_plain_market_close_without_bracket(env):
     main.reconcile_closed_positions(broker, ledger, memory, cfg, positions={})
     t = ledger.closed_trades()[0]
     assert t["exit_price"] == 452.0 and t["exit_reason"] == "closed_order"
+
+
+# ---- OTO (stop-only) exit reason must not be mislabeled take_profit ----
+
+def _open_oto_buy(ledger, entry=450.0, qty=10):
+    """take_profit_atr_mult: 0 -> OTO: one protective STOP leg, no TP leg."""
+    order = {"id": "entry-oto", "symbol": "SPY", "qty": qty, "side": "buy",
+             "status": "filled", "order_class": "oto",
+             "stop_price": 440.0, "take_profit_price": None,
+             "leg_ids": ["leg-stop"]}
+    return ledger.log_decision("SPY", "buy", "crossover", {}, None,
+                               executed=True, order=order,
+                               entry_price=entry, qty=qty)
+
+
+def test_oto_stop_fill_is_not_labeled_take_profit(env):
+    """A stop-only (OTO) order has no take-profit leg, so a filled leg can only
+    be the stop. Regression: broker.get_order() returned no 'type' key at all,
+    so `"stop" in leg.get("type","")` was always False and EVERY filled leg was
+    recorded as take_profit — corrupting exit_reason analytics."""
+    ledger, memory, cfg = env
+    tid = _open_oto_buy(ledger)
+    rec = ledger.open_buys()[tid]
+    broker = FakeBroker(orders={"leg-stop": {
+        "id": "leg-stop", "status": "filled", "type": "OrderType.STOP",
+        "filled_avg_price": 440.0, "filled_qty": 10.0, "legs": []}})
+    price, reason = main.resolve_exit_price(broker, rec)
+    assert price == 440.0
+    assert reason == "stop_loss"
+
+
+def test_oto_leg_without_type_still_not_take_profit(env):
+    """Even if the broker omits 'type', an OTO order (take_profit_price None)
+    cannot have exited via take-profit — infer from the order class."""
+    ledger, memory, cfg = env
+    tid = _open_oto_buy(ledger)
+    rec = ledger.open_buys()[tid]
+    broker = FakeBroker(orders={"leg-stop": {          # no 'type' key at all
+        "id": "leg-stop", "status": "filled",
+        "filled_avg_price": 440.0, "filled_qty": 10.0, "legs": []}})
+    price, reason = main.resolve_exit_price(broker, rec)
+    assert price == 440.0
+    assert reason != "take_profit"
+
+
+def test_bracket_tp_leg_still_labeled_take_profit(env):
+    """The real bracket case must keep working: a filled LIMIT leg on an order
+    that HAS a take_profit_price is a take-profit exit."""
+    ledger, memory, cfg = env
+    tid = _open_bracket_buy(ledger)
+    rec = ledger.open_buys()[tid]
+    broker = FakeBroker(orders={
+        "leg-stop": {"id": "leg-stop", "status": "new", "type": "OrderType.STOP",
+                     "filled_avg_price": None, "filled_qty": 0.0, "legs": []},
+        "leg-tp": {"id": "leg-tp", "status": "filled", "type": "OrderType.LIMIT",
+                   "filled_avg_price": 465.0, "filled_qty": 10.0, "legs": []}})
+    price, reason = main.resolve_exit_price(broker, rec)
+    assert price == 465.0 and reason == "take_profit"

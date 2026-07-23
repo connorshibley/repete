@@ -156,6 +156,10 @@ class Broker:
         return {
             "id": str(o.id),
             "status": str(o.status),
+            # `type` drives exit-reason classification in main.resolve_exit_price;
+            # omitting it silently labelled every filled leg "take_profit".
+            "type": str(o.type),
+            "filled_at": o.filled_at.isoformat() if o.filled_at else None,
             "filled_avg_price": float(o.filled_avg_price) if o.filled_avg_price else None,
             "filled_qty": float(o.filled_qty) if o.filled_qty else 0.0,
             "legs": [{"id": str(l.id), "type": str(l.type), "side": str(l.side),
@@ -171,6 +175,10 @@ class Broker:
             status=QueryOrderStatus.CLOSED, symbols=[symbol], limit=limit))
         return [{"id": str(o.id), "side": str(o.side), "status": str(o.status),
                  "type": str(o.type),
+                 # filled_at recovers a position's REAL entry time when adopting
+                 # an untracked broker position (Alpaca's Position model carries
+                 # no timestamp), so the swing guard measures true age.
+                 "filled_at": o.filled_at.isoformat() if o.filled_at else None,
                  "filled_avg_price": float(o.filled_avg_price) if o.filled_avg_price else None,
                  "filled_qty": float(o.filled_qty) if o.filled_qty else 0.0}
                 for o in orders]

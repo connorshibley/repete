@@ -1,5 +1,6 @@
 """Preflight: a misconfigured system fails SAFE — nothing trades past it."""
 import copy
+import os
 
 import main
 import preflight
@@ -65,3 +66,57 @@ def test_cycle_aborts_on_preflight_failure(tmp_path, monkeypatch, cfg):
     from ledger import Ledger
     recs = Ledger(cfg["memory"]["ledger_path"]).all_records()
     assert any(r.get("event") == "preflight_failure" for r in recs)
+
+
+# ---- regime block validation (a bad period used to crash mid-cycle) ----
+
+def test_regime_block_validated(cfg):
+    import copy
+    base = copy.deepcopy(cfg)
+    base.setdefault("learning", {})["regime"] = {"sma_period": 50,
+                                                 "vol_period": 20}
+    assert not [f for f in preflight.run(base) if "regime" in f]
+
+    bad = copy.deepcopy(base)
+    bad["learning"]["regime"]["vol_period"] = 1        # divides by zero
+    assert any("vol_period" in f for f in preflight.run(bad))
+
+    missing = copy.deepcopy(base)
+    del missing["learning"]["regime"]
+    assert any("learning.regime block missing" in f
+               for f in preflight.run(missing))
+
+
+def test_ledger_tail_check_follows_sqlite_backend(cfg, tmp_path, monkeypatch):
+    """Under storage.backend: sqlite the tail check must inspect the LIVE store,
+    not a stale ledger.jsonl. Preflight runs before store.configure(), so it
+    resolves the backend itself without mutating the global one."""
+    import copy
+    import store as store_mod
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("memory", exist_ok=True)
+    # A corrupt JSONL file that must be IGNORED when the backend is sqlite.
+    with open("memory/ledger.jsonl", "w") as f:
+        f.write("{ this is not json\n")
+    c = copy.deepcopy(cfg)
+    c["memory"]["ledger_path"] = "memory/ledger.jsonl"
+    c["storage"] = {"backend": "sqlite", "sqlite_path": "memory/agent.db"}
+    store_mod.configure(None)                     # global stays jsonl
+    try:
+        fails = preflight.run(c)
+        assert not any("ledger tail" in f for f in fails), fails
+        assert store_mod.current_backend() == "jsonl"   # no global mutation
+    finally:
+        store_mod.configure(None)
+
+
+def test_ledger_tail_check_still_catches_jsonl_corruption(cfg, tmp_path,
+                                                          monkeypatch):
+    import copy
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("memory", exist_ok=True)
+    with open("memory/ledger.jsonl", "w") as f:
+        f.write('{"type":"event"}\n{ truncated\n')
+    c = copy.deepcopy(cfg)
+    c["memory"]["ledger_path"] = "memory/ledger.jsonl"
+    assert any("ledger tail" in f for f in preflight.run(c))

@@ -20,6 +20,11 @@ def compute_regime(spy_bars: list[dict], rcfg: dict) -> dict | None:
     """
     sma_p = rcfg["sma_period"]
     vol_p = rcfg["vol_period"]
+    # vol_p must leave at least 2 returns: the variance below divides by
+    # (len(rets) - 1), so vol_p <= 1 was a ZeroDivisionError inside the cycle.
+    # A nonsensical period means "no regime", never a crash.
+    if sma_p < 1 or vol_p < 2:
+        return None
     closes = [b["close"] for b in spy_bars]
     if len(closes) < max(sma_p, vol_p + 1):
         return None
