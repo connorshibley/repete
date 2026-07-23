@@ -550,11 +550,40 @@ def _run_cycle():
             bracket_prices = risk.bracket_prices(
                 price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
                 vol_bucket=(market_regime or {}).get("vol"))
-            qty = risk.size_order(account, price, cfg, bars=bars,
-                                  strategy=sig.strategy,
-                                  stop_price=bracket_prices[0]
-                                  if bracket_prices else None)
-            qty = int(qty * review["scale"])
+            full_qty = risk.size_order(account, price, cfg, bars=bars,
+                                       strategy=sig.strategy,
+                                       stop_price=bracket_prices[0]
+                                       if bracket_prices else None)
+            qty = int(full_qty * review["scale"])
+            # Whole-share truncation can silently delete an order. Both causes
+            # used to surface as risk.py's "account too small for caps", which
+            # is plainly false on a six-figure account and hid a growing leak.
+            # Skipping is correct (the judge may only SHRINK — rounding a
+            # 0.5-share intent up to 1 would trade MORE than it sanctioned);
+            # only the reporting was wrong.
+            if qty <= 0:
+                if full_qty <= 0:
+                    why = (f"position sizing yields 0 shares: {sig.strategy} "
+                           f"sizing budget is below one share at ${price:,.2f} "
+                           f"— raise the sizing lever for this strategy or drop "
+                           f"the symbol")
+                else:
+                    why = (f"LLM downsize x{review['scale']} truncated a "
+                           f"{full_qty}-share order to 0 at ${price:,.2f} "
+                           f"(whole shares only) — trade skipped, not resized up")
+                tid = ledger.log_decision(
+                    symbol, sig.action, sig.reason, sig.indicators, review,
+                    executed=False, detail=f"risk rejection: {why}",
+                    regime=regime_label, strategy=sig.strategy)
+                # Still a rails rejection: the judge calibration scoreboard must
+                # see it, exactly as every other rails block is recorded.
+                stop, tp = _would_be_brackets(sig, bars, price)
+                memory.judgments.log_judgment(
+                    tid, symbol, sig.action, "rails_reject", 1.0, price,
+                    regime_label, kind="rails", executed=False, reasoning=why,
+                    stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                log.warning("%s: %s", symbol, why)
+                return "blocked"
         else:
             qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
 

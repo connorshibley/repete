@@ -456,3 +456,31 @@ def test_llm_disabled_is_not_a_degradation(cycle_env):
     assert not [r for r in led.all_records()
                 if r.get("type") == "event" and r.get("event") == "degradation"
                 and (r.get("detail") or "").startswith("llm_judge:")]
+
+
+def test_zero_qty_rejection_names_the_real_cause(cycle_env, monkeypatch):
+    """A whole-share truncation must not be reported as "account too small for
+    caps" — that was false on a $100k account and hid an accelerating leak.
+    Two distinct causes must be distinguishable in the ledger."""
+    cfg, install = cycle_env
+    # Price high enough that the 1% notional buys exactly 1 share, so an LLM
+    # downsize truncates it to 0.
+    closes = [10] * 6 + [9, 9, 9, 700.0]
+    broker = install(FakeCycleBroker(make_bars(closes)))
+    monkeypatch.setattr(main.llm, "review_signal",
+                        lambda *a, **k: {"verdict": "downsize", "scale": 0.5,
+                                         "cited_lessons": [], "bull_case": "",
+                                         "bear_case": "", "confidence": None,
+                                         "reasoning": "half size"})
+    main.run_cycle()
+
+    led = Ledger(cfg["memory"]["ledger_path"])
+    blocked = [r for r in led.all_records()
+               if r.get("type") == "decision" and r.get("executed") is False
+               and "0 shares" in (r.get("detail") or "")
+               or "truncated" in (r.get("detail") or "")]
+    assert blocked, "expected an honest zero-qty rejection"
+    detail = blocked[-1]["detail"]
+    assert "account too small" not in detail          # the false message is gone
+    assert "truncated" in detail or "below one share" in detail
+    assert broker.submitted == []                     # nothing was rounded UP

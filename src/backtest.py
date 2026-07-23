@@ -622,6 +622,23 @@ def main():
                         "risk per trade (replaces vol_target for the run)")
     p.add_argument("--cooldown-days", type=int, default=None, metavar="N",
                    help="CANDIDATE §9: same-ticker re-entry cooldown, N days")
+    # Deployment / capacity levers (§12-§13). These live in cfg["risk"] and had
+    # no flags, so the ONLY way to test them was editing the live config.yaml —
+    # exactly the setup that produced the 07-16 drift accident. Flags keep
+    # exploration off the live config.
+    p.add_argument("--risk-per-trade", type=float, default=None, metavar="PCT",
+                   help="CANDIDATE: risk.risk_per_trade_pct — the NOTIONAL "
+                        "sizing lever (binds tsmom/ma_crossover)")
+    p.add_argument("--max-order-value", type=float, default=None, metavar="USD",
+                   help="CANDIDATE: risk.max_order_value_usd — the per-order "
+                        "cap (binds meanrev's risk-sizing path)")
+    p.add_argument("--max-position-pct", type=float, default=None, metavar="PCT",
+                   help="CANDIDATE: risk.max_position_pct concentration cap")
+    p.add_argument("--max-positions", type=int, default=None, metavar="N",
+                   help="CANDIDATE: risk.max_open_positions — slot count "
+                        "(the live evidence-velocity bottleneck)")
+    p.add_argument("--max-trades-day", type=int, default=None, metavar="N",
+                   help="CANDIDATE: risk.max_trades_per_day rate limit")
     p.add_argument("--fee", type=float, default=bt.get("fee_per_trade_usd", 0.0))
     p.add_argument("--trials-path",
                    default=bt.get("trials_path", "memory/backtest_trials.jsonl"))
@@ -669,6 +686,15 @@ def main():
         cfg["risk"]["reentry_cooldown"] = {"days": args.cooldown_days,
                                            "strategies": None}
         print(f"(CANDIDATE on: re-entry cooldown {args.cooldown_days}d)")
+    for flag, key, label in (
+            (args.risk_per_trade, "risk_per_trade_pct", "notional risk/trade %"),
+            (args.max_order_value, "max_order_value_usd", "per-order cap $"),
+            (args.max_position_pct, "max_position_pct", "concentration cap %"),
+            (args.max_positions, "max_open_positions", "position slots"),
+            (args.max_trades_day, "max_trades_per_day", "trades/day")):
+        if flag is not None:
+            cfg["risk"][key] = flag
+            print(f"(CANDIDATE on: {label} = {flag})")
 
     if args.bars_file:
         sym_bars = load_bars_file(args.bars_file)
