@@ -342,10 +342,22 @@ def run_cycle(completed_bars_only: bool = False):
     False — at 15 minutes to the close the forming bar is effectively the
     close, which is what every gate measured. The 09:35 open cycle sets it
     True, because a five-minute-old stub is not a daily bar."""
+    ok = False
     try:
         _run_cycle(completed_bars_only=completed_bars_only)
+        ok = True
     finally:
         write_heartbeat()
+        # PUSH proof-of-life to an external monitor. The local heartbeat file
+        # only helps if something on this host is still alive to read it; if
+        # the container or the host dies, silence looks exactly like a quiet
+        # market. An outside observer alerting on missing pings is the only
+        # check that survives that. No-op unless HEARTBEAT_PING_URL is set.
+        try:
+            import alerting
+            alerting.heartbeat_ping(success=ok)
+        except Exception as e:  # noqa: BLE001 — never break a cycle to alert
+            log.warning("heartbeat ping failed: %s", e)
 
 
 def check_degradation_slo(ledger: Ledger, cfg: dict):

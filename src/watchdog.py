@@ -35,14 +35,18 @@ HALT_FILE = "HALT"
 
 
 def notify(title: str, message: str):
-    """macOS banner via osascript; failure is logged, never raised."""
+    """Raise an operator alert through whatever channel exists on this host.
+
+    Was an `osascript` banner — which meant that once the agent moved off the
+    laptop, every alert went to a log file nobody reads. Now delegates to
+    `alerting.send()`: webhook when `ALERT_WEBHOOK_URL` is set, desktop banner
+    otherwise, so laptop behaviour is unchanged. Never raises."""
     try:
-        subprocess.run(
-            ["osascript", "-e",
-             f'display notification "{message}" with title "{title}"'],
-            check=False, capture_output=True, timeout=10)
+        import alerting
+        return alerting.send(title, message)
     except Exception as e:  # noqa: BLE001 — alerting must not crash the alerter
         log.warning("notification failed: %s", e)
+        return "log-only"
 
 
 def heartbeat_date(path: str = HEARTBEAT_FILE) -> date | None:
