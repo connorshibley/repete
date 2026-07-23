@@ -14,7 +14,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from publisher import auth, billing, config, content, digest, gates, legal
+from publisher import (auth, billing, config, content, dashboard_view, digest,
+                       gates, legal, marketing_view, status_view)
 from publisher.ratelimit import Limiter, client_key
 from publisher.readonly import ReadOnlyLedger, agent_paths
 from publisher.subscribers import SubscriberDB
@@ -103,17 +104,21 @@ def require_session(request: Request) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    """Phase E: the marketing / landing page. Descriptive only — no
+    performance claims, projections, or testimonials (PRODUCT.md)."""
     cfg, ledger = _cfg(request), _ledger(request)
     open_, reasons = gates.revenue_gate(cfg, ledger)
-    gate_html = ("<p><b>Paid subscriptions are OPEN.</b></p>" if open_ else
-                 "<p><b>Paid subscriptions are not open yet.</b> The gates "
-                 "we hold ourselves to, honestly unmet:</p><ul>"
-                 + "".join(f"<li>{r}</li>" for r in reasons) + "</ul>")
-    return (f"<h1>Repete — the paper-trading robot, in public</h1>"
-            f"{gate_html}"
-            f"<p><a href='/feed'>free feed</a> · "
-            f"<a href='/legal/risk'>risk disclosure</a></p>"
-            f"<hr><p style='font-size:12px'>{gates.DISCLAIMER}</p>")
+    return marketing_view.render(gate_open=open_, gate_reasons=reasons)
+
+
+@app.get("/status", response_class=HTMLResponse)
+def status_page(request: Request):
+    """Phase E: public status page — is the bot actually running? Read-only
+    against agent state (invariant #9) via health.status(read_only=True)."""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+    import health
+    return status_view.render(health.status(_cfg(request), read_only=True))
 
 
 @app.get("/healthz")
@@ -181,6 +186,16 @@ def account(request: Request, email: str = Depends(require_session)):
     db = _db(request)
     return {"email": email, "tier": db.tier(email),
             "status": (db.subscriber(email) or {}).get("status")}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request, email: str = Depends(require_session)):
+    """Phase E: the authenticated subscriber dashboard. Tier-aware and
+    read-only against agent state (invariant #9)."""
+    cfg, db, ledger = _cfg(request), _db(request), _ledger(request)
+    open_, reasons = gates.revenue_gate(cfg, ledger)
+    return dashboard_view.render(cfg, ledger, db.tier(email), email,
+                                 gate_open=open_, gate_reasons=reasons)
 
 
 @app.get("/feed")

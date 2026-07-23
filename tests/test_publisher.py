@@ -415,3 +415,123 @@ def test_home_shows_gate_reasons_honestly(pub_env):
     r = client.get("/")
     assert "not open yet" in r.text
     assert "track record too small" in r.text
+
+
+# ---- Phase E: authenticated subscriber dashboard ----
+
+def test_dashboard_requires_session(pub_env):
+    client, cfg, tmp_path = pub_env
+    assert client.get("/dashboard").status_code == 401
+
+
+def test_dashboard_free_tier_withholds_judge_reasoning(pub_env):
+    """The seeded ledger carries 'secret-judge-reasoning'. A free subscriber's
+    dashboard must never contain it (content.feed omits the judge block), and
+    must say so honestly."""
+    client, cfg, tmp_path = pub_env
+    _login(client, cfg, tmp_path)
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "secret-judge-reasoning" not in r.text
+    assert "Free tier" in r.text
+    assert "not open yet" in r.text          # gate closed, stated honestly
+    assert cfg["publisher"]["session_cookie"] not in r.text
+
+
+def test_dashboard_paid_tier_shows_reasoning_and_journal(pub_env):
+    client, cfg, tmp_path = pub_env
+    email = _login(client, cfg, tmp_path)
+    app.state.db.grant(email, "paid", "manual:test")
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "secret-judge-reasoning" in r.text   # paid sees the judge
+    assert "Paid tier" in r.text
+    assert "journal" in r.text.lower()
+
+
+def test_dashboard_escapes_ledger_text(tmp_path, monkeypatch):
+    """Ledger text is model-generated; it must render as text, never markup."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PUBLISHER_SESSION_SECRET", "test-secret-key")
+    led = Ledger(str(tmp_path / "memory" / "ledger.jsonl"))
+    led.log_decision("SPY", "buy", "<script>alert(1)</script>", {},
+                     {"verdict": "approve", "scale": 1.0,
+                      "reasoning": "<img src=x onerror=alert(2)>"},
+                     executed=True, entry_price=100.0, qty=1, strategy="tsmom")
+    (tmp_path / "config.yaml").write_text(json.dumps({
+        "memory": {"ledger_path": "memory/ledger.jsonl"},
+        "x_posting": {"journal_path": "memory/journal.jsonl"},
+    }))
+    cfg = pconfig.load(str(tmp_path))
+    ro = ReadOnlyLedger("memory/ledger.jsonl", cfg)
+    from publisher import dashboard_view
+    html = dashboard_view.render(cfg, ro, "paid", "a@b.com")
+    # The security property is that no ledger-derived string becomes MARKUP.
+    # (html.escape neutralises the angle brackets; the inner attribute text
+    # may still appear, inertly, as visible characters.)
+    assert "<script>" not in html and "<img" not in html
+    assert "&lt;script&gt;" in html            # escaped, visible as text
+    assert "&lt;img src=x onerror=alert(2)&gt;" in html
+
+
+def test_dashboard_never_writes_agent_state(pub_env):
+    """Invariant #9 holds for the new surface too."""
+    client, cfg, tmp_path = pub_env
+    mem = tmp_path / "memory"
+    before = {p.name: p.read_bytes() for p in mem.iterdir()}
+    _login(client, cfg, tmp_path)
+    client.get("/dashboard")
+    after = {p.name: p.read_bytes() for p in mem.iterdir()}
+    assert before == after
+
+
+# ---- Phase E: public status page + marketing page ----
+
+def test_status_page_public_and_reports_health(pub_env):
+    client, cfg, tmp_path = pub_env
+    r = client.get("/status")                      # no session required
+    assert r.status_code == 200
+    assert "system status" in r.text
+    # no heartbeat has ever been written in this fixture -> honestly degraded
+    assert "DEGRADED" in r.text
+    assert "never" in r.text                       # heartbeat age
+    assert "PAPER-TRADING" in r.text               # disclaimer present
+
+
+def test_status_page_does_not_write_agent_state(pub_env):
+    client, cfg, tmp_path = pub_env
+    mem = tmp_path / "memory"
+    before = {p.name: p.read_bytes() for p in mem.iterdir()}
+    client.get("/status")
+    after = {p.name: p.read_bytes() for p in mem.iterdir()}
+    assert before == after
+
+
+def test_marketing_page_makes_no_performance_claims(pub_env):
+    """PRODUCT.md: no guarantees, no projected returns, no testimonials, and
+    the gate status stated honestly while subscriptions are closed."""
+    client, cfg, tmp_path = pub_env
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.text.lower()
+    # Promotional constructions that cannot appear inside an honest negation.
+    for banned in ("guaranteed return", "risk-free", "you will make",
+                   "beat the market", "act now", "limited time",
+                   "you should buy"):
+        assert banned not in body, f"marketing page must not say {banned!r}"
+    # The required disclosures must be present (they legitimately contain the
+    # words "guarantees"/"projected returns"/"testimonials" as NEGATIONS).
+    assert "no performance guarantees, no projected returns, and no "\
+           "testimonials" in body
+    assert "publication, not an advisory service" in body
+    assert "never tell you what to buy" in body
+    assert "not open yet" in body                  # gate honesty
+    assert "track record too small" in body        # the actual reason
+    assert "paper-trading" in body                 # disclaimer
+
+
+def test_marketing_page_shows_subscribe_only_when_gate_open(open_gate_env):
+    client, cfg, tmp_path = open_gate_env
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Subscribe" in r.text and "Subscriptions are not open" not in r.text
