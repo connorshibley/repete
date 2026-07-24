@@ -42,7 +42,49 @@ def synth_bars(symbols, n=320, seed=7):
 
 @pytest.fixture
 def bars():
-    return synth_bars(["SPY", "AAPL", "MSFT", "XOM", "JNJ"])
+    """Symbols given in CONFIG order.
+
+    Order matters: contention is resolved first-come by symbol, so whoever is
+    scanned first gets first refusal on the shared slots. `simulate_ensemble`
+    normalises to config order (mirroring live's `scan_symbols`), while
+    `simulate` uses the caller's order — so an equivalence test must hand both
+    the same order or it is comparing two different experiments."""
+    cfg = bt.load_config()
+    picks = ["SPY", "AAPL", "MSFT", "XOM", "JNJ"]
+    ordered = [s for s in cfg["symbols"] if s in picks]
+    assert len(ordered) == len(picks), "fixture symbols must all be in config"
+    return synth_bars(ordered)
+
+
+def test_symbol_order_changes_outcomes(bars):
+    """Pin the property that made this bite: when slots are CONTESTED, the
+    symbol scanned first wins, so scan order changes the outcome.
+
+    The rails must actually bind for this to show — with 8 slots and 5 symbols
+    nothing competes and order is irrelevant. Squeeze to one slot."""
+    cfg = bt.load_config()
+    cfg["risk"]["max_open_positions"] = 1
+    cfg["strategies"]["meanrev"]["max_open_positions"] = 1
+    reversed_bars = {s: bars[s] for s in reversed(list(bars))}
+    # simulate() honours caller order, so it exposes the effect directly.
+    a = bt.simulate(bars, cfg, {}, 100_000.0, "meanrev")
+    b = bt.simulate(reversed_bars, cfg, {}, 100_000.0, "meanrev")
+    assert a.n_trades > 0, "fixture produced no trades — test proves nothing"
+    assert ([t.symbol for t in a.trades] != [t.symbol for t in b.trades]
+            or a.total_return_pct != b.total_return_pct), \
+        "scan order had no effect even with a single contested slot"
+
+
+def test_ensemble_is_insensitive_to_input_dict_order(bars):
+    """...and the ensemble must NOT inherit that sensitivity, because live
+    always scans config order. A snapshot loaded from disk arrives sorted
+    alphabetically; that must not silently become a different experiment."""
+    cfg = bt.load_config()
+    shuffled = {s: bars[s] for s in sorted(bars)}
+    a = bt.simulate_ensemble(bars, cfg, 100_000.0)
+    b = bt.simulate_ensemble(shuffled, cfg, 100_000.0)
+    assert (a.total_return_pct, a.n_trades, a.profit_factor) == \
+           (b.total_return_pct, b.n_trades, b.profit_factor)
 
 
 def only(name):
@@ -183,17 +225,15 @@ def test_caller_config_is_never_mutated(bars):
     assert cfg["strategies"]["meanrev"]["enabled"] is before
 
 
-def test_shipped_priority_puts_meanrev_first():
-    """§20a. meanrev is the only strategy whose median trade makes money, and
-    it was consulted LAST — after the global slot ceiling was already consumed
-    by two trend strategies. If this order regresses, meanrev silently starves
-    again (23 OOS trades instead of 100) and nothing else in the suite notices."""
+def test_entry_priority_is_the_gated_order():
+    """§22 reverted §20a. Putting meanrev first DOES raise trade count (179 ->
+    253) but was adopted on numbers measured in the wrong symbol order; in live
+    order it drops PF 1.955 -> 1.457, failing its own gate. Pin the reverted
+    order so a future session cannot reinstate it without re-gating."""
     cfg = bt.load_config()
     order = [n for n, _ in strategies.enabled(cfg)]
-    assert order[:2] == ["meanrev", "tsmom"], (
-        f"entry priority regressed to {order} — see §20a")
-    assert cfg["strategies"]["ma_crossover"]["priority"] > \
-        cfg["strategies"]["meanrev"]["priority"]
+    assert order == ["ma_crossover", "tsmom", "meanrev"], (
+        f"entry priority is {order}; §22 gated ma_crossover -> tsmom -> meanrev")
 
 
 def test_trade_cap_stays_at_the_tighter_value():
