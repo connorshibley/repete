@@ -817,3 +817,68 @@ explicit upper bound on combined demand. The ensemble measures the real thing.
 Same clauses; **revert to 3 if 5 is not justified.**
 
 Running trial count entering §20: ~19 registered comparisons plus grid arms.
+
+### §20 RESULTS (2026-07-23) — the instrument reversed two of my own decisions
+
+**§20b — §13's slot allocation is INERT. Restated, not reverted.**
+
+| arm | OOS ret | PF | maxDD | trades |
+|---|---|---|---|---|
+| baseline 8/5/5, global 8 | +3.232% | 1.812 | 1.069% | 183 |
+| **equal 5/5/5, global 8** | **+3.232%** | **1.812** | **1.069%** | **183** |
+| meanrev 12, global 12 | +2.932% | 1.520 | 1.092% | 257 |
+
+`5/5/5` is **byte-identical** to the shipped `8/5/5`. meanrev's allocation of 8
+does nothing, because the GLOBAL ceiling of 8 is consumed by the two
+higher-priority strategies before meanrev is ever consulted. Widening to 12
+FAILS the deterministic rules outright (return down, PF 1.812 -> 1.520).
+
+Left at 8 — it costs nothing and becomes correct if priority is reordered — but
+**§13's section overstates what it achieved.** §13 said it "fixes tsmom starving
+fast-cycling meanrev". It does not. The diagnosis was right and the fix was
+aimed at the wrong mechanism, which only a single-strategy simulator could
+have made look like a success.
+
+**§20c — §19b REVERTED. `max_trades_per_day` back to 3.**
+
+| cap | OOS ret | PF | trades |
+|---|---|---|---|
+| **3 (restored)** | **+3.237%** | **1.821** | 182 |
+| 5 (§19b, shipped hours earlier) | +3.232% | 1.812 | 183 |
+| 8 | +3.232% | 1.812 | 183 |
+| 12 | +3.232% | 1.812 | 183 |
+
+§19b's evidence summed three INDEPENDENT single-strategy replays and concluded a
+cap of 3 was refusing 8.7% of entries. That sum was an explicit upper bound —
+the strategies compete in reality — and jointly the cap **barely binds at all**,
+because the global slot ceiling binds first. The difference between 3 and 5 is
+one trade and 0.005pp, with 3 marginally ahead on both return and PF.
+
+Reverted to 3. A circuit breaker should be as tight as it can be when loosening
+it buys nothing. **§19b was a no-op recorded as a win; it stood for four hours.**
+
+**§20a — entry priority is the REAL starvation mechanism. Deterministic PASS,
+significance INCONCLUSIVE — escalated to the owner rather than self-approved.**
+
+| arm | OOS ret | PF | maxDD | trades | meanrev trades |
+|---|---|---|---|---|---|
+| baseline (ma_x 1, tsmom 2, meanrev 4) | +3.232% | 1.812 | 1.069% | 183 | **23** |
+| meanrev-first | +4.387% | 1.864 | 1.069% | 232 | 78 |
+| **meanrev-then-tsmom (IS-selected)** | **+4.324%** | **1.827** | **1.069%** | **256** | **103** |
+| meanrev 2nd | +4.201% | 1.818 | 1.069% | 242 | 80 |
+
+All six deterministic clauses PASS: return +34% relative, trades +40%, PF
+essentially unchanged, and maxDD **identical to three decimals**. The bootstrap
+is inconclusive: per-trade P&L $16.89 vs $17.66, CI [-23.28, +25.96].
+
+Per the pre-registered rule (deterministic pass + inconclusive CI = keep the
+incumbent), **the incumbent stands and nothing was changed.**
+
+But the rule has a drafting flaw worth naming, the same class as §13 clause (d)
+and §19b: **it tests per-trade EDGE, while this candidate claims more trades at
+the SAME edge.** A velocity change should not be expected to move per-trade P&L,
+so the significance clause is measuring the wrong quantity — and the honest
+response is to say so and hand the decision to the owner, not to quietly
+reinterpret a rule I wrote before seeing the result. Escalated.
+
+Running trial count after §20: ~23 registered comparisons plus grid arms.
