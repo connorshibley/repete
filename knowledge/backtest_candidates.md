@@ -940,3 +940,48 @@ candidate is an EDGE claim or a CAPACITY claim.
 This is written AFTER §20a and does not retroactively convert it into a pass.
 §20a remains an owner override; the note exists so the next section is drafted
 correctly rather than escalated.
+
+## §21 — EXIT SPEED UNDER THE ENSEMBLE (2026-07-23) — RULES PRE-REGISTERED
+
+**Claim type: CAPACITY** (declared before running, per METHOD NOTE 5).
+
+**Why this is not a re-run of §15.** §15 gated `max_hold_days` and
+`exit_sma_period` and found a **flat surface** — all five arms within 0.6pp OOS —
+and concluded the incumbent exits were fine. But §15 was measured **solo**, and
+in a solo run a position closing early frees a slot that **nobody else can use**.
+Under the ensemble that slot goes straight to tsmom or ma_crossover.
+
+That is exactly the blind spot that made §19b a no-op and §13 inert. §15's
+"flat surface" may be an artifact of the instrument rather than a fact about
+exits, and the only way to know is to re-run it on the simulator that can see
+slot contention.
+
+**Arms** (deliberately small — K inflates the Bonferroni correction, so a wide
+grid actively raises the bar against the candidate):
+`exit_sma_period` 3 / 5 (incumbent) / 7, and `max_hold_days` 5 / 7 (incumbent) / 10.
+All scored with `simulate_ensemble()`; IS-only selection, then OOS.
+
+**PRE-REGISTERED RULE.** Adopt only if the IS-selected arm, out of sample:
+(a) ensemble return >= baseline return,
+(b) ensemble PF >= 1.30 AND >= baseline PF - 0.15,
+(c) ensemble maxDD <= baseline x 1.5 AND <= 3.0pp absolute,
+(d) **closed trades > baseline** — this is the entire point of the section; an
+    arm that does not increase evidence velocity has no claim here even if its
+    return is prettier,
+**and**, per the CAPACITY branch of METHOD NOTE 5, the Bonferroni-corrected
+bootstrap must show per-trade P&L is **not significantly WORSE** (`ci_high > 0`).
+The PF and drawdown clauses are non-negotiable: capacity without an edge is just
+more slippage.
+
+**Fallback arm-set if exits are genuinely flat:** universe expansion beyond the
+current 38 names, judged by the same clauses. §10 took it 25 -> 38 and every
+strategy re-passed; more liquid large-caps means more independent setups per
+week at unchanged per-trade risk, with the correlation cap preventing it from
+becoming one bet.
+
+**Stated before the run so it cannot be quietly dropped:** the plausible outcome
+is that both fail, and the honest report is *"the velocity levers are exhausted
+— §20a took the last big one (meanrev 23 -> 100 OOS trades) and what remains is
+calendar time."* That is a legitimate result and will be recorded as one.
+
+Running trial count entering §21: ~23 registered comparisons plus grid arms.
