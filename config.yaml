@@ -70,7 +70,9 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                        # OOS gate (python src/backtest.py --strategy NAME ...).
   ma_crossover:
     enabled: true      # baseline / teaching device; the ensemble must beat it
-    priority: 1
+    priority: 3        # §20a: demoted from 1. Weakest by evidence (PF 2.400 is
+                       # 54.7% three trades; PF ex-top-3 is 1.087) so it should
+                       # not get first refusal on every symbol.
     fast_period: 10
     slow_period: 30
     max_open_positions: 5   # §13: untested at wider allocation — held at the
@@ -101,7 +103,7 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                           # pre-earnings jitters) — keep it off there.
   xsmom:               # cross-sectional momentum (Jegadeesh/Titman 12-1)
     enabled: false     # FAILED gate 2026-07-15 (OOS below exposure-matched benchmark)
-    priority: 3
+    priority: 4
     rank_lookback_bars: 231   # ~11 months, with skip -> classic 12-1 formation
     skip_bars: 21             # skip most recent month (short-term reversal)
     buy_top_fraction: 0.25
@@ -117,7 +119,15 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     trend_sma_period: 200
   meanrev:             # Connors RSI-2 dip-buying, SMA200-filtered
     enabled: true      # PASSED gate 2026-07-15: OOS +1.40%, PF 2.19, 71% win, 171 trades
-    priority: 4
+    priority: 1        # §20a ENTRY PRIORITY (2026-07-23). Order is meanrev -> tsmom
+                       # -> ma_crossover. Was ma_crossover(1) tsmom(2) meanrev(4), which
+                       # left meanrev — the ONLY strategy whose median trade makes
+                       # money — consulted last, after the global slot ceiling was
+                       # already consumed. Measured on the ensemble simulator it got
+                       # 23 of the 285 OOS trades it makes alone. Reordering: ensemble
+                       # +3.232% -> +4.324%, 183 -> 256 trades, meanrev 23 -> 103, at an
+                       # IDENTICAL 1.069% max drawdown. This is the real starvation
+                       # mechanism; §13's slot allocation was not (see §20b).
     rsi_period: 2
     rsi_buy_below: 10  # in-sample grid winner — never re-picked after OOS
     trend_sma_period: 200

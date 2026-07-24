@@ -882,3 +882,61 @@ response is to say so and hand the decision to the owner, not to quietly
 reinterpret a rule I wrote before seeing the result. Escalated.
 
 Running trial count after §20: ~23 registered comparisons plus grid arms.
+
+### §20a ADOPTED — by OWNER DECISION on an escalated call, 2026-07-23
+
+The owner was shown the numbers, the passing deterministic clauses, the
+inconclusive interval, and the argument that the interval measures the wrong
+quantity — and chose to adopt `meanrev -> tsmom -> ma_crossover`.
+
+**Recorded plainly: this was NOT a rule-pass.** The pre-registered clause said
+keep the incumbent; the owner overrode it with the reasoning on the table. That
+is a legitimate way to decide, and it is different from the change having
+cleared the bar. Anyone reading this later should not cite §20a as evidence of
+edge.
+
+**Re-verified at the SHIPPED config** (`max_trades_per_day: 3`, since §20a was
+gated while the cap was still 5 — the arm as measured is not quite the arm that
+ships, and pretending otherwise would be sloppy):
+
+| | OOS return | PF | maxDD | trades | meanrev trades |
+|---|---|---|---|---|---|
+| old priority | +3.237% | 1.821 | 1.069% | 182 | 23 |
+| **shipped** | **+4.749%** | **1.949** | **1.069%** | **245** | **100** |
+
+All six deterministic clauses still PASS at the shipped config, and per-trade
+P&L now points slightly upward ($19.38 vs $17.78) rather than down — though the
+interval is still inconclusive, [-20.98, +29.00]. **Max drawdown is unchanged to
+three decimals**, which is the single most reassuring number here: the extra
+trades did not buy return with risk.
+
+`ma_crossover` was demoted to priority 3 rather than disabled (owner's earlier
+decision to keep it enabled stands). It is the weakest strategy by evidence, so
+it should not get first refusal on every symbol.
+
+## METHOD NOTE 5 — edge claims vs capacity claims (2026-07-23)
+
+The significance clause has now been the wrong instrument **three times**:
+
+| section | the claim | why the bootstrap misfired |
+|---|---|---|
+| §13 clause (d) | rails should bind | required a deployment increase to be satisfiable |
+| §19b | the rate cap refuses entries | arms were byte-identical; it measured nothing |
+| §20a | more trades at the same edge | it tests per-trade edge, which is not the claim |
+
+The pattern: `src/significance.py` answers **"is the per-trade edge better?"**
+That is exactly right for an EDGE claim and irrelevant to a CAPACITY claim —
+"this rail is refusing N trades the strategies already decided on" is a COUNT,
+deterministic given the data, not a noisy estimate.
+
+**Binding on future sections:** state at pre-registration time whether a
+candidate is an EDGE claim or a CAPACITY claim.
+- **EDGE** -> the bootstrap CI must exclude zero. Unchanged.
+- **CAPACITY** -> the bootstrap must show per-trade P&L is **not significantly
+  WORSE** (`ci_high > 0`), and the deterministic clauses carry the decision.
+  Capacity without an edge is just more slippage, so the drawdown and PF clauses
+  stay mandatory.
+
+This is written AFTER §20a and does not retroactively convert it into a pass.
+§20a remains an owner override; the note exists so the next section is drafted
+correctly rather than escalated.
