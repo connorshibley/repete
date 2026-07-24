@@ -985,3 +985,66 @@ is that both fail, and the honest report is *"the velocity levers are exhausted
 calendar time."* That is a legitimate result and will be recorded as one.
 
 Running trial count entering §21: ~23 registered comparisons plus grid arms.
+
+### §21 RESULTS — both velocity levers REJECTED
+
+**§21a exit speed — REJECTED on clause (a).** IS winner `hold5`; OOS
++4.357% vs baseline +4.749%. Every arm produced MORE trades and LESS return, and
+**every arm had an identical max drawdown (1.069%)**. Faster exits buy ~8 extra
+trades and cost ~0.4pp.
+
+Worth recording as a positive result about the method: **§15's "flat surface"
+verdict REPLICATED under the ensemble.** Not every solo verdict was an artifact,
+and it is useful to know the instrument does not overturn everything it touches.
+
+**§21b universe expansion 38 -> 68 — REJECTED on clause (d).** A fresh 68-name
+snapshot (`bars_..._u60.json.gz`, 30 added liquid large-caps + sector ETFs) run
+in config order: +2.249% vs +2.086%, PF 1.498 vs 1.457, but **246 trades vs 253
+— fewer, not more.** More symbols compete for the same 8 slots, so breadth
+dilutes velocity rather than adding it. Clause (d) is the whole point of a
+capacity section, so this fails even though return and PF nudged up.
+
+**Honest conclusion, as pre-committed:** the velocity levers are exhausted.
+What remains is calendar time.
+
+## §22 — SYMBOL ORDER: §20a REVERTED (2026-07-23)
+
+**A fourth sim/live divergence, and this one was mine, introduced the same day.**
+
+`simulate_ensemble()` iterated `sym_bars` in whatever order the caller supplied
+— and a snapshot loaded from disk arrives **alphabetically sorted**. Live builds
+its scan list as `scan_symbols = list(cfg["symbols"])` (main.py), i.e. **config
+order**. Contention is resolved first-come by symbol, so whoever is scanned
+first gets first refusal on the shared slots and the daily fill budget.
+
+Running the identical config in the two orders moved OOS return by **2.66pp**
+(+4.749% sorted vs +2.086% config). Every §20 number was measured sorted.
+
+**Consequence: §20a does not hold.** Re-measured in live order:
+
+| | OOS return | PF | maxDD | trades | meanrev trades |
+|---|---|---|---|---|---|
+| ma_crossover -> tsmom -> meanrev | **+2.669%** | **1.955** | 1.073% | 179 | 25 |
+| meanrev first (§20a, shipped) | +2.086% | 1.457 | 1.073% | 253 | 104 |
+
+It FAILS clause (a) (return lower) and FAILS clause (b) badly (PF 1.955 ->
+1.457, against an allowance of −0.15). **REVERTED to the gated order.**
+
+The velocity is real — 179 -> 253 trades, meanrev 25 -> 104 — but it is **not
+free**, and "free velocity at identical drawdown" was precisely the claim §20a
+was adopted on. The owner approved that change on numbers I had measured wrong.
+Reverted, and the correct numbers are on the record.
+
+**Fixed:** `simulate_ensemble()` now normalises to config order regardless of
+input dict order, mirroring live. Two tests pin it — one proving scan order
+changes outcomes when a slot is contested, one proving the ensemble is now
+insensitive to the caller's dict ordering.
+
+**A previously undocumented property of the LIVE bot, worth knowing:** because
+live scans `cfg["symbols"]` in file order and slots are scarce, **symbols listed
+early in config.yaml get systematic first refusal.** SPY/QQQ/DIA/IWM lead the
+list, so index ETFs are structurally favoured over names further down. That is
+an arbitrary bias nobody chose. It is NOT changed here — reordering the universe
+is itself a candidate that must be gated — but it is now on the record.
+
+Running trial count after §22: ~27 registered comparisons plus grid arms.

@@ -609,6 +609,16 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     by_strategy: dict = {n: {"trades": 0, "pnl": 0.0, "blocked": 0}
                          for n, _ in active}
 
+    # SYMBOL ORDER IS LOAD-BEARING (found 2026-07-23, the hard way). Contention
+    # is resolved first-come in symbol order, so whoever is scanned first gets
+    # first refusal on the shared slots and the daily fill budget. Live builds
+    # its scan list as `list(cfg["symbols"])` + extras (main.py), i.e. CONFIG
+    # ORDER — while a snapshot loaded from disk arrives alphabetically sorted.
+    # Running the same config in the two orders moved OOS return by 2.66pp.
+    # Mirror live: config order first, then anything else the caller passed.
+    scan_order = [s for s in cfg.get("symbols", []) if s in sym_bars]
+    scan_order += [s for s in sym_bars if s not in set(scan_order)]
+
     all_ts = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
     idx = {sym: {b["ts"]: i for i, b in enumerate(bars)}
            for sym, bars in sym_bars.items()}
@@ -631,7 +641,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
 
     for ts in all_ts:
         today = {sym: sym_bars[sym][idx[sym][ts]]
-                 for sym in sym_bars if ts in idx[sym]}
+                 for sym in scan_order if ts in idx[sym]}
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 
