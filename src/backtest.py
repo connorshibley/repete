@@ -514,6 +514,320 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         equity_curve=curve, trades=closed)
 
 
+# ------------------------------------------------------- ensemble simulation
+
+def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
+                      earnings: dict | None = None,
+                      strategy_overrides: dict | None = None) -> Result:
+    """Replay bars through ALL enabled strategies at once, sharing the rails.
+
+    Why this exists (2026-07-23)
+    ----------------------------
+    `simulate()` above replays ONE strategy in isolation. The live bot runs the
+    whole ensemble against a SINGLE set of rails — one cash balance, one global
+    `max_open_positions` ceiling, one `max_trades_per_day` counter, one
+    portfolio-heat budget, one correlation cap. So every gate verdict in
+    `knowledge/backtest_candidates.md` describes a bot that does not exist.
+
+    That is not a hypothetical. §19b tried to gate `max_trades_per_day` and got
+    four BYTE-IDENTICAL arms, because `risk._trades_today()` counts the whole
+    ensemble while the simulator was watching one strategy that never came near
+    the cap. It is the third sim/live divergence found in two days, after the
+    missing heat/correlation caps (§13) and the fill-timing gap (§19a).
+
+    Relationship to simulate()
+    --------------------------
+    This is a SIBLING, not a replacement. `simulate()` stays byte-stable so the
+    §14–§19 numbers remain re-derivable. The correctness argument is that with
+    exactly one strategy enabled, this function must reproduce `simulate()`
+    trade-for-trade — `tests/test_ensemble_sim.py` asserts precisely that, for
+    each strategy. Ensemble behaviour is then single-strategy behaviour plus
+    contention, and nothing else.
+
+    Shared vs per-strategy
+    ----------------------
+    shared:        cash/equity, global max_open_positions, the per-day trade
+                   counter, portfolio heat, the correlation cap
+    per-strategy:  params, re-entry cooldown (§9), the chandelier trailing gate
+                   (§7, tsmom only), and the §13 slot allocation
+
+    `strategy_overrides` maps strategy name -> params to overlay (and may set
+    `enabled`), so a gate can vary one strategy's settings — or turn one off —
+    without touching the live config.
+    """
+    cfg = json.loads(json.dumps(cfg))    # never mutate the caller's config
+    smap = cfg.setdefault("strategies", {})
+    for name, over in (strategy_overrides or {}).items():
+        smap.setdefault(name, {"enabled": True}).update(over)
+    # Legacy ma_crossover defaults live in the `strategy:` section.
+    if "ma_crossover" in smap:
+        smap["ma_crossover"].setdefault(
+            "fast_period", cfg["strategy"].get("fast_period", 10))
+        smap["ma_crossover"].setdefault(
+            "slow_period", cfg["strategy"].get("slow_period", 30))
+
+    # Entry order = live priority order. Contention on a symbol is resolved
+    # first-come in this order, exactly as main.py's loop does.
+    active = strategies.enabled(cfg)
+    if not active:
+        raise ValueError("no enabled strategies — nothing to simulate")
+
+    bcfg = cfg["risk"].setdefault("brackets", {})
+    t_strats = bcfg.get("trailing_strategies")
+    trail_mult_on = bcfg.get("trailing_atr_mult", 0) > 0
+
+    def _trails(owner: str) -> bool:
+        """Per-POSITION now, not per-run: the chandelier is gated to tsmom, so
+        a shared run has to ask who owns the position."""
+        return trail_mult_on and (not t_strats or owner in t_strats)
+
+    cooldowns = {n: risk.cooldown_days_for(cfg, n) for n, _ in active}
+
+    bt = cfg.get("backtest", {})
+    slip = bt.get("slippage_bps", 5)
+    fee = bt.get("fee_per_trade_usd", 0.0)
+    min_days = cfg["risk"].get("min_holding_days", 0)
+
+    rcfg = cfg.get("learning", {}).get("regime", _RCFG_DEFAULT)
+    vol_series = (vol_bucket_series(sym_bars.get("SPY", []), rcfg)
+                  if bcfg.get("stop_atr_mult_high_vol") else {})
+    regime_labels = (regime_label_series(sym_bars.get("SPY", []), rcfg)
+                     if (cfg["risk"].get("regime_exposure") or {}).get("enabled")
+                     else {})
+
+    acct = SimAccount(cash=start_cash)
+    closed: list = []
+    curve: list = []
+    deployment: list = []
+    guard_skips = 0
+    n_heat_blocked = 0
+    n_corr_blocked = 0
+    fills_by_date: dict = {}
+    last_exit: dict = {}          # (strategy, symbol) -> exit ts; cooldown is
+                                  # per-strategy, matching risk.cooldown_days_for
+    pending: list = []            # (symbol, action, owner)
+    by_strategy: dict = {n: {"trades": 0, "pnl": 0.0, "blocked": 0}
+                         for n, _ in active}
+
+    all_ts = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
+    idx = {sym: {b["ts"]: i for i, b in enumerate(bars)}
+           for sym, bars in sym_bars.items()}
+    last_close: dict = {}
+
+    def _exit(sym, price, ts, reason):
+        pos = acct.positions.pop(sym)
+        fill = price * (1 - slip / 1e4)
+        acct.cash += pos["qty"] * fill - fee
+        t = pos["trade"]
+        t.exit_ts, t.exit_price, t.exit_reason = ts, fill, reason
+        t.fees += fee
+        owner = pos["owner"]
+        last_exit[(owner, sym)] = ts
+        stats = by_strategy.setdefault(owner, {"trades": 0, "pnl": 0.0,
+                                               "blocked": 0})
+        stats["trades"] += 1
+        stats["pnl"] += t.pnl
+        closed.append(t)
+
+    for ts in all_ts:
+        today = {sym: sym_bars[sym][idx[sym][ts]]
+                 for sym in sym_bars if ts in idx[sym]}
+        for sym, bar in today.items():
+            last_close[sym] = bar["close"]
+
+        # 1. Fill orders queued on the previous bar, at this bar's open.
+        still_pending = []
+        for sym, action, owner in pending:
+            if sym not in today:
+                still_pending.append((sym, action, owner))
+                continue
+            bar = today[sym]
+            date = ts[:10]
+            if action == "buy":
+                # SHARED rate limit — the whole point of this function. One
+                # strategy exhausting the daily cap blocks the others.
+                if fills_by_date.get(date, 0) >= cfg["risk"]["max_trades_per_day"]:
+                    by_strategy[owner]["blocked"] += 1
+                    continue
+                if sym in acct.positions:
+                    continue          # another strategy already claimed it
+                fill = bar["open"] * (1 + slip / 1e4)
+                i = idx[sym][ts]
+                hist = sym_bars[sym][:i + 1]
+                prices = risk.bracket_prices(
+                    fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
+                    vol_bucket=vol_series.get(ts))
+                stop, tp = prices if prices else (None, None)
+                qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
+                                      bars=hist, strategy=owner,
+                                      stop_price=stop)
+                try:
+                    # §13 slot allocation counts only THIS strategy's positions;
+                    # the global ceiling inside pure_checks sees all of them.
+                    strategy_open = sum(1 for p in acct.positions.values()
+                                        if p["owner"] == owner)
+                    risk.pure_checks("buy", sym, qty, fill,
+                                     acct.account_dict(last_close),
+                                     acct.positions_dict(last_close), cfg,
+                                     regime_label=regime_labels.get(ts),
+                                     strategy=owner,
+                                     strategy_open=strategy_open)
+                    _sim_open_trades = {
+                        s: {"qty": p["qty"], "entry_price": p["avg_entry"],
+                            "order": {"stop_price": p.get("stop")}}
+                        for s, p in acct.positions.items()}
+                    heat_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
+                    if heat_pct:
+                        eq = acct.equity(last_close)
+                        heat = risk.portfolio_heat(_sim_open_trades, cfg, eq)
+                        new_risk = (qty * max(fill - stop, 0.0) if stop
+                                    else eq * cfg["risk"].get(
+                                        "risk_per_trade_pct", 1.0) / 100)
+                        if heat + new_risk > eq * heat_pct / 100:
+                            n_heat_blocked += 1
+                            by_strategy[owner]["blocked"] += 1
+                            continue
+                    ccfg = cfg["risk"].get("correlation_cap") or {}
+                    if ccfg.get("enabled") and acct.positions:
+                        open_bars = {s: sym_bars[s][:idx[s][ts] + 1]
+                                     for s in acct.positions
+                                     if s != sym and ts in idx.get(s, {})}
+                        n_corr = risk.correlated_position_count(
+                            hist, open_bars, int(ccfg.get("lookback", 60)),
+                            float(ccfg.get("threshold", 0.85)))
+                        if n_corr >= int(ccfg.get("max_correlated", 2)):
+                            n_corr_blocked += 1
+                            by_strategy[owner]["blocked"] += 1
+                            continue
+                except risk.RiskRejection:
+                    by_strategy[owner]["blocked"] += 1
+                    continue
+                acct.cash -= qty * fill + fee
+                acct.positions[sym] = {
+                    "qty": qty, "avg_entry": fill, "entry_ts": ts,
+                    "stop": stop, "tp": tp, "hw": fill, "owner": owner,
+                    "trade": SimTrade(sym, ts, fill, qty, fees=fee)}
+                fills_by_date[date] = fills_by_date.get(date, 0) + 1
+            elif sym in acct.positions:
+                _exit(sym, bar["open"], ts, "strategy_sell")
+                fills_by_date[date] = fills_by_date.get(date, 0) + 1
+        pending = still_pending
+
+        # 2. Bracket legs, intrabar, pessimistic: stop wins when both touch.
+        for sym in list(acct.positions):
+            if sym not in today:
+                continue
+            bar, pos = today[sym], acct.positions[sym]
+            if pos["stop"] is not None and bar["low"] <= pos["stop"]:
+                _exit(sym, pos["stop"], ts, "stop_loss")
+                continue
+            if pos["tp"] is not None and bar["high"] >= pos["tp"]:
+                _exit(sym, pos["tp"], ts, "take_profit")
+                continue
+            if _trails(pos["owner"]):
+                pos["hw"] = max(pos.get("hw", pos["avg_entry"]), bar["high"])
+                hist = sym_bars[sym][:idx[sym][ts] + 1]
+                t_stop = risk.trail_stop(
+                    pos["hw"], strategy.atr(hist, bcfg.get("atr_period", 14)),
+                    cfg, strategy=pos["owner"])
+                if t_stop is not None and (pos["stop"] is None
+                                           or t_stop > pos["stop"]):
+                    pos["stop"] = t_stop
+
+        # 3. Signals, per strategy, in live priority order.
+        xs_ctx: dict = {}
+        for name, sparams in active:
+            smod = strategies.REGISTRY[name]
+            if smod.NEEDS_CROSS_SECTION:
+                hist_by_sym = {s: sym_bars[s][:idx[s][ts] + 1]
+                               for s in sym_bars if ts in idx[s]}
+                xs_ctx[name] = smod.prepare(hist_by_sym, sparams)
+
+        # ONE pass over symbols, mirroring the live cycle's structure exactly
+        # (main.py "Phase 3: per-symbol ensemble loop with position ownership"):
+        # a held symbol is judged ONLY by its owner; a flat symbol is offered to
+        # each enabled strategy in priority order and the first buy claims it.
+        #
+        # The ordering is load-bearing, not cosmetic. `fills_by_date` counts
+        # exits as well as entries, so interleaving buys and sells in symbol
+        # order — rather than draining all exits first — decides which orders
+        # fit under the shared daily cap. An earlier draft split the two passes
+        # and silently changed the results.
+        buys_queued = {name: 0 for name, _ in active}
+        for sym, bar in today.items():
+            i = idx[sym][ts]
+            hist = sym_bars[sym][:i + 1]
+
+            if sym in acct.positions:
+                pos = acct.positions[sym]
+                owner = pos["owner"]
+                if owner not in strategies.REGISTRY:
+                    continue          # orphaned owner: bracket legs still apply
+                sig = strategies.generate(owner, sym, hist, cfg, True,
+                                          cross_section=xs_ctx.get(owner),
+                                          entry_ts=pos["entry_ts"])
+                if sig.action == "sell":
+                    if min_days and _cal_days(pos["entry_ts"], ts) < min_days:
+                        guard_skips += 1
+                        continue
+                    pending.append((sym, "sell", owner))
+                continue
+
+            for name, sparams in active:
+                sig = strategies.generate(name, sym, hist, cfg, False,
+                                          cross_section=xs_ctx.get(name),
+                                          entry_ts=None)
+                if sig.action != "buy":
+                    continue
+                cd = cooldowns.get(name, 0)
+                if cd and risk.cooldown_blocked(last_exit.get((name, sym)),
+                                                ts, cd):
+                    continue
+                blackout_days = sparams.get("earnings_blackout_days", 0)
+                if blackout_days and earnings and earnings_mod.next_within(
+                        earnings.get(sym, []), ts, blackout_days):
+                    continue
+                entry_cap = sparams.get("max_entries_per_cycle", 0)
+                if entry_cap and buys_queued[name] >= entry_cap:
+                    continue
+                pending.append((sym, "buy", name))
+                buys_queued[name] += 1
+                break                 # first strategy to claim the symbol wins
+
+        eq = acct.equity(last_close)
+        curve.append(round(eq, 2))
+        deployment.append((eq - acct.cash) / eq if eq > 0 else 0.0)
+
+    final_ts = all_ts[-1] if all_ts else ""
+    for sym in list(acct.positions):
+        _exit(sym, last_close[sym], final_ts, "end_of_data")
+
+    total_ret = (acct.cash - start_cash) / start_cash * 100
+    wins = [t for t in closed if t.pnl > 0]
+    bh = (sum(buy_and_hold_return(b, slip, fee, start_cash / len(sym_bars))
+              for b in sym_bars.values()) / len(sym_bars)) if sym_bars else 0.0
+
+    return Result(
+        params={"strategy": "ENSEMBLE",
+                "members": [n for n, _ in active],
+                "by_strategy": {k: {"trades": v["trades"],
+                                    "pnl": round(v["pnl"], 2),
+                                    "blocked": v["blocked"]}
+                                for k, v in by_strategy.items()}},
+        start=all_ts[0] if all_ts else "", end=final_ts,
+        n_trades=len(closed), n_guard_skipped_exits=guard_skips,
+        n_heat_blocked=n_heat_blocked, n_corr_blocked=n_corr_blocked,
+        total_return_pct=round(total_ret, 3),
+        buy_hold_return_pct=round(bh, 3),
+        buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),
+        avg_deployment_pct=round(100 * sum(deployment) / len(deployment), 2)
+        if deployment else 0.0,
+        win_rate=round(len(wins) / len(closed), 3) if closed else 0.0,
+        profit_factor=round(profit_factor(closed), 3),
+        max_drawdown_pct=round(max_drawdown(curve), 3),
+        equity_curve=curve, trades=closed)
+
+
 # -------------------------------------------------------------- walk-forward
 
 def load_config(path: str = "config.yaml") -> dict:

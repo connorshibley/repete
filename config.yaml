@@ -123,7 +123,15 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     trend_sma_period: 200
     exit_sma_period: 5
     max_hold_days: 7
-    max_open_positions: 8   # §13 slot allocation (2026-07-23). meanrev exits on
+    max_open_positions: 8   # §13 slot allocation (2026-07-23). NOTE §20b: measured
+                            # under the ensemble simulator this value is INERT —
+                            # an arm with 5/5/5 produces byte-identical OOS results,
+                            # because the GLOBAL ceiling of 8 is consumed by the two
+                            # higher-PRIORITY strategies before meanrev is consulted.
+                            # Left at 8 (it costs nothing and is the right value if
+                            # priority is ever reordered), but it is NOT doing the
+                            # work §13 claimed. The real starvation mechanism is
+                            # entry priority — see §20a. meanrev exits on
                             # SMA5 and cycles fast, but a SHARED pool let tsmom
                             # hold every slot for weeks and starve it — the live
                             # cause of ~0 evidence velocity (146 buy signals, 6
@@ -135,18 +143,18 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
   max_position_pct: 10.0         # no single position may exceed this % of equity
   max_order_value_usd: 2000      # absolute per-order dollar cap
-  max_trades_per_day: 5          # circuit breaker on order rate. Raised 3 -> 5 by
-                                 # §19b (2026-07-23). This counter is GLOBAL across
-                                 # the ensemble, but the backtester simulates one
-                                 # strategy at a time, so no gate could ever measure
-                                 # it — measured directly instead: over the OOS
-                                 # window the enabled strategies wanted 447 entries
-                                 # on 231 days, and a cap of 3 refused 39 of them
-                                 # (8.7%) on 29 days. A cap of 5 refuses 3 (0.7%);
-                                 # 8 and 12 refuse NOTHING, so 5 is the smallest
-                                 # value that captures the gain. Per-trade risk,
-                                 # heat, correlation, concentration and the
-                                 # daily-loss kill switch are all unchanged.
+  max_trades_per_day: 3          # circuit breaker on order rate. §19b raised this
+                                 # 3 -> 5 earlier the same day; §20c REVERTED it
+                                 # once the ensemble simulator could measure the
+                                 # rail properly. §19b's evidence summed three
+                                 # INDEPENDENT single-strategy replays — an upper
+                                 # bound on combined demand, since in reality they
+                                 # compete. Measured jointly, caps of 3/5/8/12 give
+                                 # +3.237/+3.232/+3.232/+3.232% OOS: the cap barely
+                                 # binds at all, because the GLOBAL slot ceiling
+                                 # binds first. Reverted to the tighter value — a
+                                 # circuit breaker should be as tight as it can be
+                                 # when loosening it buys nothing.
   daily_loss_limit_pct: 3.0      # if daily P&L drops below -3%, flatten + HALT
   max_open_positions: 8          # GLOBAL ceiling over the whole book. Raised
                                  # 5 -> 8 by §13 (2026-07-23) so meanrev's
