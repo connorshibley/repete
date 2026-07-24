@@ -181,3 +181,24 @@ def test_caller_config_is_never_mutated(bars):
     bt.simulate_ensemble(bars, cfg, 100_000.0,
                          strategy_overrides={"meanrev": {"enabled": False}})
     assert cfg["strategies"]["meanrev"]["enabled"] is before
+
+
+def test_shipped_priority_puts_meanrev_first():
+    """§20a. meanrev is the only strategy whose median trade makes money, and
+    it was consulted LAST — after the global slot ceiling was already consumed
+    by two trend strategies. If this order regresses, meanrev silently starves
+    again (23 OOS trades instead of 100) and nothing else in the suite notices."""
+    cfg = bt.load_config()
+    order = [n for n, _ in strategies.enabled(cfg)]
+    assert order[:2] == ["meanrev", "tsmom"], (
+        f"entry priority regressed to {order} — see §20a")
+    assert cfg["strategies"]["ma_crossover"]["priority"] > \
+        cfg["strategies"]["meanrev"]["priority"]
+
+
+def test_trade_cap_stays_at_the_tighter_value():
+    """§20c reverted 5 -> 3 after the ensemble showed loosening it bought
+    nothing. A circuit breaker that drifts back up without evidence is exactly
+    the regression this pins."""
+    cfg = bt.load_config()
+    assert cfg["risk"]["max_trades_per_day"] == 3
