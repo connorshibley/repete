@@ -281,3 +281,90 @@ def test_no_allocation_configured_behaves_exactly_as_before(cfg):
     with pytest.raises(risk.RiskRejection, match="max open positions reached"):
         risk.pre_trade_checks("buy", "NEW", 5, 100.0, _acct_100k(), _pos(5), cfg,
                               open_trades=_open("tsmom", 5), strategy="tsmom")
+
+
+# ---- §28 one-share floor (candidate, OFF until gated) ----
+#
+# The floor exists because GS at $1,098 against a $999 notional budget was
+# refused live with the judge having APPROVED it at full size. No verdict and no
+# rail rejected that trade — whole-share arithmetic did.
+#
+# It stays OFF: the satisfiability probe (2026-07-25) showed it does not increase
+# reach and slightly reduces return, so no gate was ever registered. These tests
+# pin the default and the semantics so the code cannot drift while disabled.
+
+def test_one_share_floor_is_off_in_the_shipped_config():
+    """A candidate rail is never live-by-default. If this flips, a change nobody
+    gated is running in production.
+
+    Reads config.yaml by ABSOLUTE path: the autouse fixture chdirs into
+    tmp_path, so a relative load would find no file and the test would either
+    error or pass vacuously."""
+    import os
+
+    import yaml
+    path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+    with open(path) as f:
+        assert yaml.safe_load(f)["risk"].get("min_one_share") is False
+
+
+def test_without_the_floor_an_unaffordable_name_is_still_zero(cfg, account):
+    cfg["risk"]["min_one_share"] = False
+    assert risk.size_order(account, 5000.0, cfg) == 0
+
+
+def test_floor_buys_one_share_when_the_budget_is_below_one_share(cfg, account):
+    """THE case: $999 budget, $1,098 share. Under every hard cap, so one share
+    is permitted rather than nothing."""
+    cfg["risk"]["min_one_share"] = True
+    assert risk.size_order(account, 1098.0, cfg) == 1
+
+
+def test_floor_never_breaches_the_per_order_cap(cfg, account):
+    """The floor is capped by the RAILS, not by the sizing budget. A share
+    costing more than max_order_value_usd stays unbuyable."""
+    cfg["risk"]["min_one_share"] = True
+    cfg["risk"]["max_order_value_usd"] = 1000
+    assert risk.size_order(account, 1098.0, cfg) == 0
+    assert risk.size_order(account, 999.0, cfg) == 1
+
+
+def test_floor_never_breaches_the_concentration_cap(cfg, account):
+    cfg["risk"]["min_one_share"] = True
+    cfg["risk"]["max_order_value_usd"] = 10_000_000
+    cfg["risk"]["max_position_pct"] = 0.5          # 0.5% of 100k = $500
+    assert risk.size_order(account, 600.0, cfg) == 0
+    assert risk.size_order(account, 400.0, cfg) == 1
+
+
+def test_floor_never_exceeds_buying_power(cfg, account):
+    cfg["risk"]["min_one_share"] = True
+    account["buying_power"] = 500.0
+    assert risk.size_order(account, 600.0, cfg) == 0
+    assert risk.size_order(account, 450.0, cfg) == 1
+
+
+def test_floor_does_not_touch_orders_that_already_size(cfg, account):
+    """It may only lift 0 to 1 — never inflate a normal order."""
+    cfg["risk"]["min_one_share"] = True
+    assert risk.size_order(account, 50.0, cfg) == 20      # unchanged
+
+
+def test_floor_ignores_a_non_positive_price(cfg, account):
+    cfg["risk"]["min_one_share"] = True
+    assert risk.size_order(account, 0.0, cfg) == 0
+    assert risk.size_order(account, -5.0, cfg) == 0
+
+
+def test_a_judge_downsize_still_truncates_a_floored_share_to_zero(cfg, account):
+    """The owner's rule: fix the arithmetic bug, honour every downsize.
+
+    main.py computes int(full_qty * review["scale"]). This pins that the floor
+    does NOT smuggle a share past a judge that asked for less — approve keeps it,
+    any downsize removes it, with no special-casing in main.py."""
+    cfg["risk"]["min_one_share"] = True
+    full_qty = risk.size_order(account, 1098.0, cfg)
+    assert full_qty == 1
+    assert int(full_qty * 1.0) == 1      # approved at full size -> trades
+    assert int(full_qty * 0.6) == 0      # judge said smaller -> still refused
+    assert int(full_qty * 0.5) == 0

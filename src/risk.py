@@ -154,6 +154,14 @@ def size_order(account: dict, price: float, cfg: dict,
     r = cfg["risk"]
     equity = account["equity"]
 
+    # A non-positive price would make `dollars // price` raise ZeroDivisionError
+    # and take the whole cycle down. Found 2026-07-25 while testing the §28
+    # floor; the bug predates it. Sizing nothing is the fail-safe answer — a
+    # symbol whose price is 0 or negative is bad data, not an opportunity, and
+    # the freshness/cross-check guards are what should catch it upstream.
+    if price <= 0:
+        return 0
+
     rscfg = r.get("risk_sizing") or {}
     if _risk_sizing_active(rscfg, strategy, price, stop_price):
         stop_frac = (price - stop_price) / price
@@ -161,11 +169,37 @@ def size_order(account: dict, price: float, cfg: dict,
     else:
         dollars = equity * r["risk_per_trade_pct"] / 100      # fixed fractional
         dollars *= vol_scale(bars, r.get("vol_target") or {}, strategy)
-    dollars = min(dollars, r["max_order_value_usd"])           # per-order cap
-    dollars = min(dollars, equity * r["max_position_pct"] / 100)  # concentration cap
-    dollars = min(dollars, account["buying_power"])
+    ceiling = min(r["max_order_value_usd"],                     # per-order cap
+                  equity * r["max_position_pct"] / 100,         # concentration cap
+                  account["buying_power"])
+    dollars = min(dollars, ceiling)
 
     qty = int(dollars // price)
+
+    # ONE-SHARE FLOOR (§28, off by default until gated). When the sizing budget
+    # is smaller than a single share, this returns 0 and the name becomes
+    # unbuyable — GS at $1,098 against a $999 notional budget was refused live
+    # with the judge having APPROVED it at full size. No verdict and no rail
+    # rejected that trade; whole-share arithmetic did.
+    #
+    # The floor is deliberately capped by `ceiling`, NOT by `dollars`: a single
+    # share is allowed only when it still fits inside every hard rail. So it
+    # can never breach the per-order cap, the concentration cap, or buying
+    # power — it just stops "one share costs slightly more than the target
+    # slice" from meaning "never trade this name".
+    #
+    # It lives HERE, in the function the backtester shares (backtest.py:705),
+    # rather than in main.py — otherwise the simulator and the live bot would
+    # size differently and this project would collect an eighth sim/live
+    # divergence while fixing the sixth.
+    #
+    # The judge's authority needs no special case: main.py computes
+    # `int(full_qty * review["scale"])`, so an approved entry (scale 1.0) keeps
+    # its floored share while any downsize truncates 1 back to 0 exactly as
+    # today. Owner decision 2026-07-25 — fix the arithmetic bug, honour every
+    # downsize.
+    if qty == 0 and r.get("min_one_share") and 0 < price <= ceiling:
+        qty = 1
     return max(qty, 0)
 
 

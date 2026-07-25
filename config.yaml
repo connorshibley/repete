@@ -151,6 +151,18 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
   max_position_pct: 10.0         # no single position may exceed this % of equity
   max_order_value_usd: 2000      # absolute per-order dollar cap
+  min_one_share: false           # §28 CANDIDATE (2026-07-25) — NOT YET GATED.
+                                 # When the sizing budget is below one share the
+                                 # name becomes unbuyable: GS at $1,098 vs a $999
+                                 # notional budget was refused live while the judge
+                                 # had APPROVED it at full size. No verdict and no
+                                 # rail rejected it — whole-share arithmetic did.
+                                 # Enabling this buys 1 share ONLY when a single
+                                 # share still fits inside max_order_value_usd,
+                                 # max_position_pct and buying power. Stays false
+                                 # until it passes a pre-registered gate; a
+                                 # strategy/rail change is never adopted by
+                                 # enabling it and seeing what happens.
   scan_rotation: true            # §24 (2026-07-24). Contention for slots is
                                  # resolved first-come by scan position, so the
                                  # scan list decided allocation — and it was

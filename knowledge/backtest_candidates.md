@@ -1842,3 +1842,105 @@ Corollary for pre-registration: before a clause is registered, run the extreme
 arm and confirm the clause *can* flip. A clause that cannot fire does not make a
 gate conservative; it makes a weak gate look strict, which is worse than an
 absent one because it stops anybody looking further.
+
+## §28 — ONE-SHARE FLOOR: NOT REGISTERED. The probe said the gate could not work.
+
+**No gate was written for this.** That is the finding.
+
+### Why it was going to be registered
+
+§26's live defect: GS at $1,098 against a $999 notional budget was refused with
+`computed quantity is zero`, while the judge had **APPROVED it at full size**
+(`verdict: approve, scale: 1.0`). No verdict and no rail rejected that trade —
+whole-share arithmetic did. Owner decision 2026-07-25: fix that case, honour
+every downsize.
+
+The design needed almost no code. The floor belongs in **`risk.size_order()`**,
+the one function the simulator shares with live (`backtest.py:705`), so no new
+sim/live gap is created — and the judge's authority then falls out of the
+existing `int(full_qty * review["scale"])` in `main.py` with no special case:
+approve keeps the floored share, any downsize truncates 1 back to 0.
+
+I had told the owner this could not be gated. **That was wrong**, and the error
+is worth naming: I was reasoning about the *downsize* case, which lives in
+`main.py` where the simulator has no judge. The case actually chosen —
+"approved at full size, still bought nothing" — is `size_order()` returning 0,
+and `size_order()` is shared. Measurable after all.
+
+### The satisfiability probe — the new rule's first save
+
+Per the rule written after §27 (*a clause must be shown able to fire before its
+section is registered*), the floor was implemented behind `risk.min_one_share`
+and the arms were diffed **before** any rules were drafted.
+
+| | trades | symbols | return |
+|---|---|---|---|
+| IS baseline | 486 | 38 | +9.366% |
+| IS floored | 486 | 38 | +9.366% |
+| **IS delta** | **0** | **0** | **0.000pp — byte-identical** |
+| OOS baseline | 187 | 37 | +1.829% |
+| OOS floored | 183 | 37 | +1.784% |
+| **OOS delta** | **−4** | **0** | **−0.045pp** |
+
+**Three independent reasons not to register:**
+
+1. **Reach does not increase — clause (e) fails, exactly as in §27.** +0 symbols
+   in-sample and out. LLY, GS, COST, CAT are *already* traded by the baseline,
+   because meanrev sizes through the `max_order_value_usd` $2,000 clamp and
+   because their prices sat under $999 for much of the window. The capacity
+   claim — "reaches names it currently cannot" — is simply **false**.
+2. **In-sample is byte-identical**, so IS-only selection would have had nothing
+   to select on. A gate whose selection step is a coin flip is not a gate.
+3. **Out of sample it is mildly negative**: fewer trades, lower return.
+
+### The mechanism, which is the genuinely interesting part
+
+The floor is **not additive — it is a perturbation.** The OOS trade-level diff
+is **29 trades in, 33 out**, and most of the churn is in names that were never
+budget-constrained at all: SPY, NVDA, GOOGL, XOM, JNJ, BAC. One forced share of
+LLY on 2026-01-08 consumes a slot, heat and cash, which shifts every subsequent
+entry decision down the line. The book reshuffles.
+
+And the sharpest number: **the floored-in trades themselves earned +$448.71**,
+while total P&L fell from +$1,828.92 to +$1,783.81 — **−$45.11**. The new trades
+made money; the trades they displaced would have made more. Pure opportunity
+cost. "This trade would have been profitable" is not the same claim as "taking
+it makes the book better," and only the ensemble simulator can tell them apart.
+
+(The magnitude — 0.045pp against a 1.83pp baseline — is inside the noise band
+every other section has measured. The reason not to adopt is clause (e) being
+false, not this number.)
+
+### What this does to §26 divergence #8
+
+It reframes it, and downward. "The bot refuses names whose single share exceeds
+its position budget" reads like a bug and is closer to **a rail doing its job**:
+a name you cannot size properly is a name your account is too small to trade,
+and forcing the position spends a slot that a correctly-sized one would use
+better. The defect is real and still ugly — an approved trade killed by
+rounding — but **fixing it is not worth anything measurable**, and on this
+snapshot it costs slightly more than it returns.
+
+What stands unchanged: HEAD already *reports* the two causes distinctly and logs
+a `rails_reject` judgment, so the judge's calibration sees it. Visibility was
+the part worth having.
+
+### Disposition
+
+`risk.min_one_share` ships **false**, with the code path retained and tested —
+the same treatment as `vol_target`, `regime_exposure` and `donchian`. Enabling
+it would be adopting an unmeasured change, and the measurement that exists says
+don't.
+
+**Incidental fix found by the probe's tests:** `size_order()` raised
+`ZeroDivisionError` on a non-positive price, which would have taken a whole
+cycle down rather than skipping one bad symbol. It now returns 0 — fail-safe.
+The bug predates §28 and had never been exercised because upstream freshness and
+cross-vendor guards had always caught bad bars first.
+
+### For the record: the §27 rule has now paid for itself twice
+
+§27 clause (e) was unsatisfiable and nobody noticed until after the gate ran.
+§28's clause (e) was unsatisfiable in exactly the same way, and the probe caught
+it **before a single rule was written**. Checking satisfiability first cost one
+script and about two minutes.
