@@ -25,6 +25,21 @@ src/datacheck.py Second-vendor price cross-check (2026-07-21): SPY close Alpaca 
                  yfinance each cycle; same-session divergence > cap => degradation
                  event + entries blocked that cycle (exits never). Vendor outage fails
                  open silently — fires only when both vendors report and DISAGREE.
+src/deploycheck.py Is the RUNNING code the REVIEWED code? (2026-07-25, §26 divergence
+                 #7: production traded 57 commits / 8,151 lines behind the repo for
+                 three days, enforcing a max_open_positions §13 had already gated up,
+                 and nothing noticed). Three read-only layers, ALL fail-open: running
+                 sha (REPETE_GIT_SHA env first — the image ships without .git; the
+                 Dockerfile takes a GIT_SHA build-arg and deploy.sh exports it), config
+                 drift via `git status --porcelain config.yaml` (needs no network and
+                 carries the real weight), and behind-upstream count. Wired in main.py
+                 as degradation + alert, ONE per day — NOT through preflight, whose
+                 polarity is fail-SAFE: stale gated params are wrong but not dangerous,
+                 and halting a cycle over them costs a trading day to fix a reporting
+                 problem. An "unknown" is deliberately NOT an alert (a container
+                 legitimately has no .git; a daily false alarm mutes the channel). The
+                 sha is stamped on every cycle_complete so drift stays reconstructable
+                 from the ledger even when no alert fired.
 src/revalidate.py Quarterly strategy re-validation, REPORT ONLY (2026-07-21): reruns
                  each enabled strategy's CURRENT live params (never a grid re-search)
                  through the walk-forward gate on recent data; prints + ledger

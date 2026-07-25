@@ -361,6 +361,48 @@ def run_cycle(completed_bars_only: bool = False):
             log.warning("heartbeat ping failed: %s", e)
 
 
+def check_deploy_drift(ledger: Ledger) -> dict:
+    """Is the running code the reviewed code? (§26 divergence #7, 2026-07-25)
+
+    Returns the deploycheck status so the caller can stamp the sha on
+    `cycle_complete` — drift stays reconstructable from the ledger even if no
+    alert ever fired.
+
+    ONE alert per day. A per-cycle alert on a condition that persists for days
+    is how an alert channel gets muted, and a muted channel is worse than none.
+
+    Fail-OPEN and non-blocking, unlike preflight: stale gated params are wrong
+    but not unsafe, and halting the bot over them would cost a trading day to
+    fix a reporting problem.
+    """
+    try:
+        import deploycheck
+        st = deploycheck.status()
+        msg = deploycheck.drift_message(st)
+        if not msg:
+            return st
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        already = any(r.get("event") == "deploy_drift"
+                      and (r.get("ts") or "")[:10] == today
+                      for r in ledger.all_records() if r.get("type") == "event")
+        if already:
+            return st
+        # A 'degradation' too: this is a guard reporting that it cannot
+        # vouch for what is running, and review.py already counts those.
+        ledger.log_event("degradation", msg)
+        ledger.log_event("deploy_drift", msg)
+        try:
+            import alerting
+            alerting.send("trading-agent: deployment drift", msg)
+        except Exception:  # noqa: BLE001
+            pass
+        log.warning("%s", msg)
+        return st
+    except Exception as e:  # noqa: BLE001 — monitoring never kills a cycle
+        log.warning("deploy drift check failed: %s", e)
+        return {}
+
+
 def check_degradation_slo(ledger: Ledger, cfg: dict):
     """Ops error budget (2026-07-21): count today's ledgered fail-open
     'degradation' events; at/over ops.max_degradations_per_day, write ONE
@@ -1003,11 +1045,19 @@ def _run_cycle(completed_bars_only: bool = False):
     if any(pe.values()):
         log.info("Post-exit tracking: %s", pe)
 
+    # Which code just traded? Stamped on every cycle so §26 divergence #7 —
+    # production silently 57 commits behind — is reconstructable from the
+    # ledger alone, with or without an alert having fired.
+    _deploy = check_deploy_drift(ledger)
+
     import json as _json
     ledger.log_event("cycle_complete",
                      _json.dumps({"equity": account["equity"],
                                   "n_positions": len(positions),
-                                  "regime": regime_label}))
+                                  "regime": regime_label,
+                                  "sha": _deploy.get("sha"),
+                                  "config_dirty": _deploy.get("config_dirty"),
+                                  "behind": _deploy.get("behind")}))
 
     # Degradation SLO: too many fail-open events in one day means the ops
     # error budget is burned — escalate to a human (alert only; HALT stays

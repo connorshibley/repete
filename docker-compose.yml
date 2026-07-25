@@ -6,7 +6,14 @@
 #   docker compose run --rm agent python src/health.py   # status
 services:
   agent:
-    build: .
+    build:
+      context: .
+      args:
+        # Stamps the running commit into the image so the drift guard can name
+        # WHICH build is trading (§26 divergence #7 — production ran 57 commits
+        # stale for three days and nothing noticed). deploy/deploy.sh exports
+        # this; an empty value degrades the guard to config-drift only.
+        GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
     env_file: .env
     environment:

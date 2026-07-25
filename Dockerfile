@@ -18,6 +18,19 @@ COPY scripts/ ./scripts/
 COPY config.yaml ./
 COPY knowledge/ ./knowledge/
 
+# WHICH BUILD IS THIS? The image ships without .git, so src/deploycheck.py
+# cannot ask git what is running — and "unknown" is deliberately not an alert
+# (a daily false alarm mutes the channel). Bake the sha at build time:
+#
+#   docker build --build-arg GIT_SHA=$(git rev-parse HEAD) -t repete .
+#
+# Skip it and the drift guard degrades to config-drift only. That still catches
+# the case that actually happened (§26 divergence #7 — a running config.yaml
+# that was not the gated one), but the ledger stamp on every cycle_complete
+# stops telling you which code traded.
+ARG GIT_SHA=""
+ENV REPETE_GIT_SHA=$GIT_SHA
+
 # Non-root: the agent never needs privileges. memory/ and logs/ are volumes.
 RUN useradd --create-home --uid 10001 agent \
     && mkdir -p memory logs \
