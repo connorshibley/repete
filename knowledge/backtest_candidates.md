@@ -1286,3 +1286,58 @@ session has failed its gate (§19b, §20a reverted; §21, §23 rejected).
 
 Phase 1 must be pre-registered as an **EDGE** claim with the §23 monotonicity
 check applied, and reported whichever way it falls.
+
+## §25 — INTRADAY FILL TIMING (2026-07-24) — RULES PRE-REGISTERED
+
+**Claim type: EDGE.** This claims *better fills*, so it must improve per-trade
+P&L. Declared before running, per METHOD NOTE 5.
+
+**Design, and why it is not the design Phase 0 originally sketched.** The Phase 0
+plan said "re-express daily parameters in hourly-equivalent terms (SMA200d →
+SMA1400h)." That was wrong and is abandoned: hourly RSI(14) measures intraday
+mean reversion, not the daily RSI(2) phenomenon that was gated, so scaling
+periods creates genuinely *different strategies* needing full re-gating — the
+whole ~32-trial contamination problem again.
+
+Phase 0 measured that the large lever is **when you fill** (entry-day intraday
+range 229 bps median against a 341 bps median trade outcome — **67%**), not what
+indicator you compute. So §25 **holds every signal fixed** and varies only the
+fill hour. No re-fit, no new parameter search, no new contamination.
+
+**Data basis — non-negotiable, and it nearly went wrong.** Signals AND fills both
+come from the **Alpaca hourly snapshot** (`intraday.resample_daily()` rolls it up
+to daily bars for the signals). Mixing the yfinance dividend-ADJUSTED daily file
+with the Alpaca RAW hourly file would book the adjustment gap — up to **8.8%** on
+SPY — as invented P&L on every fill. Consequently **§25 numbers are NOT
+comparable with §1–§24**; the baseline is re-established inside this data.
+
+**Regular session only** (bar starts 09:00–15:00 ET). Filling pre/post-market at
+regular-session slippage would be fantasy and would bias the result optimistic.
+
+**Arms** (discrete, no continuous knob): baseline = **09:00** (at the open,
+today's behaviour) / 10:00 / 11:00 / 12:00 / 13:00 / 14:00 / 15:00 ET. Entries
+and exits move together — filling entries at noon while exiting at the open
+would be an incoherent experiment. IS-only selection, then OOS.
+
+**PRE-REGISTERED RULE.** Adopt only if the IS-selected arm, out of sample:
+(a) return >= baseline return,
+(b) PF >= 1.30 **AND >= baseline PF + 0.10**,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute,
+(d) >= 15 closed OOS trades,
+(e) **< 10% of fills fell back** to the daily open (`n_fill_fallback`) — thin
+    coverage must not masquerade as a result,
+**and** the Bonferroni-corrected bootstrap CI on per-trade P&L **excludes zero**
+in the candidate's favour.
+
+**Plus the §23 MONOTONICITY CHECK, which matters more here than anywhere.** A
+real time-of-day effect should vary *smoothly* across the session. A lone
+winning hour with worse neighbours on both sides is a fitted parameter — exactly
+how §23 was caught, and with a 67% lever the same trap is bigger here. A
+non-monotone winner is reported as an artifact regardless of its numbers.
+
+**Stated before the run:** EDGE claims are **0 for 4** (§14, §16, §20a, §23).
+The honest prior is that this fails too. It is worth running because Phase 0
+showed the effect is large enough to measure and this design adds no new
+contamination — not because it is likely to pay.
+
+Running trial count entering §25: ~33 registered comparisons plus grid arms.
