@@ -1048,3 +1048,51 @@ an arbitrary bias nobody chose. It is NOT changed here — reordering the univer
 is itself a candidate that must be gated — but it is now on the record.
 
 Running trial count after §22: ~27 registered comparisons plus grid arms.
+
+## §23 — RELATIVE-VOLUME ENTRY FILTER (2026-07-24) — RULES PRE-REGISTERED
+
+**Claim type: EDGE** (declared before running, per METHOD NOTE 5).
+
+**Motivation.** Two independent professional sources (SMB Ep 18; Humbled Trader
+— see `knowledge/swing_trading_playbook.md`) both treat **volume expansion** as
+core entry confirmation. Checking the repo: **not one of our five strategies
+reads the volume field**, although every bar carries it. That is a verified
+blind spot, not a deliberate choice.
+
+It is also the right SHAPE of idea. §21 concluded the velocity levers are
+exhausted, and the Humbled Trader source independently reports taking 2–5 swing
+trades per month against Repete's ~10/month — i.e. chasing more trades was
+likely the wrong direction all along. **A volume filter REDUCES trade count by
+design and must justify itself on per-trade quality.** That is why it is an EDGE
+claim, not a CAPACITY one.
+
+**Mechanism.** `rvol = volume(entry bar) / mean(volume over the prior N bars)`,
+N = 20. An entry is blocked unless `rvol >= threshold`. Deterministic, no new
+data, no new machinery. Applied to entries only — **exits are never filtered**
+(a position must always be able to leave, per the standing ownership rule).
+
+**Arms:** baseline (no filter) / 1.5 / 2.0 / 2.5. Scored with
+`simulate_ensemble()` on `data/snapshots/bars_2020-01-01_2026-07-10.json.gz`,
+IS-only selection, then OOS.
+
+**PRE-REGISTERED RULE.** Adopt only if the IS-selected arm, out of sample:
+(a) ensemble return >= baseline return,
+(b) PF >= 1.30 **AND >= baseline PF + 0.10** — an EDGE claim must *improve* the
+    profit factor, not merely hold it; a filter that removes trades while
+    leaving quality flat has bought nothing,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute,
+(d) >= 15 closed OOS trades (below that the sample cannot support a verdict),
+**and** the Bonferroni-corrected bootstrap CI on per-trade P&L **EXCLUDES ZERO
+in the candidate's favour**.
+
+Note (b) is deliberately *stricter* than prior sections' `>= baseline - 0.15`.
+Those were capacity claims where PF was allowed to soften slightly in exchange
+for volume. This claim is the opposite trade, so the bar moves the other way.
+
+**Stated before the run, so it cannot be spun afterwards:** **nothing in this
+repo has ever cleared the EDGE bar** — not §14 xsmom (the highest PF here), not
+§16, not §20a. The honest prior is that this fails too. It is worth running
+because it is cheap, correctly shaped, and closes a verified blind spot — not
+because it is likely to work. It will be recorded whichever way it falls.
+
+Running trial count entering §23: ~27 registered comparisons plus grid arms.
