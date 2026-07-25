@@ -494,7 +494,11 @@ def _run_cycle(completed_bars_only: bool = False):
     # Scan universe: config symbols + today's nominations + any open-position
     # symbol not otherwise covered (exits must always be scanned, even for
     # symbols since removed from config or entered via a past nomination).
-    scan_symbols = list(cfg["symbols"])
+    # §24: rotate the universe by date so first refusal on scarce slots
+    # circulates instead of permanently favouring whatever sits at the top of
+    # config.yaml. Extras are appended AFTER the rotation — held positions must
+    # always be scanned for exits, and their order is not a contended resource.
+    scan_symbols = risk.scan_order(list(cfg["symbols"]), cfg)
     scan_symbols += [s for s in nominated if s not in scan_symbols]
     scan_symbols += [s for s in positions if s not in scan_symbols]
 

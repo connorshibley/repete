@@ -151,6 +151,25 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
   max_position_pct: 10.0         # no single position may exceed this % of equity
   max_order_value_usd: 2000      # absolute per-order dollar cap
+  scan_rotation: true            # §24 (2026-07-24). Contention for slots is
+                                 # resolved first-come by scan position, so the
+                                 # scan list decided allocation — and it was
+                                 # `list(cfg["symbols"])`, i.e. THE ORDER SYMBOLS
+                                 # WERE TYPED INTO THIS FILE. SPY/QQQ/DIA/IWM sit
+                                 # at positions 0-3 of 38 and won nearly every
+                                 # contested slot; the live book confirmed it
+                                 # (all 5 held names from positions 0,1,2,3,7).
+                                 # Rotating by date.toordinal() advances the
+                                 # start one symbol per calendar day, so every
+                                 # name leads equally often. Deterministic, not
+                                 # random — gate re-runs still reproduce.
+                                 # This is a FAIRNESS/CORRECTNESS fix, NOT an
+                                 # edge claim: it is not expected to improve
+                                 # returns. What it buys is a live record that
+                                 # samples all 38 names instead of ~5, which is
+                                 # what makes that record interpretable (§18:
+                                 # the backtest cannot certify any edge, so the
+                                 # forward record is the only clean holdout).
   max_trades_per_day: 3          # circuit breaker on order rate. §19b raised this
                                  # 3 -> 5 earlier the same day; §20c REVERTED it
                                  # once the ensemble simulator could measure the
