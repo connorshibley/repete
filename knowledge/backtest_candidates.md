@@ -1698,3 +1698,95 @@ outcome plausible here.
 Runner: `scripts/gate_budget.py` — **committed**, unlike §25's ad-hoc heredoc,
 so this gate can be re-executed exactly. Running trial count entering §27: ~38
 registered comparisons plus grid arms.
+
+### §27 RESULT — REJECTED. The budget is a LEVERAGE knob, not a reach knob.
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…, verified before
+the run). Ensemble simulator. IS winner on reach-then-return: `e4.0`.
+
+| arm | OOS return | PF | maxDD | trades | **symbols** | deploy |
+|---|---|---|---|---|---|---|
+| **baseline** | **+1.83%** | **1.526** | **1.17%** | 187 | **37** | 5.38% |
+| b2.0 | +3.43% | 1.501 | 2.49% | 183 | 37 | 10.98% |
+| c2.5 | +4.37% | 1.501 | 3.10% | 183 | 37 | 13.87% |
+| d3.0 | +5.25% | 1.498 | 3.77% | 183 | 37 | 16.81% |
+| e4.0 [SELECTED] | +6.89% | 1.482 | 5.06% | 183 | 37 | 22.40% |
+
+Clauses **(c1) FAIL** (maxDD 5.06% vs the 1.76% allowed by baseline × 1.5),
+**(c2) FAIL** (5.06% > 3.0pp absolute), **(e) FAIL** (reach unchanged).
+Significance passes the capacity bar (`ci_high > 0`, INCONCLUSIVE) and
+monotonicity passes. **REJECTED; the incumbent stands.**
+
+**What the numbers actually say.** Return scales ×3.8 from baseline to e4.0 and
+drawdown scales ×4.3 — drawdown grows *faster* than return, and PF drifts
+slightly DOWN (1.526 → 1.482). That is the signature of pure position-size
+leverage, not of reaching better opportunities. The parameter buys return by
+taking proportionally more risk, which is a decision about risk appetite and
+emphatically not an edge.
+
+Trade count is flat across every candidate arm (183) and reach is flat at 37 of
+38 (only PG goes untraded, at every budget). The heat cap **never bound once**
+(`heat-blk 0` in all ten runs), so the reach-versus-depth tension predicted at
+registration simply did not materialise — worth recording, because the arm grid
+was extended to 4.0% specifically to find that point and there isn't one.
+
+### THE MORE IMPORTANT FINDING — clause (e) was UNSATISFIABLE by construction
+
+Reach is **37 at every arm, in every run**, out of sample and in. No budget
+value could ever have increased it. The clause registered as *"the actual
+capacity claim"* could not have passed regardless of the parameter, so it tested
+nothing.
+
+That is the **second decorative control caught in a single session** — the §23
+monotonicity check had the same disease hours earlier, passing any unimodal
+series including the lone spike it existed to catch. Both looked like controls
+and neither could fire.
+
+**Binding on future sections:** a pre-registered clause must be shown to be
+SATISFIABLE before the section is registered — run the extreme arm and confirm
+the clause *can* flip. A clause that cannot fire is not a conservative test, it
+is a decoration that makes a weak gate look strict.
+
+### THIRD CORRECTION TO §26 — "LLY and GS can never be bought" is too broad
+
+The gate traded **LLY 2 times and GS 5 times out of sample**. The claim in §26
+was extrapolated from *today's* closes and the *notional* budget alone, and it
+does not survive contact with the run:
+
+- their OOS closes ranged **$621–$1,236 (LLY)** and **$441–$1,106 (GS)** — for
+  much of the window they sat comfortably *below* the $999 notional budget;
+- meanrev sizes through `risk_sizing`, clamped at `max_order_value_usd`
+  **$2,000**, not $999 — so the high-priced names are reachable through that
+  path at any price under $2,000.
+
+What survives unchanged is the **observed live fact**: 11 real entries were
+refused with `computed quantity is zero`, all of them tsmom, and one of those
+(GS) had been **approved at full size**. The ledger is not in doubt. What was
+wrong was generalising those eleven records into "these names can never be
+bought" — they cannot be bought *by tsmom, at today's prices*, which is a much
+narrower statement and the one that should have been written.
+
+Three corrections to one section is not a good look, and it is recorded in full
+rather than tidied: §26 was written from a live-ledger audit without re-deriving
+its claims against the simulator, and every one of the three errors came from
+that same shortcut.
+
+### Where this leaves the live defect
+
+The gate has **ruled out raising the budget** — on drawdown, decisively, at
+every arm including the mildest. It cannot rule the *live* problem in or out,
+because `simulate_ensemble` has no judge and the downsize-to-zero interaction is
+invisible to it. §27 answered the question it could answer and the answer is no.
+
+The remaining candidate is the **1-share floor** (a downsize may shrink a
+position but never delete it). It is deliberately NOT adopted here: it is not
+gateable — the arms would be byte-identical in a simulator with no judge, the
+§19b misfire — so it needs an explicit owner decision recorded as such, in the
+manner of §20a, rather than a gate verdict it cannot earn.
+
+**Standing note for the next registration.** Clause (c1) — maxDD ≤ baseline ×
+1.5 — is near-unpassable whenever baseline drawdown is very small (1.17% here),
+because any increase in deployment breaches it. That is arguably correct for a
+risk rail and **it does not change this verdict**; it is recorded now, after the
+result, precisely so it cannot be quietly relaxed in a later section without the
+change being visible.
