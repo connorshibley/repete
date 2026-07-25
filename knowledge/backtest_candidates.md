@@ -1443,3 +1443,112 @@ Two lessons, recorded because they generalise beyond §25:
 with Phase 0 (costs fine, effect size large), the honest conclusion is that the
 large intraday lever exists but the bot cannot exploit it by shifting fill
 hours — and shifting them later actively hurts. **EDGE claims are now 0 for 5.**
+
+## §26 — TWO LIVE DIVERGENCES FOUND BY AUDITING PRODUCTION (2026-07-25)
+
+Not a gate. An audit of the **running** bot against this repo, prompted by the
+owner asking for a full rating. It found two things no backtest could have
+surfaced, because both live entirely on the live side of the sim/live boundary.
+
+### DIVERGENCE #7 — the repo and production had silently diverged
+
+The bot placing orders was at commit `5b03654` (Phase D, 2026-07-22). This repo
+was at `f5dfdf5`. **57 commits, 86 files, 8,151 insertions apart.** Nothing from
+§14 onward was running: not the rebuilt snapshot, not `significance.py`, not the
+edge report, not `simulate_ensemble`, not §20–§25, not scan rotation.
+
+Config drift was small but load-bearing:
+
+| key | running | HEAD | gated by |
+|---|---|---|---|
+| `risk.max_open_positions` | 5 | 8 | §13 |
+| `risk.risk_sizing.risk_pct` | 0.1 | 5.0 | §11 |
+| `risk.scan_rotation` | absent | true | §24 |
+| `strategies.*.max_open_positions` | absent | 5/8/5 | §13 |
+
+The cost, from the live ledger's block reasons: **68 entries refused for "max
+open positions reached (5)"** — a ceiling §13 had raised to 8 two days earlier —
+and slot allocation still decided by YAML ordering, the exact bias §24 exists to
+remove. Live output was 7 executed entries in 10 days, 6 of them on one day,
+then a full book that stopped turning over. **1 closed trade.**
+
+Worse than the drift: the running checkout lived inside a **Claude
+session-outputs scratch directory**, with the launchd jobs pointing at it. A
+routine cleanup of that folder would have destroyed the only live track record
+in the project — the one asset here that cannot be reconstructed.
+
+**The generalisable lesson, and it is new in kind.** The first six divergences
+were all *simulator vs reality*. This one is *repository vs reality*: every gate
+in this document was correctly run, correctly recorded, and correctly merged —
+and none of it was running. **A gate verdict is not in production until something
+checks that it is.** Passing a gate and shipping a gate are different events, and
+until now only the first was ever verified.
+
+### DIVERGENCE #8 — the share-granularity floor (a live-only selection bias)
+
+11 live entries were refused with `computed quantity is zero (account too small
+for caps)`. All 11 were tsmom. The cause is arithmetic:
+
+`size_order()` gives tsmom a notional of `equity x risk_per_trade_pct` =
+**$999** on ~$100k. Shares are whole. So `qty = int(999 // price)`, and:
+
+| symbol | price | qty @ full | qty @ 0.5 downsize | status |
+|---|---|---|---|---|
+| LLY | $1,182 | **0** | 0 | **can never be bought** |
+| GS | $1,076 | **0** | 0 | **can never be bought** |
+| CAT | $894 | 1 | **0** | dies on any downsize |
+| TMO | $573 | 1 | **0** | dies on any downsize |
+| AMD | $536 | 1 | **0** | dies on any downsize |
+
+Two distinct defects sit inside that table.
+
+1. **Two of 38 names are structurally unreachable.** GS was **APPROVED at full
+   size** (`verdict: approve, scale: 1.0`) and still produced qty 0. No judge
+   verdict, no rail, and no market condition was involved — the position size is
+   simply smaller than one share.
+2. **"Downsize" silently means "veto" for high-priced names.** A routine
+   `scale: 0.5` on AMD at $536 halves $999 to $500 and rounds to zero shares.
+   The judge is permitted to shrink a position (invariant 2); vetoing by
+   arithmetic accident is a different act, and it is the one that happened.
+
+**Correction, recorded rather than quietly dropped.** A first draft of this
+section claimed the ledger files these as a generic risk rejection so the
+judge's calibration scoreboard never sees them. **That is true of the RUNNING
+bot (`5b03654`) and false of HEAD.** `main.py:588-610` already separates the two
+causes — "sizing budget is below one share" vs "LLM downsize xN truncated an
+N-share order to 0" — ledgers each with its own reason, and logs a
+`rails_reject` judgment so calibration does see it. The reporting half of this
+defect was fixed before the audit; reconciling production to HEAD delivers that
+fix. **The trades are still lost either way** — better labelling does not buy
+LLY at $1,182. What follows concerns the loss, not the label.
+
+**Why no gate could have caught this.** `simulate_ensemble()` sizes in
+continuous dollars and has no LLM downsize step. It happily takes a fractional
+position in LLY at $1,182. Every OOS number in this document therefore includes
+trades the live bot is incapable of placing, and the exclusion is **correlated
+with price** — it systematically removes the highest-priced names, which in a
+momentum book skews strongly toward the strongest trends. AMD was refused three
+times while showing +82% 63-bar momentum.
+
+This is the same species of defect as §24 (allocation decided by something that
+is not the strategy) and it was invisible for the same reason: nothing compared
+what the simulator *could* trade against what the broker *would* accept.
+
+**Not fixed here — deliberately.** Every remaining candidate fix touches a gated
+risk parameter and must be pre-registered like anything else:
+
+- fractional/notional orders via Alpaca (changes fill semantics — needs a gate);
+- raising `risk_per_trade_pct` (a gated risk parameter — needs a gate);
+- flooring qty at 1 on an approved entry (changes true risk per trade — needs a
+  gate, and would silently exceed the intended risk slice on a $1,182 share).
+
+The observability fix is already in HEAD (see the correction above), so nothing
+in this section ships without a gate. Registering one is the natural §27, and it
+should be registered as a **CAPACITY claim** under METHOD NOTE 5 — the argument
+is "the book can reach names it currently cannot", not "each trade gets better".
+Treating it as an EDGE claim would misfire exactly as §19b did.
+
+**Standing consequence.** Until this is resolved, every backtest number in this
+document is measured on a universe the live bot cannot fully trade. That is not
+a reason to discard them; it is a reason to expect live trade counts to run
+below backtest trade counts, and to check that gap rather than assume it away.
