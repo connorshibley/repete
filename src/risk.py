@@ -186,6 +186,40 @@ def trail_stop(high_water: float, atr_value: float | None,
     return round(high_water - mult * atr_value, 2)
 
 
+def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
+    """§23: block an ENTRY whose bar lacks relative-volume confirmation.
+
+    ONE implementation shared by live (`main.py`) and both simulators, on
+    purpose. Four sim/live divergences have already cost real rework (missing
+    rails §13, global counters §19b, fill timing §19a, symbol order §22); a
+    filter re-implemented per call site would be the fifth.
+
+    FAILS OPEN — a `None` rvol (short history, or a missing/zero volume
+    baseline) permits the entry. A data gap must not silently halt all trading;
+    the freshness and cross-check rails own that failure class, not this one.
+
+    Threshold is per-strategy first, then global, then off:
+        strategies.<name>.min_rvol  ->  risk.min_rvol  ->  0 (disabled)
+    Never applied to exits: a position must always be able to leave.
+    """
+    threshold = None
+    if strategy:
+        threshold = ((cfg.get("strategies") or {}).get(strategy) or {}
+                     ).get("min_rvol")
+    if threshold is None:
+        threshold = (cfg.get("risk") or {}).get("min_rvol", 0)
+    if not threshold:
+        return False
+    period = int((cfg.get("risk") or {}).get("rvol_period", 20))
+    # Local import: strategies/base.py imports nothing from risk, so this is
+    # acyclic, but keeping it local keeps risk.py importable in isolation.
+    from strategies.base import rvol as _rvol
+    value = _rvol(bars, period)
+    if value is None:
+        return False                      # fail open — see docstring
+    return value < float(threshold)
+
+
 def cooldown_days_for(cfg: dict, strategy: str | None) -> int:
     """Re-entry cooldown days that apply to entries by this strategy
     (0 = none). Per-strategy scope — the 2026-07-19 gate adopted the

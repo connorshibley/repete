@@ -278,3 +278,118 @@ swing trading. Its transferable residue is a short list of quantifiable filters
 — above all a **market-regime gate** — each of which must clear its own
 pre-registered gate before it is anything more than a hypothesis. The parts that
 make these traders money are, by their own account, the parts a bot can't copy.
+
+---
+
+# SECOND SOURCE — Humbled Trader (external knowledge)
+
+**Source.** Humbled Trader, "How to Start Swing Trading for Beginners 2026"
+(37:36), a solo retail-trader educational video. Timestamps below cite it.
+
+## Source assessment — read before weighting any of this
+
+Stated plainly so nobody over-trusts it later:
+
+- **This is monetized educational content.** It carries affiliate links to a
+  broker running a commissions promotion, a paid scanner subscription, and a
+  newsletter signup.
+- **The headline number is not a track record.** The "$30,000" [00:05] is
+  **two open winning positions** — GM ~$20k and DG ~$11k [01:25] — unaudited,
+  with **no account denominator** (we cannot compute a return) and **no losing
+  trades shown**. Every chart example in the video is a winner.
+- That does not make the tactics wrong. It means this is **marketing, weighted
+  accordingly** — noticeably weaker sourcing than the SMB desk material above,
+  and far weaker than our own gated evidence.
+
+## Why it was still worth watching: CONVERGENCE
+
+Two *independent* professional traders, different styles and venues, agreeing on
+the same mechanics is stronger evidence than either alone. Where they overlap:
+
+| Tactic | SMB (Ep 18) | Humbled Trader |
+|---|---|---|
+| Long-term trend filter | clean base above a **rising 200-day** | below 200 SMA = "weak and not ideal"; above = better candidate [07:51] |
+| MA-pullback entry | pull back into the rising **10/20-day** | pull back toward the **8 EMA** [34:45] |
+| Extension-from-MA scale-out | trim 5–10% **per ATR** of extension | sell as the candle extends away from the 8 EMA [36:31] |
+| Staged exits | **MCR** momentum/core split | scale out in **quarters** (1000 sh → 250/250/250) [36:41] |
+| Volume confirmation | 2–3 days volume + range expansion | **relative volume > 2** [23:02]; volume breakout on the entry bar |
+| Multi-month base | clean base, tight range, converging MAs | gap must clear **multi-month** resistance [11:00] |
+| Low frequency | environment gating; sit on hands when murky | 2–5 trades/month, sometimes zero [37:01] |
+
+**The convergence, not the novelty, is the finding.** Where these two disagree
+(8 EMA vs 10/20 SMA) the specific number is arbitrary; where they agree, the
+*mechanism* is likely real.
+
+## What it exposed: FOUR verified gaps in our code
+
+Each checked against the repo, not assumed:
+
+| Gap | Evidence |
+|---|---|
+| **Volume is never used in any signal** | zero references to `volume` in `src/strategies/*.py` |
+| **No EMA function exists** | `strategies/base.py` provides `sma`, `rsi`, `atr`, `total_return` — no EMA |
+| **No partial exits / scale-outs** | every exit is all-or-nothing |
+| **No gap detection** | no overnight-gap logic anywhere |
+
+**Volume is the striking one.** Every bar we load carries a volume field, both
+independent sources treat volume expansion as core confirmation, and **not one
+of our five strategies reads it.** That is a genuine blind spot, not a
+preference.
+
+## The frequency reality-check — it corroborates §21
+
+He is explicit [36:58]: *"it's not like every single week I have 10 swing
+trades. There are going to be months in which I take two to five swing trades
+and there'll be months where I have zero. It's about quality, not quantity."*
+
+Repete's OOS run was **~253 trades over ~2 years ≈ 10/month** — already **2–5×
+this professional's rate**, across a 38-name universe.
+
+§21 concluded the velocity levers were exhausted and stopped chasing them. An
+independent source suggests the direction was **wrong in the first place**: a
+working discretionary swing trader takes *fewer* trades than our bot already
+does. **The remaining lever is trade QUALITY, not count.** That reframing is
+worth more than any single tactic in either video.
+
+## His three patterns (recorded; none adopted)
+
+1. **Daily gap-up over multi-month resistance** [09:32] — overnight gap that
+   clears a resistance level tested over *months* (not last month), ideally on
+   an earnings/guidance catalyst. Entry near the 8 EMA.
+2. **Long-term downtrend break** [12:56] — price breaks a descending line
+   through prior swing highs *and* reclaims the 200 SMA on high volume. Entry
+   above the 200 SMA; stop below recent support, not just below the MA.
+3. **Oversold bounce** [16:51] — a hard drop below the 200 SMA over weeks.
+   Explicitly **not** bottom-picking: wait for a downtrend break **and** a close
+   above the 8 EMA; entry at that close, stop at that day's low. Note this is
+   the *inverse* of our `meanrev`, which requires price **above** the 200 SMA.
+
+His scanner filters [21:59, 23:02]: change-from-close ≥ 3%, market cap ≥ $1B,
+price > $5, relative volume > 2. Our universe is already all large-cap, so the
+cap/price filters are moot; **RVOL is the one that isn't.**
+
+## Still discretionary → out of scope for the bot
+
+Same treatment as the SMB source:
+
+- **"Multi-month resistance"** — which levels matter is a judgment call; he
+  draws them by eye and rejects most scanner hits visually.
+- **"A meaningful news catalyst"** — requires reading and interpreting news.
+- **"The catalyst must be something the company can eventually recover from and
+  it's short-term not permanent"** [18:11] — a *fundamental judgment about a
+  company's future*. This is the least automatable statement in either video,
+  and it is load-bearing for his entire pattern #3.
+
+## Candidate ranking for Repete (none adopted)
+
+1. **Relative-volume entry filter** — a QUALITY filter (the direction §21 says
+   is the only one left), trivially deterministic, uses data we already load,
+   emphasized independently by both sources. **Gated as §23 below.**
+2. **Partial scale-outs on MA extension** — the largest genuine capability gap;
+   both sources do it, we cannot at all. Needs new exit machinery in both the
+   simulator and the live path before it can even be gated.
+3. **Gap-up over multi-month resistance** — deterministic if "multi-month
+   resistance" is defined as an N-day high; distinct from the failed §17
+   Donchian by requiring an overnight gap.
+4. **8 EMA** as an entry/exit reference — needs an EMA helper first; the
+   specific period is arbitrary across sources, so it is a weak candidate alone.

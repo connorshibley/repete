@@ -947,6 +947,15 @@ def _run_cycle(completed_bars_only: bool = False):
             if sig.action != "buy":
                 hold_reasons[name] = {"reason": sig.reason, **sig.indicators}
                 continue
+            # §23 relative-volume confirmation. Same rail, same helper, same
+            # fail-open semantics as both simulators (risk.rvol_blocked) —
+            # four sim/live divergences have already cost rework; this one is
+            # a single shared implementation by design. Entries only.
+            if risk.rvol_blocked(bars, cfg, name):
+                hold_reasons[name] = {"reason": "volume below the relative-"
+                                                "volume entry threshold",
+                                      **sig.indicators}
+                continue
             if _process_signal(
                     sig, symbol, bars, price, None, None,
                     extra_context=news_note,
