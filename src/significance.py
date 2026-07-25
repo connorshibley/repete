@@ -66,8 +66,28 @@ class Comparison:
 
     @property
     def significant(self) -> bool:
-        """The interval excludes zero in the candidate's favour."""
+        """The interval excludes zero in the candidate's favour.
+
+        This is the test for an **EDGE** claim (METHOD NOTE 5): "each trade is
+        better." Wrong instrument for a capacity claim — see `not_worse`.
+        """
         return self.ci_low > 0
+
+    @property
+    def not_worse(self) -> bool:
+        """The interval does not exclude zero *against* the candidate.
+
+        This is the test for a **CAPACITY** claim (METHOD NOTE 5): "the book
+        reaches more, at no worse a per-trade edge." A capacity candidate is
+        not claiming better trades, so demanding `ci_low > 0` would reject it
+        for failing a claim it never made — the §19b misfire. What must be ruled
+        out is the opposite: that reaching further made each trade WORSE.
+
+        Deliberately permissive, and safe only because METHOD NOTE 5 keeps the
+        deterministic drawdown and PF clauses mandatory alongside it. Capacity
+        without an edge is otherwise just more slippage.
+        """
+        return self.ci_high > 0
 
     @property
     def verdict(self) -> str:

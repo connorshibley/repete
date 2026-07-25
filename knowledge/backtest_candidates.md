@@ -1522,13 +1522,51 @@ defect was fixed before the audit; reconciling production to HEAD delivers that
 fix. **The trades are still lost either way** — better labelling does not buy
 LLY at $1,182. What follows concerns the loss, not the label.
 
-**Why no gate could have caught this.** `simulate_ensemble()` sizes in
-continuous dollars and has no LLM downsize step. It happily takes a fractional
-position in LLY at $1,182. Every OOS number in this document therefore includes
-trades the live bot is incapable of placing, and the exclusion is **correlated
-with price** — it systematically removes the highest-priced names, which in a
-momentum book skews strongly toward the strongest trends. AMD was refused three
-times while showing +82% 63-bar momentum.
+### SECOND CORRECTION (2026-07-25, before §27 was built on it)
+
+The paragraph that stood here claimed:
+
+> `simulate_ensemble()` sizes in continuous dollars and has no LLM downsize
+> step. It happily takes a fractional position in LLY at $1,182. Every OOS
+> number in this document therefore includes trades the live bot is incapable
+> of placing.
+
+**Half of that is wrong, and it is the half the argument rested on.**
+`src/backtest.py:705` (and `:374` for the single-strategy path) call
+**`risk.size_order()`** — the same function live uses, ending in
+`int(dollars // price)`. Whole-share rounding is modelled in the backtest
+*exactly* as it is live. LLY and GS produce qty 0 in the simulator too. The
+backtest is **not** counting trades the live bot cannot place; on that half,
+sim and live agree.
+
+Found while designing §27 on top of this section, which is the only reason it
+was found at all. A gate built on a false premise is precisely the failure this
+document exists to prevent, so the error is corrected in place rather than
+quietly dropped — the same treatment §22 gave §20a.
+
+**What IS a genuine live-only divergence, and it is larger.** The backtest never
+applies the judge's verdict: there is no `review["scale"]` anywhere in
+`backtest.py`. And from the live ledger, the judge **downsizes 53% of all buys**
+(77 of 146; scales `0.4:5, 0.5:49, 0.6:15, 0.7:6, 0.8:2`, median 0.5). So any
+name whose full-size order is exactly **1 share** is taken in the simulator and
+deleted live on roughly half of all decisions.
+
+Measured against the frozen snapshot's last closes at ~$100k equity:
+
+| | names | which |
+|---|---|---|
+| qty 0 at full size — **sim and live agree** | 2 | LLY $1,189 · GS $1,055 |
+| qty 1 in sim, **0 live on any downsize** | 7 | **SPY · QQQ · DIA** · META · COST · CAT · AMD |
+| unaffected | 29 | |
+
+**24% of the universe, on 53% of decisions** — and the affected set is not
+obscure names, it is the three index ETFs and four mega-caps. The exclusion is
+still correlated with price, so it still strips the highest-priced names from a
+momentum book: AMD was refused three times while showing +82% 63-bar momentum.
+
+So the original conclusion survives — backtest trade counts overstate what live
+can achieve — but the mechanism is the **absent judge**, not fractional sizing,
+and the effect is bigger than first reported, not smaller.
 
 This is the same species of defect as §24 (allocation decided by something that
 is not the strategy) and it was invisible for the same reason: nothing compared
@@ -1537,8 +1575,13 @@ what the simulator *could* trade against what the broker *would* accept.
 **Not fixed here — deliberately.** Every remaining candidate fix touches a gated
 risk parameter and must be pre-registered like anything else:
 
-- fractional/notional orders via Alpaca (changes fill semantics — needs a gate);
-- raising `risk_per_trade_pct` (a gated risk parameter — needs a gate);
+- **fractional/notional orders — RULED OUT, not deferred.** Every entry goes
+  through `broker.bracket_market_order()`, and Alpaca does not accept fractional
+  quantities on `OrderClass.BRACKET` / `OTO`. Buying these names fractionally
+  would mean submitting them **without protective stop legs**, trading a safety
+  guarantee for reach. That is the wrong side of the trade and the option is
+  closed, not pending a gate.
+- raising the **position budget** (a gated risk parameter — needs a gate);
 - flooring qty at 1 on an approved entry (changes true risk per trade — needs a
   gate, and would silently exceed the intended risk slice on a $1,182 share).
 
@@ -1552,3 +1595,106 @@ Treating it as an EDGE claim would misfire exactly as §19b did.
 document is measured on a universe the live bot cannot fully trade. That is not
 a reason to discard them; it is a reason to expect live trade counts to run
 below backtest trade counts, and to check that gap rather than assume it away.
+
+## §27 — POSITION BUDGET (2026-07-25) — RULES PRE-REGISTERED
+
+**Claim type: CAPACITY** (METHOD NOTE 5), declared before running. The claim is
+*"the book reaches names it currently cannot"*, NOT *"each trade earns more."*
+Typing this as EDGE would demand `ci_low > 0` — rejecting the candidate for
+failing a claim it never made, which is the §19b misfire exactly.
+
+`src/significance.py` now carries both tests in code (`.significant` for EDGE,
+`.not_worse` for CAPACITY) so the rule stops being restated slightly differently
+in each section.
+
+### Motivation
+
+§26's second correction: 2 of 38 names are unbuyable at any scale (LLY $1,189,
+GS $1,055) and 7 more — **SPY, QQQ, DIA**, META, COST, CAT, AMD — are taken in
+the simulator at qty 1 and deleted live whenever the judge downsizes, which is
+**53% of all buys**. 24% of the universe, on half of all decisions.
+
+### Why an arm moves TWO knobs
+
+The effective budget is set by two coupled parameters, each binding a different
+strategy:
+
+| knob | binds | value | effective budget |
+|---|---|---|---|
+| `risk.risk_per_trade_pct` | tsmom, ma_crossover (notional path) | 1.0 | $999 |
+| `risk.max_order_value_usd` | meanrev (clamps `risk_sizing`) | 2000 | $2,000 |
+
+§11 already recorded that risk_pct 1.0/2.0/5.0 are byte-identical for meanrev
+**because this cap clamps them**. So moving one knob tests one strategy. An arm
+moves both in lockstep, which keeps this a single-parameter grid rather than a
+2-D search — and `tests/test_gate_budget.py` pins that the cap can never clamp a
+candidate arm's notional budget, so no arm can silently collapse to baseline.
+
+| arm | `risk_per_trade_pct` | `max_order_value_usd` | budget @ $100k |
+|---|---|---|---|
+| baseline | 1.0 | 2,000 | $999 / $2,000 |
+| b2.0 | 2.0 | 2,000 | $2,000 |
+| c2.5 | 2.5 | 2,500 | $2,500 |
+| d3.0 | 3.0 | 3,000 | $3,000 |
+| e4.0 | 4.0 | 4,000 | $4,000 |
+
+### The tension that makes this a real experiment
+
+`max_portfolio_heat_pct: 4.0` caps total open stop-risk. Bigger positions burn
+heat faster, so the book may hold **fewer** positions. Reach trades against
+depth, `pure_checks` already models heat, and the ensemble simulator can see it.
+This is not a free parameter to crank — it is a genuine trade-off, and the arm
+grid extends to 4.0% specifically so the point where depth loss overwhelms
+reach gain is inside the tested range rather than beyond it.
+
+### Selection
+
+IS-only, and **selected on REACH first, return as tiebreak**. Selecting on
+return would quietly convert a capacity gate back into an edge hunt.
+
+### PRE-REGISTERED RULE
+
+Adopt the IS-selected arm only if, out of sample:
+
+- **(a)** return ≥ baseline − 0.25pp
+- **(b1)** PF ≥ 1.30 · **(b2)** PF ≥ baseline − 0.10
+- **(c1)** maxDD ≤ baseline × 1.5 · **(c2)** maxDD ≤ 3.0pp absolute
+- **(d)** ≥ 15 closed OOS trades
+- **(e)** **distinct symbols traded strictly increases** — the actual capacity
+  claim, demonstrated rather than assumed
+- **(f)** Bonferroni-corrected bootstrap on per-trade P&L has **`ci_high > 0`**
+  (not significantly worse)
+
+plus the **§23 monotonicity check**. That check was itself rewritten during this
+build: the first draft tested only unimodality, which **accepts a lone spike**
+like `[1.0, 1.1, 9.0, 1.2, 1.0]` — precisely the fitted-parameter shape §23 was
+caught by. A decorative guard is worse than none because it reads as a control.
+It now also requires the winner's lead over its better neighbour to sit within
+the spread of the remaining arms, with the scale taken from the data so the
+guard has no tunable of its own.
+
+### STATED BEFORE THE RUN — this gate under-measures the fix
+
+`simulate_ensemble` has **no judge**, so the 7 names lost live on a downsize are
+invisible to it. The gate can only see the LLY/GS half. **A marginal result here
+corresponds to a materially larger live benefit.**
+
+Recorded now, before any numbers exist, so it cannot be reached for afterwards
+to argue a failed gate into a pass. It cuts the other way too: if the gate FAILS
+on drawdown or PF, that failure is measured on the smaller half and the real
+cost would be larger, not smaller.
+
+**Separate sensitivity diagnostic, not part of the rule and not adopted on:**
+re-run each arm applying the empirically observed judge-scale distribution
+(`0.4:5, 0.5:49, 0.6:15, 0.7:6, 0.8:2, approve 1.0:67`) as a multiplier, to
+estimate the invisible half. It introduces randomness and the judge is not
+random, so it informs and never decides.
+
+**Prior:** EDGE claims are 0 for 5. CAPACITY claims have a better record because
+the bar is lower and honest about being lower — but §21b (universe 38→68) was a
+capacity idea that failed on trade count, and the heat cap makes the same
+outcome plausible here.
+
+Runner: `scripts/gate_budget.py` — **committed**, unlike §25's ad-hoc heredoc,
+so this gate can be re-executed exactly. Running trial count entering §27: ~38
+registered comparisons plus grid arms.

@@ -101,10 +101,29 @@ class Result:
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
+    @property
+    def symbols_traded(self) -> set:
+        """Distinct symbols this run actually opened a position in.
+
+        DERIVED, not stored, on purpose. §27's capacity clause turns on this
+        number, and a stored field written at construction time is one more
+        thing that can silently disagree with `trades` — which is the exact
+        class of bug §13, §20 and §24 all turned out to be. Computed from the
+        trade list, it cannot drift.
+        """
+        return {t.symbol for t in self.trades}
+
+    @property
+    def n_symbols_traded(self) -> int:
+        return len(self.symbols_traded)
+
     def summary(self) -> dict:
         d = asdict(self)
         d.pop("equity_curve")
         d.pop("trades")
+        # asdict() serialises FIELDS only, never properties — without this line
+        # every gate report silently omits the reachability number.
+        d["n_symbols_traded"] = self.n_symbols_traded
         return d
 
 
