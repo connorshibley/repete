@@ -39,6 +39,8 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import intraday
+
 SNAP_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "snapshots")
 MANIFEST = os.path.join(SNAP_DIR, "MANIFEST.json")
 
@@ -73,6 +75,7 @@ def fetch(symbols: list, start: str, end: str, timeframe: str) -> dict:
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    from alpaca.data.enums import Adjustment
 
     tf_map = {
         "1Hour": TimeFrame(1, TimeFrameUnit.Hour),
@@ -104,7 +107,16 @@ def fetch(symbols: list, start: str, end: str, timeframe: str) -> dict:
             try:
                 resp = client.get_stock_bars(StockBarsRequest(
                     symbol_or_symbols=sym, timeframe=tf_map[timeframe],
-                    start=cur, end=chunk_end))
+                    start=cur, end=chunk_end,
+                    # MUST be adjusted. The first build of this snapshot used
+                    # RAW (the default) and contained 11 unadjusted splits —
+                    # AAPL 4:1, AMZN 20:1, GOOGL 20:1, NVDA 4:1 and 10:1,
+                    # TSLA 5:1 and 3:1, AVGO 10:1, WMT 3:1 and two ETF splits.
+                    # The simulator read each as an overnight 50-95% collapse,
+                    # which fired stops on healthy positions, produced an ATR
+                    # of 159.93 against a $171 price, and voided the first §25
+                    # gate run entirely.
+                    adjustment=Adjustment.ALL))
                 for b in resp.data.get(sym, []):
                     rows.append({
                         "ts": b.timestamp.astimezone(timezone.utc).isoformat(),
@@ -156,6 +168,33 @@ def sanity_check(bars: dict, symbols: list) -> list:
             problems.append(f"FATAL: {sym} bars not chronologically sorted")
         if len(set(ts)) != len(ts):
             problems.append(f"FATAL: {sym} has duplicate timestamps")
+
+        # UNADJUSTED-SPLIT DETECTOR. The first build of this file used raw
+        # prices and carried 11 splits (AAPL 4:1, AMZN 20:1, GOOGL 20:1, NVDA
+        # 10:1, TSLA 5:1, ...). The simulator read each as an overnight
+        # 50-95% collapse — firing stops on healthy positions and voiding a
+        # whole gate run. Nothing caught it except a stray ATR in the logs.
+        #
+        # Compare SESSION to SESSION, not hour to hour: a real overnight move
+        # is spread across thin extended-hours bars, so an hourly comparison
+        # dilutes it and can miss the very thing this guards against. Splits
+        # are 50-95% and would survive either test, but the session view is
+        # the honest one.
+        #
+        # 45% is deliberately above the largest genuine single-session move in
+        # this universe (AMD +35.8% on 2025-10-03, real news) so a true price
+        # move is never mistaken for a corporate action.
+        sessions = intraday.resample_daily(rows)
+        for a, b in zip(sessions, sessions[1:]):
+            if a["close"] <= 0:
+                continue
+            chg = (b["open"] - a["close"]) / a["close"]
+            if abs(chg) > 0.45:
+                problems.append(
+                    f"FATAL: {sym} {a['ts'][:10]}->{b['ts'][:10]} moves "
+                    f"{chg:+.1%} ({a['close']:.2f}->{b['open']:.2f}) — "
+                    f"unadjusted split? build with adjustment=ALL")
+                break
     return problems
 
 
@@ -219,14 +258,16 @@ def main() -> int:
     man = load_manifest()
     man["snapshots"][name] = {
         "sha256": sha256_file(path),
-        "source": f"Alpaca {tf} (raw prices, not split/dividend adjusted)",
+        "source": f"Alpaca {tf} (adjustment=ALL — split AND dividend adjusted)",
         "start": args.start, "end": args.end, "timeframe": tf,
         "n_symbols": len(bars), "n_bars": n_bars,
         "built_at": datetime.now(timezone.utc).isoformat(),
-        "note": "INTRADAY. Requires Alpaca keys to rebuild (yfinance caps "
-                "intraday history far too short). Raw prices — NOT comparable "
-                "with the yfinance ADJUSTED daily snapshot; re-baseline inside "
-                "this file.",
+        "note": "INTRADAY, adjustment=ALL. Requires Alpaca keys to rebuild "
+                "(yfinance caps intraday history far too short). The FIRST "
+                "build used RAW and carried 11 unadjusted splits that the "
+                "simulator read as overnight collapses — it voided a gate run. "
+                "Different vendor from the yfinance daily file; re-baseline "
+                "inside this file.",
     }
     with open(MANIFEST, "w") as f:
         json.dump(man, f, indent=2, sort_keys=True)
