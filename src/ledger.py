@@ -106,6 +106,38 @@ class Ledger:
             "slippage_bps": round(slippage_bps, 2),
         })
 
+    def log_positions_mark(self, positions: dict):
+        """Snapshot of what the open book is worth RIGHT NOW, from the broker.
+
+        DISPLAY ONLY. Invariant #4 says positions and equity for a trading
+        decision are read fresh from the broker every cycle — this record is a
+        photograph for the dashboard, never an input to sizing, signals or the
+        judge. Reading it back to make a decision would reintroduce exactly the
+        stale-state bug the invariant exists to prevent.
+
+        Stored RAW (the broker's own qty / avg_entry / market_value /
+        unrealized_pl) rather than pre-computed percentages, so the record stays
+        lossless and the presentation layer can change its mind later.
+
+        Written at every touchpoint that already holds a broker — 09:35, 15:45
+        and 16:20 ET — so `dashboard.html`, a static file published to GitHub
+        Pages, can show current value without needing keys or a network call at
+        render time.
+        """
+        if not positions:
+            return
+        self._append({
+            "type": "event",
+            "event": "positions_mark",
+            "detail": json.dumps({
+                sym: {"qty": p.get("qty"),
+                      "avg_entry": p.get("avg_entry"),
+                      "market_value": p.get("market_value"),
+                      "unrealized_pl": p.get("unrealized_pl")}
+                for sym, p in sorted(positions.items())
+            }, separators=(",", ":")),
+        })
+
     # ---- reads ----
 
     def all_records(self) -> list[dict]:

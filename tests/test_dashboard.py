@@ -183,3 +183,228 @@ def test_boot_splash_present_and_safe(tmp_path, cfg, monkeypatch):
     assert "repete_boot" in html_text            # once-per-session guard
     assert "#boot{position:fixed" in html_text and "display:none" in html_text
     assert "click anywhere to skip" in html_text
+
+
+# ---- position marks: current value and +/- % (2026-07-25) ----
+#
+# The dashboard is a STATIC file on GitHub Pages and this suite pins that it
+# renders offline. So "current value" is the last broker mark the agent
+# recorded, never a live quote fetched here. These tests cover the three ways
+# that can go wrong: absent data, bad data, and data that does not line up
+# with the ledger.
+
+from datetime import datetime, timedelta, timezone
+
+
+def _open_position(led, symbol="NVDA", qty=4, entry=198.0):
+    return led.log_decision(
+        symbol, "buy", "trend intact", {"rsi2": 7},
+        {"verdict": "approve", "scale": 1.0}, executed=True,
+        entry_price=entry, qty=qty,
+        order={"id": "o1", "stop_price": entry * 0.94})
+
+
+def _mark(led, payload):
+    led.log_event("positions_mark", json.dumps(payload))
+
+
+# ---- degradation: the load-bearing behaviour ----
+
+def test_positions_table_is_unchanged_without_a_mark(tmp_path, cfg):
+    """An old ledger, or a host that never ran a cycle, must render exactly the
+    table that shipped before this feature — not empty columns."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led)
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+
+    assert "NVDA" in html
+    for col in ("<th>Now</th>", "<th>Value</th>", "<th>Unrealized</th>"):
+        assert col not in html
+    assert "open position value" not in html
+    assert "valued" not in html
+
+
+def test_a_malformed_mark_degrades_instead_of_crashing(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led)
+    led.log_event("positions_mark", "{not json")
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "NVDA" in html and "<th>Now</th>" not in html
+
+
+# ---- the numbers ----
+
+def test_mark_renders_price_value_and_percent(tmp_path, cfg):
+    """qty 10 @ 100 now worth 1100 with +100 unrealized -> $110.00 / $1,100.00
+    / +$100.00 (+10.00%)."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "NVDA", qty=10, entry=100.0)
+    _mark(led, {"NVDA": {"qty": 10, "avg_entry": 100.0,
+                         "market_value": 1100.0, "unrealized_pl": 100.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+
+    assert "<th>Now</th>" in html
+    assert "$110.00" in html          # 1100 / 10
+    assert "$1,100.00" in html        # market value
+    assert "+$100.00 (+10.00%)" in html
+    assert "open position value" in html
+
+
+def test_a_losing_position_renders_as_a_loss(tmp_path, cfg):
+    """Red/green must follow unrealized P&L, not some other field's sign."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "XOM", qty=10, entry=100.0)
+    _mark(led, {"XOM": {"qty": 10, "avg_entry": 100.0,
+                        "market_value": 900.0, "unrealized_pl": -100.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "-$100.00 (-10.00%)" in html
+    assert "class=loss" in html
+
+
+def test_the_book_total_row_sums_the_positions(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "AAA", qty=10, entry=100.0)
+    _open_position(led, "BBB", qty=5, entry=200.0)
+    _mark(led, {"AAA": {"qty": 10, "avg_entry": 100.0,
+                        "market_value": 1100.0, "unrealized_pl": 100.0},
+                "BBB": {"qty": 5, "avg_entry": 200.0,
+                        "market_value": 900.0, "unrealized_pl": -100.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "totrow" in html
+    assert "$2,000.00" in html         # 1100 + 900 book value
+    assert "+$0.00 (+0.00%)" in html   # +100 - 100 on 2000 cost
+
+
+# ---- guards: the size_order ZeroDivisionError class of bug ----
+
+def test_zero_qty_and_zero_entry_render_dashes_not_a_crash(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "AAA", qty=0, entry=0.0)
+    _mark(led, {"AAA": {"qty": 0, "avg_entry": 0.0,
+                        "market_value": 0.0, "unrealized_pl": 0.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "AAA" in html               # rendered, no exception
+
+
+def test_a_symbol_missing_from_the_mark_shows_dashes(tmp_path, cfg):
+    """A ledger position the broker no longer reports must not invent numbers."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "AAA", qty=10, entry=100.0)
+    _open_position(led, "GONE", qty=1, entry=50.0)
+    _mark(led, {"AAA": {"qty": 10, "avg_entry": 100.0,
+                        "market_value": 1100.0, "unrealized_pl": 100.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "GONE" in html and "$110.00" in html
+
+
+def test_a_broker_symbol_with_no_ledger_record_adds_no_row(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "AAA", qty=10, entry=100.0)
+    _mark(led, {"AAA": {"qty": 10, "avg_entry": 100.0,
+                        "market_value": 1100.0, "unrealized_pl": 100.0},
+                "PHANTOM": {"qty": 3, "avg_entry": 10.0,
+                            "market_value": 30.0, "unrealized_pl": 0.0}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "PHANTOM" not in html
+
+
+# ---- staleness ----
+
+def test_a_fresh_mark_is_timestamped():
+    note = dashboard._mark_age_note(
+        datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc))
+    assert "valued" in note and "ET" in note and "old" not in note
+
+
+def test_a_stale_mark_says_so():
+    """Regenerated 3x a weekday: on a Monday a Friday mark is 3 days old, and
+    an unlabelled number will eventually be read as live."""
+    now = datetime.now(timezone.utc)
+    note = dashboard._mark_age_note((now - timedelta(days=3)).isoformat(), now)
+    assert "3d old" in note and "warn" in note
+
+
+def test_a_missing_or_unparseable_timestamp_produces_no_note():
+    now = datetime.now(timezone.utc)
+    assert dashboard._mark_age_note(None, now) == ""
+    assert dashboard._mark_age_note("not-a-date", now) == ""
+
+
+# ---- the reader ----
+
+def test_latest_mark_wins_over_earlier_ones(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _mark(led, {"AAA": {"qty": 1, "avg_entry": 1, "market_value": 1,
+                        "unrealized_pl": 0}})
+    _mark(led, {"BBB": {"qty": 2, "avg_entry": 2, "market_value": 2,
+                        "unrealized_pl": 0}})
+    mark, ts = dashboard.latest_position_mark(led.all_records())
+    assert set(mark) == {"BBB"} and ts
+
+
+def test_no_mark_returns_none_pair():
+    assert dashboard.latest_position_mark([]) == (None, None)
+
+
+# ---- the writer ----
+
+def test_log_positions_mark_stores_the_raw_broker_fields(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    led.log_positions_mark({"NVDA": {"qty": 4.0, "avg_entry": 198.0,
+                                     "market_value": 846.0,
+                                     "unrealized_pl": 54.0,
+                                     "ignored_extra": "x"}})
+    mark, _ = dashboard.latest_position_mark(led.all_records())
+    assert mark == {"NVDA": {"qty": 4.0, "avg_entry": 198.0,
+                             "market_value": 846.0, "unrealized_pl": 54.0}}
+
+
+def test_an_empty_book_writes_no_mark(tmp_path, cfg):
+    """Flat is not the same as unknown — an empty mark would blank the columns
+    on a page that should simply say 'No open positions'."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    led.log_positions_mark({})
+    assert dashboard.latest_position_mark(led.all_records()) == (None, None)
+
+
+def test_a_marked_row_shows_the_BROKER_cost_basis_not_the_signal_price(tmp_path, cfg):
+    """THE bug found by rendering the real page and reading it.
+
+    The ledger's entry_price is the SIGNAL price, not the fill — live SPY
+    signalled at 689.30 and filled at 753.14 (926 bps). Printing the signal
+    next to a live "Now" invites (Now - Entry) and shows a gain where the
+    account holds a loss. A marked row must reconcile: Cost -> Now -> Value ->
+    Unrealized."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "SPY", qty=1, entry=689.30)      # signal price
+    _mark(led, {"SPY": {"qty": 1, "avg_entry": 753.14,   # what it actually cost
+                        "market_value": 738.93, "unrealized_pl": -14.21}})
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+
+    assert "<th>Cost</th>" in html and "<th>Entry</th>" not in html
+    assert "$753.14" in html, "cost basis must be the broker's avg_entry"
+    assert "$689.30" not in html, "the signal price must not sit beside 'Now'"
+    # and the arithmetic a reader would do now agrees with the stated P&L
+    assert "-$14.21 (-1.89%)" in html
+
+
+def test_an_unmarked_row_keeps_the_old_entry_column(tmp_path, cfg):
+    """No mark: the table is exactly what shipped before, signal price and all."""
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _open_position(led, "SPY", qty=1, entry=689.30)
+    html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
+    assert "<th>Entry</th>" in html and "<th>Cost</th>" not in html
+    assert "$689.30" in html

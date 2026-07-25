@@ -241,6 +241,15 @@ def run(mode: str):
     x_poster.post_text(text, cfg)
     ledger.log_event(event, text)
 
+    # Re-mark the book immediately before the dashboard regenerates, so the
+    # 09:35 and 16:20 pages show a fresh valuation rather than yesterday's
+    # 15:45 close. Display only — never read back into a trading decision
+    # (invariant #4). A failure here costs a stale number on a cosmetic page.
+    try:
+        ledger.log_positions_mark(broker.positions())
+    except Exception as e:  # noqa: BLE001
+        log.warning("positions mark failed: %s", e)
+
     try:  # keep the dashboard + blog current at every scheduled touchpoint
         import blog
         import dashboard

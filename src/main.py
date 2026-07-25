@@ -1050,6 +1050,14 @@ def _run_cycle(completed_bars_only: bool = False):
     # ledger alone, with or without an alert having fired.
     _deploy = check_deploy_drift(ledger)
 
+    # What the open book is worth right now, for the dashboard. `positions` is
+    # the fresh broker read this cycle already made (invariant #4) — no extra
+    # API call. Display only; never read back into a trading decision.
+    try:
+        ledger.log_positions_mark(positions)
+    except Exception as e:  # noqa: BLE001 — a cosmetic snapshot never kills a cycle
+        log.warning("positions mark failed: %s", e)
+
     import json as _json
     ledger.log_event("cycle_complete",
                      _json.dumps({"equity": account["equity"],
