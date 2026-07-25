@@ -36,6 +36,7 @@ import strategy
 import risk
 import regime as regime_mod
 import earnings as earnings_mod
+import intraday
 
 
 # ---------------------------------------------------------------- data models
@@ -95,6 +96,8 @@ class Result:
     max_drawdown_pct: float
     n_heat_blocked: int = 0     # entries stopped by the portfolio-heat cap
     n_corr_blocked: int = 0     # entries stopped by the correlation cap
+    n_fill_fallback: int = 0    # §25: fills that had no intraday bar and
+                                # reverted to the daily open (never silent)
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
@@ -526,7 +529,9 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
 
 def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                       earnings: dict | None = None,
-                      strategy_overrides: dict | None = None) -> Result:
+                      strategy_overrides: dict | None = None,
+                      hour_index: dict | None = None,
+                      fill_hour: int | None = None) -> Result:
     """Replay bars through ALL enabled strategies at once, sharing the rails.
 
     Why this exists (2026-07-23)
@@ -632,6 +637,23 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
            for sym, bars in sym_bars.items()}
     last_close: dict = {}
 
+    # §25 intraday fill timing. `fill_hour` is None for every pre-§25 caller,
+    # so this path is inert and results stay byte-identical (a test pins that).
+    # When set, fills land at that ET hour's open instead of the daily open —
+    # and a missing hourly bar falls back to the daily open and is COUNTED,
+    # never silently substituted, so thin coverage cannot masquerade as a result.
+    n_fill_fallback = 0
+
+    def _fill_open(sym, bar, ts):
+        nonlocal n_fill_fallback
+        if fill_hour is None or hour_index is None:
+            return bar["open"]
+        px = intraday.fill_price(hour_index, sym, ts[:10], fill_hour)
+        if px is None:
+            n_fill_fallback += 1
+            return bar["open"]
+        return px
+
     def _exit(sym, price, ts, reason):
         pos = acct.positions.pop(sym)
         fill = price * (1 - slip / 1e4)
@@ -673,7 +695,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     continue
                 if sym in acct.positions:
                     continue          # another strategy already claimed it
-                fill = bar["open"] * (1 + slip / 1e4)
+                fill = _fill_open(sym, bar, ts) * (1 + slip / 1e4)
                 i = idx[sym][ts]
                 hist = sym_bars[sym][:i + 1]
                 prices = risk.bracket_prices(
@@ -731,7 +753,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     "trade": SimTrade(sym, ts, fill, qty, fees=fee)}
                 fills_by_date[date] = fills_by_date.get(date, 0) + 1
             elif sym in acct.positions:
-                _exit(sym, bar["open"], ts, "strategy_sell")
+                _exit(sym, _fill_open(sym, bar, ts), ts, "strategy_sell")
                 fills_by_date[date] = fills_by_date.get(date, 0) + 1
         pending = still_pending
 
@@ -845,6 +867,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         start=all_ts[0] if all_ts else "", end=final_ts,
         n_trades=len(closed), n_guard_skipped_exits=guard_skips,
         n_heat_blocked=n_heat_blocked, n_corr_blocked=n_corr_blocked,
+        n_fill_fallback=n_fill_fallback,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
         buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),
