@@ -45,6 +45,12 @@ JOBS = [
     # (signal on close of bar i, fill at open of bar i+1). Same rails.
     ("open-cycle",   range(0, 5), 9,    35,
      ["sh", "-c", f"{PY} src/main.py --open-cycle && {_PUBLISH}"]),
+    # 12:00 ET midday look. ALERTS ONLY — it reads the still-forming bar and
+    # reports what is setting up, hours before the close. It cannot place an
+    # order (src/opportunity_scan.py holds no order call path; a test pins it).
+    # Trading decisions stay on completed bars, because partial-bar inputs have
+    # never been through a gate (§19a declined exactly that).
+    ("midday-scan",  range(0, 5), 12,   0,  [PY, "src/opportunity_scan.py"]),
     ("cycle",        range(0, 5), 15,   45,
      ["sh", "-c", f"{PY} src/main.py && {_PUBLISH}"]),
     ("catch-up",     range(0, 5), 15,   55, [PY, "src/watchdog.py", "--catchup"]),
