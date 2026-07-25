@@ -73,3 +73,28 @@ def atr(bars: list[dict], period: int = 14) -> float | None:
     trs = [true_range(window[i - 1]["close"], window[i])
            for i in range(1, len(window))]
     return sum(trs) / period
+
+
+def rvol(bars: list[dict], period: int = 20) -> float | None:
+    """Relative volume: the last bar's volume over the mean of the `period`
+    bars BEFORE it. 2.0 means "twice its recent normal".
+
+    Added for §23. Every bar we load has carried a volume field since day one
+    and no strategy ever read it, while two independent professional sources
+    both treat volume expansion as core entry confirmation — a blind spot, not
+    a decision.
+
+    Returns None (never a number the caller might trust) when the answer is
+    undefined: insufficient history, or a zero/absent baseline. That matters
+    because callers FAIL OPEN on None — a missing volume feed must not silently
+    block every entry, but it also must not fabricate an rvol of 0 or infinity.
+    The current bar is excluded from its own baseline; including it would drag
+    the mean toward today and understate a genuine spike.
+    """
+    if len(bars) < period + 1:
+        return None
+    prior = bars[-(period + 1):-1]
+    base = sum(float(b.get("volume") or 0) for b in prior) / period
+    if base <= 0:
+        return None
+    return float(bars[-1].get("volume") or 0) / base

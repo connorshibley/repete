@@ -471,6 +471,9 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 if blackout_days and earnings and earnings_mod.next_within(
                         earnings.get(sym, []), ts, blackout_days):
                     continue
+                # §23 relative-volume confirmation (entries only; fails open)
+                if risk.rvol_blocked(hist, cfg, strategy_name):
+                    continue
                 # per-cycle entry cap, first-come in symbol order — the same
                 # semantics as the live loop in main.py
                 if entry_cap and buys_queued_today >= entry_cap:
@@ -796,6 +799,12 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 blackout_days = sparams.get("earnings_blackout_days", 0)
                 if blackout_days and earnings and earnings_mod.next_within(
                         earnings.get(sym, []), ts, blackout_days):
+                    continue
+                # §23 relative-volume confirmation (entries only; fails open).
+                # `continue` not `break`: this symbol failed volume confirmation
+                # for THIS strategy, but a lower-priority strategy may still
+                # claim it — only an accepted buy consumes the symbol.
+                if risk.rvol_blocked(hist, cfg, name):
                     continue
                 entry_cap = sparams.get("max_entries_per_cycle", 0)
                 if entry_cap and buys_queued[name] >= entry_cap:

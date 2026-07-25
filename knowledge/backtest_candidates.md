@@ -1096,3 +1096,56 @@ because it is cheap, correctly shaped, and closes a verified blind spot — not
 because it is likely to work. It will be recorded whichever way it falls.
 
 Running trial count entering §23: ~27 registered comparisons plus grid arms.
+
+### §23 RESULT — REJECTED. The best deterministic numbers in this repo, and still not evidence.
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz`, ensemble simulator, 70/30 split,
+IS-only selection. IS winner among candidates: **rvol1.5**.
+
+| arm | OOS ret | PF | $/trade | trades | maxDD |
+|---|---|---|---|---|---|
+| baseline (no filter) | +2.669% | 1.955 | $14.91 | 179 | 1.073% |
+| **rvol >= 1.5 (IS-selected)** | **+4.067%** | **2.898** | **$31.78** | 128 | **0.643%** |
+| rvol >= 2.0 | +1.985% | 2.240 | $21.82 | 91 | 0.425% |
+| rvol >= 2.5 | +0.826% | 1.705 | $14.00 | 59 | 0.591% |
+
+**All six deterministic clauses PASS** — and not marginally. Return +52%
+relative; PF +0.94 against a required +0.10; **drawdown FELL 40%**; per-trade
+P&L **more than doubled**. On the deterministic rules alone this is the
+strongest candidate ever run in this repo.
+
+**REJECTED anyway.** Two independent diagnostics say it is noise:
+
+**1. The bootstrap fails even UNCORRECTED.** Bonferroni (K=4) CI
+[-$16.50, +$64.72]; uncorrected (K=1) CI [-$10.65, +$52.94]. Both include zero.
+**P(candidate better) = 85.8%** — short of even the uncorrected 95% bar. The
+pre-registered EDGE rule requires the CI to exclude zero. It does not.
+
+**2. The threshold response is NON-MONOTONE, which is the more damning one.**
+PF runs 1.955 → **2.898** → 2.240 → 1.705: it peaks at 1.5 and falls away on
+*both* sides, ending *below* baseline at 2.5. If "volume confirms trade quality"
+were a real mechanism, requiring *more* confirmation should not reverse it. A
+single interior peak with decay either side is the signature of **a fitted
+parameter, not a mechanism** — the 1.5 arm is where the noise happened to land.
+
+That second point matters beyond §23. A candidate can pass every deterministic
+clause by a wide margin and still be an artifact, and the deterministic clauses
+**cannot see it** — only the CI and the shape of the parameter response can.
+Where a grid is available, **check monotonicity**: a lone interior optimum is
+weak evidence regardless of how good the winning cell looks.
+
+**What ships:** nothing. `min_rvol` stays **unset** in `config.yaml` (a test
+pins this), so live behaviour is unchanged. The code — `strategies.base.rvol()`
+and `risk.rvol_blocked()` — is **kept as dormant, tested capability**: it closes
+the verified blind spot that no strategy read the volume field at all, it is one
+shared implementation across live and both simulators (so it cannot become a
+fifth sim/live divergence), and it fails open on a missing volume feed. 17 tests.
+
+**Prior confirmed.** §23's registration stated the honest expectation was
+failure because nothing here has ever cleared the EDGE bar. That is now
+**0 for 4** on EDGE claims (§14 xsmom, §16 chandelier, §20a priority, §23 rvol).
+The pattern is consistent and worth stating plainly: **at these sample sizes
+(n ≈ 60–260, fat-tailed P&L) this method cannot certify an edge, and every
+apparent one so far has failed to survive contact with the interval.**
+
+Running trial count after §23: ~31 registered comparisons plus grid arms.
