@@ -36,7 +36,7 @@ def test_status_never_raises_whatever_git_does(monkeypatch, boom):
 
     st = dc.status()
     assert st == {"sha": None, "sha_source": "unknown",
-                  "config_dirty": None, "behind": None}
+                  "config_dirty": None, "behind": None, "ahead": None}
 
 
 def test_non_zero_git_exit_is_unknown_not_an_error(monkeypatch):
@@ -47,12 +47,27 @@ def test_non_zero_git_exit_is_unknown_not_an_error(monkeypatch):
     assert dc.running_sha() == (None, "unknown")
     assert dc.config_dirty() is None
     assert dc.behind_upstream() is None
+    assert dc.ahead_of_upstream() is None
 
 
-def test_unparseable_behind_count_is_unknown(monkeypatch):
+def test_unparseable_counts_are_unknown(monkeypatch):
     monkeypatch.setattr(dc.subprocess, "run",
                         lambda *a, **k: subprocess.CompletedProcess(a, 0, "not-a-number", ""))
     assert dc.behind_upstream() is None
+    assert dc.ahead_of_upstream() is None
+
+
+def test_behind_and_ahead_ask_git_opposite_questions(monkeypatch):
+    """The bug was one direction being measured and the other silently not.
+    Pin the rev-ranges so they can never collapse into the same query."""
+    seen = []
+    monkeypatch.setattr(dc.subprocess, "run",
+                        lambda *a, **k: (seen.append(a[0]),
+                                         subprocess.CompletedProcess(a, 0, "0", ""))[1])
+    dc.behind_upstream()
+    dc.ahead_of_upstream()
+    ranges = [args[-1] for args in seen]
+    assert ranges == ["HEAD..origin/main", "origin/main..HEAD"]
 
 
 def test_git_calls_are_bounded_by_a_timeout(monkeypatch):
@@ -86,9 +101,9 @@ def test_blank_env_sha_falls_through_to_git(monkeypatch):
 
 # ---------------- 3. it fires on real drift ----------------
 
-def _st(sha="a" * 40, source="git", dirty=False, behind=0):
+def _st(sha="a" * 40, source="git", dirty=False, behind=0, ahead=0):
     return {"sha": sha, "sha_source": source,
-            "config_dirty": dirty, "behind": behind}
+            "config_dirty": dirty, "behind": behind, "ahead": ahead}
 
 
 def test_clean_checkout_is_silent():
@@ -110,9 +125,36 @@ def test_being_behind_upstream_alerts_with_the_count():
     assert "57 commit(s) behind" in msg
 
 
+def test_being_ahead_of_upstream_alerts_too():
+    """THE blind spot, found half an hour after this module shipped: the
+    production checkout was on an unmerged branch 4 commits AHEAD of main,
+    running unreviewed code, and `behind` was 0 so the guard said clean.
+
+    Divergence #7 was production behind main. This is production ahead of it.
+    Both are "the running code is not the reviewed code"."""
+    msg = dc.drift_message(_st(ahead=4))
+    assert "4 commit(s) that origin/main has never seen" in msg
+    assert "not been reviewed" in msg
+
+
+def test_ahead_catches_local_commits_on_main_too():
+    """One count covers both shapes. Checking the BRANCH NAME instead would
+    pass `main` carrying unpushed commits — the more dangerous case, because
+    the branch name looks correct while the code is not."""
+    assert dc.drift_message(_st(ahead=1)) != ""
+
+
 def test_both_problems_are_reported_together():
     msg = dc.drift_message(_st(dirty=True, behind=57))
     assert "config.yaml differs" in msg and "57 commit(s) behind" in msg
+
+
+def test_ahead_and_behind_are_reported_together():
+    """A checkout can be both — a stale feature branch is behind main AND
+    carrying commits main lacks. Reporting only one would understate it."""
+    msg = dc.drift_message(_st(behind=12, ahead=3))
+    assert "12 commit(s) behind" in msg
+    assert "3 commit(s) that origin/main has never seen" in msg
 
 
 def test_the_running_sha_is_in_the_alert():
@@ -127,11 +169,23 @@ def test_unknown_state_never_alerts():
     """A container legitimately has no .git. Alerting on that fires every day
     and mutes the channel — the exact failure mode that let #7 persist."""
     assert dc.drift_message({"sha": None, "sha_source": "unknown",
-                             "config_dirty": None, "behind": None}) == ""
+                             "config_dirty": None, "behind": None,
+                             "ahead": None}) == ""
 
 
 def test_unknown_behind_with_clean_config_is_silent():
     assert dc.drift_message(_st(behind=None)) == ""
+
+
+def test_unknown_ahead_is_silent():
+    assert dc.drift_message(_st(ahead=None)) == ""
+
+
+def test_a_status_missing_the_ahead_key_does_not_crash():
+    """Older callers / a partial status dict must degrade, not raise — this is
+    a monitoring path and raising here would be worse than the drift."""
+    assert dc.drift_message({"sha": "a" * 40, "sha_source": "git",
+                             "config_dirty": False, "behind": 0}) == ""
 
 
 def test_threshold_is_respected():

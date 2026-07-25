@@ -93,14 +93,8 @@ def config_dirty(path: str = "config.yaml") -> bool | None:
     return bool(out.strip())
 
 
-def behind_upstream(branch: str = "origin/main") -> int | None:
-    """How many commits the checkout is behind `branch`, or None.
-
-    Reads the LAST FETCHED ref — no network of its own, so a machine that never
-    fetches reports 0 rather than the truth. That is an accepted limitation and
-    the reason `config_dirty()` carries the real weight: it is offline-exact.
-    """
-    out = _git("rev-list", "--count", f"HEAD..{branch}")
+def _count(rev_range: str) -> int | None:
+    out = _git("rev-list", "--count", rev_range)
     if out is None:
         return None
     try:
@@ -109,12 +103,42 @@ def behind_upstream(branch: str = "origin/main") -> int | None:
         return None
 
 
+def behind_upstream(branch: str = "origin/main") -> int | None:
+    """How many commits the checkout is BEHIND `branch`, or None.
+
+    Reads the LAST FETCHED ref — no network of its own, so a machine that never
+    fetches reports 0 rather than the truth. That is an accepted limitation and
+    the reason `config_dirty()` carries the real weight: it is offline-exact.
+    """
+    return _count(f"HEAD..{branch}")
+
+
+def ahead_of_upstream(branch: str = "origin/main") -> int | None:
+    """How many commits the checkout has that `branch` has NEVER SEEN.
+
+    Added 2026-07-25, within half an hour of this module shipping, because the
+    module failed to notice its own repository. `behind_upstream()` answers
+    "what has main got that I lack" — and the production checkout was sitting on
+    an unmerged feature branch, **4 commits ahead**, running code no review had
+    passed. Behind was 0. The guard written to catch "the running code is not
+    the reviewed code" reported clean on exactly that.
+
+    Divergence #7 was production behind main; this is production ahead of it.
+    Same disease, mirror image, and it needs its own number: one count catches
+    BOTH a feature branch and `main` carrying unpushed local commits. Checking
+    the branch NAME instead would miss the second, which is the more dangerous
+    one precisely because the name looks right.
+    """
+    return _count(f"{branch}..HEAD")
+
+
 def status() -> dict:
     """One read-only snapshot. Never raises, never blocks, never writes."""
     sha, source = running_sha()
     return {"sha": sha, "sha_source": source,
             "config_dirty": config_dirty(),
-            "behind": behind_upstream()}
+            "behind": behind_upstream(),
+            "ahead": ahead_of_upstream()}
 
 
 def drift_message(st: dict, behind_threshold: int = 1) -> str:
@@ -132,6 +156,10 @@ def drift_message(st: dict, behind_threshold: int = 1) -> str:
     behind = st.get("behind")
     if behind is not None and behind >= behind_threshold:
         parts.append(f"checkout is {behind} commit(s) behind upstream")
+    ahead = st.get("ahead")
+    if ahead is not None and ahead >= behind_threshold:
+        parts.append(f"running {ahead} commit(s) that origin/main has never "
+                     f"seen — this code has not been reviewed")
     if not parts:
         return ""
     sha = st.get("sha") or "unknown"

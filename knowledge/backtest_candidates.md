@@ -1790,3 +1790,55 @@ because any increase in deployment breaches it. That is arguably correct for a
 risk rail and **it does not change this verdict**; it is recorded now, after the
 result, precisely so it cannot be quietly relaxed in a later section without the
 change being visible.
+
+### §26 ADDENDUM — the drift guard had the mirror-image blind spot (2026-07-25)
+
+`src/deploycheck.py` shipped at ~15:00 to catch divergence #7. At ~15:25,
+checking whether the launchd re-point had taken effect, it was pointed at the
+production checkout and reported **clean**. It was not clean:
+
+```
+branch:      audit/production-drift-2026-07-25
+HEAD:        045ca67   (4 commits AHEAD of origin/main)
+PR #21:      OPEN — unreviewed
+deploycheck: behind 0, config clean -> NO ALERT
+```
+
+`behind_upstream()` asks `HEAD..origin/main` — *what does main have that I
+lack*. Nothing did. It had no way to ask the opposite. Divergence #7 was
+production **behind** main; this was production **ahead** of it, running code no
+review had passed, and the module written specifically to catch "the running
+code is not the reviewed code" could not see it.
+
+**Fixed** with `ahead_of_upstream()` (`origin/main..HEAD`), reported as its own
+clause. One count covers both shapes: a feature branch, and `main` carrying
+unpushed local commits — the second being the more dangerous, because the branch
+name looks right. Checking the branch NAME instead would have missed it.
+Injection-proven against the real state above rather than a synthetic one; the
+repository was itself the failing case.
+
+### THE PATTERN — three decorative controls in one session
+
+| control | looked like | actually |
+|---|---|---|
+| §23 monotonicity check | rejects fitted parameters | passed `[1.0, 1.1, 9.0, 1.2, 1.0]` — the exact lone spike it existed to catch |
+| §27 clause (e) | "the actual capacity claim" | unsatisfiable by construction; reach was 37/38 at every arm, so it could never fire |
+| `deploycheck` | catches production drift | reported clean on this repo's own drifted production checkout |
+
+Each was written in good faith, read as rigour, and could not do its job. Two
+were caught only because something forced them against a real case; the third
+because its own repository happened to be broken in the way it was built to
+detect.
+
+**Binding rule, now with three data points:**
+
+> **A control must be demonstrated FIRING on the real failure it was built for.**
+> Not on a hypothetical, not on a unit-test fixture that was written from the
+> same mental model as the code. The §25 split detector met this bar — it was
+> run against an injected 10:1 split before being trusted. The three above did
+> not, and all three were hollow.
+
+Corollary for pre-registration: before a clause is registered, run the extreme
+arm and confirm the clause *can* flip. A clause that cannot fire does not make a
+gate conservative; it makes a weak gate look strict, which is worse than an
+absent one because it stops anybody looking further.
