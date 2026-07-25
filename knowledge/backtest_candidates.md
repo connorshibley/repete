@@ -1208,3 +1208,81 @@ record is the only thing that can ever settle whether these strategies work, and
 until now it was going to be a record of five index ETFs.
 
 Running trial count after §24: ~32 registered comparisons plus grid arms.
+
+## PHASE 0 — INTRADAY FEASIBILITY (2026-07-24) — VERDICT: PROCEED, with one large caveat
+
+Owner scoped an intraday project and chose **(A) intraday EXECUTION of the
+existing swing strategies** — same signals, same holding horizons, finer
+entry/exit timing — with day trading explicitly **out of scope**. Phase 0 was a
+cheap kill-check to run *before* building. Findings:
+
+### 1. Data — SOLVED (this was expected to be the blocker)
+
+yfinance caps intraday history at ~2y hourly / 60d 5-minute, which would have
+left no in-sample period outside the already-mined OOS window. **Alpaca's basic
+tier returns 6 years of both.** Built
+`data/snapshots/bars_1Hour_2020-08-01_2026-07-10.json.gz`: **38 symbols,
+800,093 bars, 14.7 MB gzipped — committed and hash-manifested**, same window as
+the daily snapshot so IS/OOS splits align.
+
+**Recorded reproducibility regression:** unlike `build_snapshot.py` (yfinance,
+no credentials), `build_intraday_snapshot.py` **requires Alpaca keys**. A future
+session without keys can verify the committed hash but cannot rebuild the file.
+That is a real step down from METHOD NOTE 3's standard and is stated, not hidden.
+
+11 of 38 symbols have shorter series (~17.5k vs 23.6k bars) — Alpaca's intraday
+coverage for those names starts later. Not fatal, but any intraday gate must
+report per-symbol coverage rather than assume a balanced panel.
+
+### 2. Cost — NOT the binding constraint
+
+| | value |
+|---|---|
+| daily OOS baseline | 187 trades, net $1,828.92 |
+| slippage paid @ 5 bps × 2 | $182.55 |
+| cost as share of gross edge | **9.1%** |
+| **breakeven trade multiplier** | **~11×** |
+| round-trip cost vs median trade | 10 bps vs 341 bps = **2.9%** |
+
+Costs only dominate beyond ~11× the trade count. **Phase 1 does not multiply
+trade count** — it changes *when* within a day an entry happens, not how many
+signals fire. The 11× ceiling is a constraint on day trading (B), which is out
+of scope, not on (A).
+
+### 3. Effect size — LARGE, and this is the real finding
+
+Matched all 187 OOS trades to hourly bars:
+
+| | median | mean |
+|---|---|---|
+| intraday range on the ENTRY DAY | **229 bps** | 287 bps |
+| absolute trade outcome (entry→exit) | 341 bps | 510 bps |
+
+**The intraday band is 67% the size of the entire trade outcome.** Entry timing
+within the day is not a rounding error on a 13-day median hold — it is a
+first-order determinant of the result.
+
+### THE CAVEAT THAT MATTERS MOST
+
+A 67% effect size **cuts both ways, and it is an overfitting hazard, not a
+promise.** Nothing here says finer bars give *better* entries; it says entry
+timing has a large lever. Tuning that lever on the already-mined OOS window
+would be fitting noise with the biggest lever available in this project — a
+faster version of the mistake that forced the §20a revert.
+
+Two further honest limits on Phase 1:
+- "Time-equivalent parameters" (daily SMA200 → hourly SMA1400) is an
+  **approximation, not an identity**. RSI(2) on hourly bars measures intraday
+  mean reversion, which is a different phenomenon from the daily signal that was
+  gated. The translation must be validated, not assumed.
+- Per-symbol coverage is uneven (see above), so an intraday panel is not a
+  like-for-like replacement for the daily one.
+
+**Verdict: PROCEED to Phase 1**, because the data exists, costs are not
+prohibitive, and the effect is large enough to measure. **Not** because it is
+likely to be positive — §18 still stands (no strategy shows an out-of-sample
+edge distinguishable from zero), and every velocity/timing change attempted this
+session has failed its gate (§19b, §20a reverted; §21, §23 rejected).
+
+Phase 1 must be pre-registered as an **EDGE** claim with the §23 monotonicity
+check applied, and reported whichever way it falls.

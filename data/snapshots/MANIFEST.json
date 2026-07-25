@@ -1,5 +1,16 @@
 {
   "snapshots": {
+    "bars_1Hour_2020-08-01_2026-07-10.json.gz": {
+      "built_at": "2026-07-25T17:25:15.795684+00:00",
+      "end": "2026-07-10",
+      "n_bars": 800093,
+      "n_symbols": 38,
+      "note": "INTRADAY. Requires Alpaca keys to rebuild (yfinance caps intraday history far too short). Raw prices \u2014 NOT comparable with the yfinance ADJUSTED daily snapshot; re-baseline inside this file.",
+      "sha256": "ac9c9e645c99a2ec589484f28f63840677d8b1f3580ee5563098a7f86e8e06a3",
+      "source": "Alpaca 1Hour (raw prices, not split/dividend adjusted)",
+      "start": "2020-08-01",
+      "timeframe": "1Hour"
+    },
     "bars_2020-01-01_2026-07-10.json.gz": {
       "built_at": "2026-07-23T21:20:16.381667+00:00",
       "end": "2026-07-10",
