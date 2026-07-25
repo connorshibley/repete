@@ -1286,3 +1286,160 @@ session has failed its gate (§19b, §20a reverted; §21, §23 rejected).
 
 Phase 1 must be pre-registered as an **EDGE** claim with the §23 monotonicity
 check applied, and reported whichever way it falls.
+
+## §25 — INTRADAY FILL TIMING (2026-07-24) — RULES PRE-REGISTERED
+
+**Claim type: EDGE.** This claims *better fills*, so it must improve per-trade
+P&L. Declared before running, per METHOD NOTE 5.
+
+**Design, and why it is not the design Phase 0 originally sketched.** The Phase 0
+plan said "re-express daily parameters in hourly-equivalent terms (SMA200d →
+SMA1400h)." That was wrong and is abandoned: hourly RSI(14) measures intraday
+mean reversion, not the daily RSI(2) phenomenon that was gated, so scaling
+periods creates genuinely *different strategies* needing full re-gating — the
+whole ~32-trial contamination problem again.
+
+Phase 0 measured that the large lever is **when you fill** (entry-day intraday
+range 229 bps median against a 341 bps median trade outcome — **67%**), not what
+indicator you compute. So §25 **holds every signal fixed** and varies only the
+fill hour. No re-fit, no new parameter search, no new contamination.
+
+**Data basis — non-negotiable, and it nearly went wrong.** Signals AND fills both
+come from the **Alpaca hourly snapshot** (`intraday.resample_daily()` rolls it up
+to daily bars for the signals). Mixing the yfinance dividend-ADJUSTED daily file
+with the Alpaca RAW hourly file would book the adjustment gap — up to **8.8%** on
+SPY — as invented P&L on every fill. Consequently **§25 numbers are NOT
+comparable with §1–§24**; the baseline is re-established inside this data.
+
+**Regular session only** (bar starts 09:00–15:00 ET). Filling pre/post-market at
+regular-session slippage would be fantasy and would bias the result optimistic.
+
+**Arms** (discrete, no continuous knob): baseline = **09:00** (at the open,
+today's behaviour) / 10:00 / 11:00 / 12:00 / 13:00 / 14:00 / 15:00 ET. Entries
+and exits move together — filling entries at noon while exiting at the open
+would be an incoherent experiment. IS-only selection, then OOS.
+
+**PRE-REGISTERED RULE.** Adopt only if the IS-selected arm, out of sample:
+(a) return >= baseline return,
+(b) PF >= 1.30 **AND >= baseline PF + 0.10**,
+(c) maxDD <= baseline maxDD x 1.5 AND <= 3.0pp absolute,
+(d) >= 15 closed OOS trades,
+(e) **< 10% of fills fell back** to the daily open (`n_fill_fallback`) — thin
+    coverage must not masquerade as a result,
+**and** the Bonferroni-corrected bootstrap CI on per-trade P&L **excludes zero**
+in the candidate's favour.
+
+**Plus the §23 MONOTONICITY CHECK, which matters more here than anywhere.** A
+real time-of-day effect should vary *smoothly* across the session. A lone
+winning hour with worse neighbours on both sides is a fitted parameter — exactly
+how §23 was caught, and with a 67% lever the same trap is bigger here. A
+non-monotone winner is reported as an artifact regardless of its numbers.
+
+**Stated before the run:** EDGE claims are **0 for 4** (§14, §16, §20a, §23).
+The honest prior is that this fails too. It is worth running because Phase 0
+showed the effect is large enough to measure and this design adds no new
+contamination — not because it is likely to pay.
+
+Running trial count entering §25: ~33 registered comparisons plus grid arms.
+
+### §25 RUN 1 — VOID. The data had 11 unadjusted stock splits.
+
+The gate ran and returned "deterministic PASS on all 7 clauses, significance
+INCONCLUSIVE". **Those numbers are discarded, not reported as a verdict**,
+because the underlying data was corrupt.
+
+**What gave it away.** A single stray line in the run log:
+`bracket stop would be non-positive (entry 171.64, ATR 159.93)`. An ATR of
+159.93 against a $171 price is a ~93% daily true range — impossible for a
+mega-cap. Chasing it found the cause.
+
+**The defect.** `build_intraday_snapshot.py` fetched Alpaca bars with the
+default `adjustment=RAW`. Alpaca raw prices are **not split-adjusted**, so the
+snapshot contained 11 corporate actions the simulator read as overnight
+collapses:
+
+| symbol | date | move | split |
+|---|---|---|---|
+| AAPL | 2020-08-31 | −74.8% | 4:1 |
+| AMZN | 2022-06-06 | −94.9% | 20:1 |
+| GOOGL | 2022-07-18 | −94.9% | 20:1 |
+| NVDA | 2024-06-10 | −90.1% | 10:1 |
+| AVGO | 2024-07-15 | −90.0% | 10:1 |
+| TSLA | 2020-08-31 | −79.8% | 5:1 |
+| …plus NVDA 4:1, TSLA 3:1, WMT 3:1, XLE 2:1, XLK 2:1 | | | |
+
+Every one fired stop-losses on healthy positions, poisoned ATR and every
+trend/momentum computation, and distorted the buy-and-hold benchmark. **Any
+result computed on it is meaningless.**
+
+**Why it slipped through.** The daily snapshot uses yfinance with
+`auto_adjust=True`, so splits have never been an issue in this repo. The
+intraday builder switched vendors — and I carried the *dividend* adjustment
+concern across (it is documented in `intraday.py`) while missing that Alpaca
+also leaves *splits* raw. **Changing data vendors changes more than one
+assumption at a time.**
+
+**Fixed two ways.** `adjustment=Adjustment.ALL` on the request, and — more
+importantly — a **detector in `sanity_check()` that REFUSES to write a
+snapshot** containing any >35% overnight move. A mega-cap does not move 35%
+overnight; that is a corporate action, not a price. Nothing but a stray log
+line caught this the first time, which is not a control.
+
+**This is the sixth sim-vs-reality defect in this project** (§13 missing rails,
+§19a fill timing, §19b global counters, §22 symbol order, §24 config-order
+bias, and now §25 unadjusted splits). The standing lesson holds and hardens:
+**before trusting any simulator number, ask what the real world does that the
+simulation does not.**
+
+§25 is re-run below on the corrected snapshot.
+
+### §25 RUN 2 (adjusted data) — REJECTED. Filling at the open is the best arm.
+
+Snapshot rebuilt with `adjustment=ALL` (sha256 7c6946a2…, 800,093 bars). Signals
+and fills both from this one file. IS-only selection picked **10:00 ET**.
+
+| fill hour | OOS return | PF | maxDD | trades |
+|---|---|---|---|---|
+| **09:00 (baseline, at the open)** | **+2.369%** | **1.712** | 1.339% | 163 |
+| 10:00 (IS-selected) | +1.940% | 1.549 | 0.969% | 160 |
+| 11:00 | +1.541% | 1.374 | 1.276% | 175 |
+| 12:00 | +0.943% | 1.222 | 1.179% | 179 |
+| 13:00 | +1.578% | 1.406 | 1.119% | 175 |
+| 14:00 | +1.302% | 1.325 | 1.014% | 176 |
+| 15:00 | +0.969% | 1.236 | 1.062% | 179 |
+
+Clauses (a) and (b2) **FAIL** — the selected arm returns less than baseline and
+its PF is lower, not +0.10 higher. The bootstrap is inconclusive
+(diff −$2.41, CI [−$51.11, +$46.67]). **REJECTED; the incumbent stands.**
+
+**The finding: filling at the open is the best of the seven arms**, and PF
+declines fairly steadily across the session (1.712 → 1.549 → 1.374 → 1.222 →
+1.406 → 1.325 → 1.236). Later fills are worse, not better. The bot's existing
+09:35 open cycle (§19a) is already doing the right thing.
+
+### THE POINT OF ALL THIS — the corrupt run said the OPPOSITE
+
+Run 1, on split-corrupted data, reported the baseline as **the worst** arm
+(PF 1.267 vs 1.427 at 10:00) and every deterministic clause **PASSING**. Run 2,
+on correct data, reports the baseline as **the best** arm with two clauses
+**FAILING**.
+
+**The corruption did not merely add noise — it inverted the conclusion.** Had
+run 1 been reported, the recommendation would have been "fill later in the day,"
+which the corrected data says is precisely wrong. The only thing that surfaced
+it was one implausible number in a log line (`ATR 159.93` on a $171 price).
+
+Two lessons, recorded because they generalise beyond §25:
+1. **An implausible intermediate value is worth more than a plausible final
+   answer.** Run 1's headline numbers looked entirely reasonable.
+2. **Changing data vendors changes more than one assumption at a time.** The
+   dividend-adjustment difference was caught and documented; the split-
+   adjustment difference, in the same switch, was not. A guard now refuses any
+   snapshot containing a >45% session-over-session move
+   (`build_intraday_snapshot.sanity_check`), verified to fire on an injected
+   10:1 split and stay silent on the clean file.
+
+**Phase 1 verdict: intraday fill timing does not improve results.** Combined
+with Phase 0 (costs fine, effect size large), the honest conclusion is that the
+large intraday lever exists but the bot cannot exploit it by shifting fill
+hours — and shifting them later actively hurts. **EDGE claims are now 0 for 5.**
