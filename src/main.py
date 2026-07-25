@@ -25,6 +25,7 @@ import journal
 import learn
 import llm
 import datacheck
+import trade_plan
 import modelver
 import postexit
 import preflight
@@ -731,10 +732,21 @@ def _run_cycle(completed_bars_only: bool = False):
                                  "avg_entry": price, "unrealized_pl": 0.0}
         else:
             positions.pop(symbol, None)
+        # Record the game plan on ENTRIES only — an exit has no forward plan,
+        # and inventing one would be noise in the record.
+        plan = None
+        if sig.action == "buy":
+            try:
+                plan = trade_plan.build(sig, cfg, price, qty, order,
+                                        regime_label, review)
+                log.info("%s: PLAN\n%s", symbol, trade_plan.to_text(plan))
+            except Exception as e:  # noqa: BLE001 — narration never blocks a trade
+                log.warning("trade_plan build failed for %s: %s", symbol, e)
         trade_id = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                        review, executed=True, order=order,
                                        entry_price=price, qty=qty, detail=detail_tag,
-                                       regime=regime_label, strategy=sig.strategy)
+                                       regime=regime_label, strategy=sig.strategy,
+                                       trade_plan=plan)
         if sig.action == "buy":
             # Mirror this entry into the in-cycle open-trades view so the
             # portfolio-heat cap counts same-cycle entries too — otherwise a

@@ -40,7 +40,8 @@ class Ledger:
                      executed: bool, detail: str = "", order: dict | None = None,
                      entry_price: float | None = None, qty: int | None = None,
                      regime: str | None = None, strategy: str | None = None,
-                     entry_ts: str | None = None) -> str:
+                     entry_ts: str | None = None,
+                     trade_plan: dict | None = None) -> str:
         trade_id = str(uuid.uuid4())[:8]
         self._append({
             "type": "decision",
@@ -61,6 +62,10 @@ class Ledger:
             # write time (adopted positions). `ts` keeps its audit meaning —
             # when the record was appended — so age checks read entry_ts first.
             "entry_ts": entry_ts,
+            # The bot's game plan at entry: thesis, expected hold, exit levels,
+            # regime. Every field is read from a real signal/order/config value
+            # (src/trade_plan.py) — never generated prose, never a forecast.
+            "trade_plan": trade_plan,
             "outcome": None,               # embargoed until close — see close_trade()
         })
         return trade_id
