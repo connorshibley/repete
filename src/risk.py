@@ -220,6 +220,64 @@ def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
     return value < float(threshold)
 
 
+def rotate_scan_order(symbols: list, day=None) -> list:
+    """Rotate a symbol list by date so first refusal circulates. §24.
+
+    Contention is resolved first-come by scan position, so whoever is scanned
+    first wins the last free slot and the last unit of the daily fill budget.
+    Live built its scan list as `list(cfg["symbols"])`, which meant slot
+    allocation was decided by **the order someone typed symbols into a YAML
+    file** — SPY/QQQ/DIA/IWM sit at positions 0-3 of 38 and won essentially
+    every contested slot. The live book confirmed it: all five held names came
+    from config positions 0,1,2,3,7.
+
+    Offsetting by `date.toordinal()` (not day-of-year, which discontinuously
+    wraps at New Year) advances the start by exactly one symbol per calendar
+    day, so coverage is even and every symbol leads equally often.
+
+    DETERMINISTIC by design — a date, never randomness — so a re-run of any
+    gate reproduces exactly. Relative order is preserved; only the starting
+    point moves.
+
+    `day` accepts None (today, UTC), a date, a datetime, or an ISO string.
+    An unparseable value returns the list unchanged (fail open: a bad
+    timestamp must not silently reshuffle the universe).
+    """
+    syms = list(symbols)
+    if len(syms) < 2:
+        return syms
+    d = day
+    if d is None:
+        d = datetime.now(timezone.utc).date()
+    elif isinstance(d, str):
+        try:
+            d = datetime.fromisoformat(d.replace("Z", "+00:00")).date()
+        except ValueError:
+            return syms
+    elif isinstance(d, datetime):
+        d = d.date()
+    if not isinstance(d, date):
+        return syms
+    offset = d.toordinal() % len(syms)
+    return syms[offset:] + syms[:offset]
+
+
+def scan_order(symbols: list, cfg: dict, day=None) -> list:
+    """THE single entry point for scan order — live and both simulators.
+
+    One implementation on purpose. Four sim/live divergences have already cost
+    real rework (§13 missing rails, §19a fill timing, §19b global counters,
+    §22 symbol order); scan order re-derived per call site would be the fifth,
+    and §22 proved this exact quantity moves OOS return by 2.66pp.
+
+    Off unless `risk.scan_rotation` is true, so behaviour is unchanged for any
+    config that has not opted in.
+    """
+    if not (cfg.get("risk") or {}).get("scan_rotation", False):
+        return list(symbols)
+    return rotate_scan_order(symbols, day)
+
+
 def cooldown_days_for(cfg: dict, strategy: str | None) -> int:
     """Re-entry cooldown days that apply to entries by this strategy
     (0 = none). Per-strategy scope — the 2026-07-19 gate adopted the

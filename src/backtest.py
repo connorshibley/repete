@@ -337,9 +337,14 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         last_exit[sym] = ts
         closed.append(t)
 
+    # §22: caller order is honoured here (a test pins it). §24 rotates that
+    # order per DAY when enabled — same shared helper live uses.
+    base_order = list(sym_bars)
+
     for ts in all_ts:
         today = {sym: sym_bars[sym][idx[sym][ts]]
-                 for sym in sym_bars if ts in idx[sym]}
+                 for sym in risk.scan_order(base_order, cfg, ts)
+                 if ts in idx[sym]}
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 
@@ -643,8 +648,12 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         closed.append(t)
 
     for ts in all_ts:
+        # §24: rotate that config order per DAY, via the same shared helper
+        # live calls, so first refusal circulates instead of being fixed by
+        # position in config.yaml.
         today = {sym: sym_bars[sym][idx[sym][ts]]
-                 for sym in scan_order if ts in idx[sym]}
+                 for sym in risk.scan_order(scan_order, cfg, ts)
+                 if ts in idx[sym]}
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 

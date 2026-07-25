@@ -1149,3 +1149,62 @@ The pattern is consistent and worth stating plainly: **at these sample sizes
 apparent one so far has failed to survive contact with the interval.**
 
 Running trial count after §23: ~31 registered comparisons plus grid arms.
+
+## §24 — SCAN-ORDER ROTATION (2026-07-24) — ADOPTED as a correctness fix
+
+**Claim type: neither EDGE nor CAPACITY — a CORRECTNESS fix.** Registered as
+such before running, because the justification is not "makes more money."
+
+**The defect.** Contention for slots is resolved first-come by scan position,
+and live built its scan list as `list(cfg["symbols"])`. So slot allocation —
+a consequential trading decision — was determined by **the order symbols were
+typed into a YAML file**. SPY/QQQ/DIA/IWM occupy config positions 0–3 of 38.
+The live book confirmed the prediction exactly: all five held names came from
+config positions 0, 1, 2, 3 and 7.
+
+This was flagged as a known live property in §22 and left alone. It should not
+have been: the coming live record is the only clean holdout (§18 — the backtest
+cannot certify any edge), and a record that samples ~5 index ETFs does not test
+the strategies on the 38-name universe they were gated on.
+
+**The fix.** `risk.scan_order()` / `risk.rotate_scan_order()` — offset the
+universe by `date.toordinal()`, advancing one symbol per calendar day.
+Deterministic (a date, never randomness, so gate re-runs reproduce), preserves
+relative order, adds no fitted parameter, and is **one shared helper called by
+live and both simulators** — a per-call-site re-implementation would have been
+the fifth sim/live divergence.
+
+**It does what it was built to do:**
+
+| | config order | rotated |
+|---|---|---|
+| distinct symbols traded | 35 / 38 | **37 / 38** |
+| share of trades from config positions 0–7 | **45.3%** | **20.3%** |
+
+**And it costs return on this window — reported as pre-committed:**
+
+| | OOS return | PF | maxDD | trades |
+|---|---|---|---|---|
+| config order | +2.669% | 1.955 | 1.073% | 179 |
+| rotated | +1.829% | 1.526 | 1.174% | 187 |
+
+**ADOPTED ANYWAY, and the evidence supports that rather than excusing it:**
+
+1. **The difference is not significant.** Per-trade $14.91 vs $9.78; 95% CI on
+   the difference **[-$19.72, +$9.50]** — includes zero at the *uncorrected*
+   level, i.e. the most generous possible reading for "config order is better."
+2. **The sign FLIPS in sample.** In-sample, config order +9.098% vs rotated
+   **+9.366% — rotation wins.** A genuine advantage should not reverse between
+   windows. Losing IS and winning OOS is the signature of noise.
+3. **The "before" number is not a legitimate baseline to defend.** Config order
+   was never chosen as a trading decision; it is an accident of typing. On this
+   particular window it happened to over-weight index ETFs during a strong index
+   run (52 of 179 trades vs 20 of 187 after rotation). **Keeping an arbitrary
+   ordering because it scores higher on the mined OOS window is precisely the
+   selection-on-noise error that forced the §20a revert.**
+
+**What it buys:** a live forward record that samples the whole universe. That
+record is the only thing that can ever settle whether these strategies work, and
+until now it was going to be a record of five index ETFs.
+
+Running trial count after §24: ~32 registered comparisons plus grid arms.
