@@ -36,6 +36,21 @@ if [ ! -s memory/ledger.jsonl ] && [ ! -s memory/agent.db ]; then
 fi
 
 say "build"
+# Stamp the running commit into the image. Without it the deployed bot cannot
+# say which build is trading, and §26 divergence #7 (production 57 commits
+# stale for three days, unnoticed) stays undetectable from inside a container.
+GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo '')"
+export GIT_SHA
+if [ -n "$GIT_SHA" ]; then
+  printf '  stamping build %s\n' "$(printf '%s' "$GIT_SHA" | cut -c1-12)"
+  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    printf '  WARNING: working tree is dirty — the image will be stamped with a\n'
+    printf '           commit it does not actually match.\n'
+  fi
+else
+  printf '  NOTE: no git sha available; the drift guard degrades to config-drift\n'
+  printf '        only (which still catches a stale config.yaml).\n'
+fi
 docker compose build
 
 say "start"

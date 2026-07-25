@@ -105,3 +105,50 @@ def test_trade_pnls_extracts_from_result_like():
 
     assert sig.trade_pnls(R()) == [1.5, -2.0]
     assert sig.trade_pnls(object()) == []
+
+
+# ---------------- CAPACITY vs EDGE (METHOD NOTE 5) ----------------
+#
+# §19b, §13(d) and §20a each misfired because the EDGE test was applied to a
+# claim that was never about per-trade edge. `not_worse` puts the capacity rule
+# in code so the next section cannot restate it slightly differently.
+
+def _cmp(ci_low, ci_high):
+    return sig.Comparison(n_baseline=50, n_candidate=50, baseline_mean=0.0,
+                          candidate_mean=0.0, diff=0.0, ci_low=ci_low,
+                          ci_high=ci_high, alpha=0.01, n_comparisons=5,
+                          resamples=2000)
+
+
+def test_edge_needs_the_interval_to_exclude_zero_in_its_favour():
+    assert _cmp(1.0, 5.0).significant is True
+    assert _cmp(-1.0, 5.0).significant is False
+    assert _cmp(-5.0, -1.0).significant is False
+
+
+def test_capacity_only_needs_to_rule_out_being_worse():
+    """The whole point: a candidate that is merely INCONCLUSIVE on edge passes
+    the capacity bar, because it never claimed a better edge."""
+    inconclusive = _cmp(-1.0, 5.0)
+    assert inconclusive.significant is False
+    assert inconclusive.not_worse is True
+
+
+def test_capacity_fails_when_the_candidate_is_significantly_worse():
+    worse = _cmp(-5.0, -1.0)
+    assert worse.not_worse is False
+    assert worse.verdict == "SIGNIFICANTLY WORSE"
+
+
+def test_capacity_is_strictly_weaker_than_edge_never_stronger():
+    """Anything passing the EDGE bar must also pass the CAPACITY bar. If this
+    ever inverts, one of the two definitions has drifted."""
+    for lo, hi in [(1.0, 5.0), (0.01, 0.02), (-1.0, 5.0), (-5.0, -1.0), (0.0, 0.0)]:
+        c = _cmp(lo, hi)
+        if c.significant:
+            assert c.not_worse, f"edge passed but capacity failed at CI[{lo},{hi}]"
+
+
+def test_a_zero_width_interval_at_zero_passes_neither():
+    c = _cmp(0.0, 0.0)
+    assert c.significant is False and c.not_worse is False

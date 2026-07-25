@@ -1443,3 +1443,402 @@ Two lessons, recorded because they generalise beyond §25:
 with Phase 0 (costs fine, effect size large), the honest conclusion is that the
 large intraday lever exists but the bot cannot exploit it by shifting fill
 hours — and shifting them later actively hurts. **EDGE claims are now 0 for 5.**
+
+## §26 — TWO LIVE DIVERGENCES FOUND BY AUDITING PRODUCTION (2026-07-25)
+
+Not a gate. An audit of the **running** bot against this repo, prompted by the
+owner asking for a full rating. It found two things no backtest could have
+surfaced, because both live entirely on the live side of the sim/live boundary.
+
+### DIVERGENCE #7 — the repo and production had silently diverged
+
+The bot placing orders was at commit `5b03654` (Phase D, 2026-07-22). This repo
+was at `f5dfdf5`. **57 commits, 86 files, 8,151 insertions apart.** Nothing from
+§14 onward was running: not the rebuilt snapshot, not `significance.py`, not the
+edge report, not `simulate_ensemble`, not §20–§25, not scan rotation.
+
+Config drift was small but load-bearing:
+
+| key | running | HEAD | gated by |
+|---|---|---|---|
+| `risk.max_open_positions` | 5 | 8 | §13 |
+| `risk.risk_sizing.risk_pct` | 0.1 | 5.0 | §11 |
+| `risk.scan_rotation` | absent | true | §24 |
+| `strategies.*.max_open_positions` | absent | 5/8/5 | §13 |
+
+The cost, from the live ledger's block reasons: **68 entries refused for "max
+open positions reached (5)"** — a ceiling §13 had raised to 8 two days earlier —
+and slot allocation still decided by YAML ordering, the exact bias §24 exists to
+remove. Live output was 7 executed entries in 10 days, 6 of them on one day,
+then a full book that stopped turning over. **1 closed trade.**
+
+Worse than the drift: the running checkout lived inside a **Claude
+session-outputs scratch directory**, with the launchd jobs pointing at it. A
+routine cleanup of that folder would have destroyed the only live track record
+in the project — the one asset here that cannot be reconstructed.
+
+**The generalisable lesson, and it is new in kind.** The first six divergences
+were all *simulator vs reality*. This one is *repository vs reality*: every gate
+in this document was correctly run, correctly recorded, and correctly merged —
+and none of it was running. **A gate verdict is not in production until something
+checks that it is.** Passing a gate and shipping a gate are different events, and
+until now only the first was ever verified.
+
+### DIVERGENCE #8 — the share-granularity floor (a live-only selection bias)
+
+11 live entries were refused with `computed quantity is zero (account too small
+for caps)`. All 11 were tsmom. The cause is arithmetic:
+
+`size_order()` gives tsmom a notional of `equity x risk_per_trade_pct` =
+**$999** on ~$100k. Shares are whole. So `qty = int(999 // price)`, and:
+
+| symbol | price | qty @ full | qty @ 0.5 downsize | status |
+|---|---|---|---|---|
+| LLY | $1,182 | **0** | 0 | **can never be bought** |
+| GS | $1,076 | **0** | 0 | **can never be bought** |
+| CAT | $894 | 1 | **0** | dies on any downsize |
+| TMO | $573 | 1 | **0** | dies on any downsize |
+| AMD | $536 | 1 | **0** | dies on any downsize |
+
+Two distinct defects sit inside that table.
+
+1. **Two of 38 names are structurally unreachable.** GS was **APPROVED at full
+   size** (`verdict: approve, scale: 1.0`) and still produced qty 0. No judge
+   verdict, no rail, and no market condition was involved — the position size is
+   simply smaller than one share.
+2. **"Downsize" silently means "veto" for high-priced names.** A routine
+   `scale: 0.5` on AMD at $536 halves $999 to $500 and rounds to zero shares.
+   The judge is permitted to shrink a position (invariant 2); vetoing by
+   arithmetic accident is a different act, and it is the one that happened.
+
+**Correction, recorded rather than quietly dropped.** A first draft of this
+section claimed the ledger files these as a generic risk rejection so the
+judge's calibration scoreboard never sees them. **That is true of the RUNNING
+bot (`5b03654`) and false of HEAD.** `main.py:588-610` already separates the two
+causes — "sizing budget is below one share" vs "LLM downsize xN truncated an
+N-share order to 0" — ledgers each with its own reason, and logs a
+`rails_reject` judgment so calibration does see it. The reporting half of this
+defect was fixed before the audit; reconciling production to HEAD delivers that
+fix. **The trades are still lost either way** — better labelling does not buy
+LLY at $1,182. What follows concerns the loss, not the label.
+
+### SECOND CORRECTION (2026-07-25, before §27 was built on it)
+
+The paragraph that stood here claimed:
+
+> `simulate_ensemble()` sizes in continuous dollars and has no LLM downsize
+> step. It happily takes a fractional position in LLY at $1,182. Every OOS
+> number in this document therefore includes trades the live bot is incapable
+> of placing.
+
+**Half of that is wrong, and it is the half the argument rested on.**
+`src/backtest.py:705` (and `:374` for the single-strategy path) call
+**`risk.size_order()`** — the same function live uses, ending in
+`int(dollars // price)`. Whole-share rounding is modelled in the backtest
+*exactly* as it is live. LLY and GS produce qty 0 in the simulator too. The
+backtest is **not** counting trades the live bot cannot place; on that half,
+sim and live agree.
+
+Found while designing §27 on top of this section, which is the only reason it
+was found at all. A gate built on a false premise is precisely the failure this
+document exists to prevent, so the error is corrected in place rather than
+quietly dropped — the same treatment §22 gave §20a.
+
+**What IS a genuine live-only divergence, and it is larger.** The backtest never
+applies the judge's verdict: there is no `review["scale"]` anywhere in
+`backtest.py`. And from the live ledger, the judge **downsizes 53% of all buys**
+(77 of 146; scales `0.4:5, 0.5:49, 0.6:15, 0.7:6, 0.8:2`, median 0.5). So any
+name whose full-size order is exactly **1 share** is taken in the simulator and
+deleted live on roughly half of all decisions.
+
+Measured against the frozen snapshot's last closes at ~$100k equity:
+
+| | names | which |
+|---|---|---|
+| qty 0 at full size — **sim and live agree** | 2 | LLY $1,189 · GS $1,055 |
+| qty 1 in sim, **0 live on any downsize** | 7 | **SPY · QQQ · DIA** · META · COST · CAT · AMD |
+| unaffected | 29 | |
+
+**24% of the universe, on 53% of decisions** — and the affected set is not
+obscure names, it is the three index ETFs and four mega-caps. The exclusion is
+still correlated with price, so it still strips the highest-priced names from a
+momentum book: AMD was refused three times while showing +82% 63-bar momentum.
+
+So the original conclusion survives — backtest trade counts overstate what live
+can achieve — but the mechanism is the **absent judge**, not fractional sizing,
+and the effect is bigger than first reported, not smaller.
+
+This is the same species of defect as §24 (allocation decided by something that
+is not the strategy) and it was invisible for the same reason: nothing compared
+what the simulator *could* trade against what the broker *would* accept.
+
+**Not fixed here — deliberately.** Every remaining candidate fix touches a gated
+risk parameter and must be pre-registered like anything else:
+
+- **fractional/notional orders — RULED OUT, not deferred.** Every entry goes
+  through `broker.bracket_market_order()`, and Alpaca does not accept fractional
+  quantities on `OrderClass.BRACKET` / `OTO`. Buying these names fractionally
+  would mean submitting them **without protective stop legs**, trading a safety
+  guarantee for reach. That is the wrong side of the trade and the option is
+  closed, not pending a gate.
+- raising the **position budget** (a gated risk parameter — needs a gate);
+- flooring qty at 1 on an approved entry (changes true risk per trade — needs a
+  gate, and would silently exceed the intended risk slice on a $1,182 share).
+
+The observability fix is already in HEAD (see the correction above), so nothing
+in this section ships without a gate. Registering one is the natural §27, and it
+should be registered as a **CAPACITY claim** under METHOD NOTE 5 — the argument
+is "the book can reach names it currently cannot", not "each trade gets better".
+Treating it as an EDGE claim would misfire exactly as §19b did.
+
+**Standing consequence.** Until this is resolved, every backtest number in this
+document is measured on a universe the live bot cannot fully trade. That is not
+a reason to discard them; it is a reason to expect live trade counts to run
+below backtest trade counts, and to check that gap rather than assume it away.
+
+## §27 — POSITION BUDGET (2026-07-25) — RULES PRE-REGISTERED
+
+**Claim type: CAPACITY** (METHOD NOTE 5), declared before running. The claim is
+*"the book reaches names it currently cannot"*, NOT *"each trade earns more."*
+Typing this as EDGE would demand `ci_low > 0` — rejecting the candidate for
+failing a claim it never made, which is the §19b misfire exactly.
+
+`src/significance.py` now carries both tests in code (`.significant` for EDGE,
+`.not_worse` for CAPACITY) so the rule stops being restated slightly differently
+in each section.
+
+### Motivation
+
+§26's second correction: 2 of 38 names are unbuyable at any scale (LLY $1,189,
+GS $1,055) and 7 more — **SPY, QQQ, DIA**, META, COST, CAT, AMD — are taken in
+the simulator at qty 1 and deleted live whenever the judge downsizes, which is
+**53% of all buys**. 24% of the universe, on half of all decisions.
+
+### Why an arm moves TWO knobs
+
+The effective budget is set by two coupled parameters, each binding a different
+strategy:
+
+| knob | binds | value | effective budget |
+|---|---|---|---|
+| `risk.risk_per_trade_pct` | tsmom, ma_crossover (notional path) | 1.0 | $999 |
+| `risk.max_order_value_usd` | meanrev (clamps `risk_sizing`) | 2000 | $2,000 |
+
+§11 already recorded that risk_pct 1.0/2.0/5.0 are byte-identical for meanrev
+**because this cap clamps them**. So moving one knob tests one strategy. An arm
+moves both in lockstep, which keeps this a single-parameter grid rather than a
+2-D search — and `tests/test_gate_budget.py` pins that the cap can never clamp a
+candidate arm's notional budget, so no arm can silently collapse to baseline.
+
+| arm | `risk_per_trade_pct` | `max_order_value_usd` | budget @ $100k |
+|---|---|---|---|
+| baseline | 1.0 | 2,000 | $999 / $2,000 |
+| b2.0 | 2.0 | 2,000 | $2,000 |
+| c2.5 | 2.5 | 2,500 | $2,500 |
+| d3.0 | 3.0 | 3,000 | $3,000 |
+| e4.0 | 4.0 | 4,000 | $4,000 |
+
+### The tension that makes this a real experiment
+
+`max_portfolio_heat_pct: 4.0` caps total open stop-risk. Bigger positions burn
+heat faster, so the book may hold **fewer** positions. Reach trades against
+depth, `pure_checks` already models heat, and the ensemble simulator can see it.
+This is not a free parameter to crank — it is a genuine trade-off, and the arm
+grid extends to 4.0% specifically so the point where depth loss overwhelms
+reach gain is inside the tested range rather than beyond it.
+
+### Selection
+
+IS-only, and **selected on REACH first, return as tiebreak**. Selecting on
+return would quietly convert a capacity gate back into an edge hunt.
+
+### PRE-REGISTERED RULE
+
+Adopt the IS-selected arm only if, out of sample:
+
+- **(a)** return ≥ baseline − 0.25pp
+- **(b1)** PF ≥ 1.30 · **(b2)** PF ≥ baseline − 0.10
+- **(c1)** maxDD ≤ baseline × 1.5 · **(c2)** maxDD ≤ 3.0pp absolute
+- **(d)** ≥ 15 closed OOS trades
+- **(e)** **distinct symbols traded strictly increases** — the actual capacity
+  claim, demonstrated rather than assumed
+- **(f)** Bonferroni-corrected bootstrap on per-trade P&L has **`ci_high > 0`**
+  (not significantly worse)
+
+plus the **§23 monotonicity check**. That check was itself rewritten during this
+build: the first draft tested only unimodality, which **accepts a lone spike**
+like `[1.0, 1.1, 9.0, 1.2, 1.0]` — precisely the fitted-parameter shape §23 was
+caught by. A decorative guard is worse than none because it reads as a control.
+It now also requires the winner's lead over its better neighbour to sit within
+the spread of the remaining arms, with the scale taken from the data so the
+guard has no tunable of its own.
+
+### STATED BEFORE THE RUN — this gate under-measures the fix
+
+`simulate_ensemble` has **no judge**, so the 7 names lost live on a downsize are
+invisible to it. The gate can only see the LLY/GS half. **A marginal result here
+corresponds to a materially larger live benefit.**
+
+Recorded now, before any numbers exist, so it cannot be reached for afterwards
+to argue a failed gate into a pass. It cuts the other way too: if the gate FAILS
+on drawdown or PF, that failure is measured on the smaller half and the real
+cost would be larger, not smaller.
+
+**Separate sensitivity diagnostic, not part of the rule and not adopted on:**
+re-run each arm applying the empirically observed judge-scale distribution
+(`0.4:5, 0.5:49, 0.6:15, 0.7:6, 0.8:2, approve 1.0:67`) as a multiplier, to
+estimate the invisible half. It introduces randomness and the judge is not
+random, so it informs and never decides.
+
+**Prior:** EDGE claims are 0 for 5. CAPACITY claims have a better record because
+the bar is lower and honest about being lower — but §21b (universe 38→68) was a
+capacity idea that failed on trade count, and the heat cap makes the same
+outcome plausible here.
+
+Runner: `scripts/gate_budget.py` — **committed**, unlike §25's ad-hoc heredoc,
+so this gate can be re-executed exactly. Running trial count entering §27: ~38
+registered comparisons plus grid arms.
+
+### §27 RESULT — REJECTED. The budget is a LEVERAGE knob, not a reach knob.
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…, verified before
+the run). Ensemble simulator. IS winner on reach-then-return: `e4.0`.
+
+| arm | OOS return | PF | maxDD | trades | **symbols** | deploy |
+|---|---|---|---|---|---|---|
+| **baseline** | **+1.83%** | **1.526** | **1.17%** | 187 | **37** | 5.38% |
+| b2.0 | +3.43% | 1.501 | 2.49% | 183 | 37 | 10.98% |
+| c2.5 | +4.37% | 1.501 | 3.10% | 183 | 37 | 13.87% |
+| d3.0 | +5.25% | 1.498 | 3.77% | 183 | 37 | 16.81% |
+| e4.0 [SELECTED] | +6.89% | 1.482 | 5.06% | 183 | 37 | 22.40% |
+
+Clauses **(c1) FAIL** (maxDD 5.06% vs the 1.76% allowed by baseline × 1.5),
+**(c2) FAIL** (5.06% > 3.0pp absolute), **(e) FAIL** (reach unchanged).
+Significance passes the capacity bar (`ci_high > 0`, INCONCLUSIVE) and
+monotonicity passes. **REJECTED; the incumbent stands.**
+
+**What the numbers actually say.** Return scales ×3.8 from baseline to e4.0 and
+drawdown scales ×4.3 — drawdown grows *faster* than return, and PF drifts
+slightly DOWN (1.526 → 1.482). That is the signature of pure position-size
+leverage, not of reaching better opportunities. The parameter buys return by
+taking proportionally more risk, which is a decision about risk appetite and
+emphatically not an edge.
+
+Trade count is flat across every candidate arm (183) and reach is flat at 37 of
+38 (only PG goes untraded, at every budget). The heat cap **never bound once**
+(`heat-blk 0` in all ten runs), so the reach-versus-depth tension predicted at
+registration simply did not materialise — worth recording, because the arm grid
+was extended to 4.0% specifically to find that point and there isn't one.
+
+### THE MORE IMPORTANT FINDING — clause (e) was UNSATISFIABLE by construction
+
+Reach is **37 at every arm, in every run**, out of sample and in. No budget
+value could ever have increased it. The clause registered as *"the actual
+capacity claim"* could not have passed regardless of the parameter, so it tested
+nothing.
+
+That is the **second decorative control caught in a single session** — the §23
+monotonicity check had the same disease hours earlier, passing any unimodal
+series including the lone spike it existed to catch. Both looked like controls
+and neither could fire.
+
+**Binding on future sections:** a pre-registered clause must be shown to be
+SATISFIABLE before the section is registered — run the extreme arm and confirm
+the clause *can* flip. A clause that cannot fire is not a conservative test, it
+is a decoration that makes a weak gate look strict.
+
+### THIRD CORRECTION TO §26 — "LLY and GS can never be bought" is too broad
+
+The gate traded **LLY 2 times and GS 5 times out of sample**. The claim in §26
+was extrapolated from *today's* closes and the *notional* budget alone, and it
+does not survive contact with the run:
+
+- their OOS closes ranged **$621–$1,236 (LLY)** and **$441–$1,106 (GS)** — for
+  much of the window they sat comfortably *below* the $999 notional budget;
+- meanrev sizes through `risk_sizing`, clamped at `max_order_value_usd`
+  **$2,000**, not $999 — so the high-priced names are reachable through that
+  path at any price under $2,000.
+
+What survives unchanged is the **observed live fact**: 11 real entries were
+refused with `computed quantity is zero`, all of them tsmom, and one of those
+(GS) had been **approved at full size**. The ledger is not in doubt. What was
+wrong was generalising those eleven records into "these names can never be
+bought" — they cannot be bought *by tsmom, at today's prices*, which is a much
+narrower statement and the one that should have been written.
+
+Three corrections to one section is not a good look, and it is recorded in full
+rather than tidied: §26 was written from a live-ledger audit without re-deriving
+its claims against the simulator, and every one of the three errors came from
+that same shortcut.
+
+### Where this leaves the live defect
+
+The gate has **ruled out raising the budget** — on drawdown, decisively, at
+every arm including the mildest. It cannot rule the *live* problem in or out,
+because `simulate_ensemble` has no judge and the downsize-to-zero interaction is
+invisible to it. §27 answered the question it could answer and the answer is no.
+
+The remaining candidate is the **1-share floor** (a downsize may shrink a
+position but never delete it). It is deliberately NOT adopted here: it is not
+gateable — the arms would be byte-identical in a simulator with no judge, the
+§19b misfire — so it needs an explicit owner decision recorded as such, in the
+manner of §20a, rather than a gate verdict it cannot earn.
+
+**Standing note for the next registration.** Clause (c1) — maxDD ≤ baseline ×
+1.5 — is near-unpassable whenever baseline drawdown is very small (1.17% here),
+because any increase in deployment breaches it. That is arguably correct for a
+risk rail and **it does not change this verdict**; it is recorded now, after the
+result, precisely so it cannot be quietly relaxed in a later section without the
+change being visible.
+
+### §26 ADDENDUM — the drift guard had the mirror-image blind spot (2026-07-25)
+
+`src/deploycheck.py` shipped at ~15:00 to catch divergence #7. At ~15:25,
+checking whether the launchd re-point had taken effect, it was pointed at the
+production checkout and reported **clean**. It was not clean:
+
+```
+branch:      audit/production-drift-2026-07-25
+HEAD:        045ca67   (4 commits AHEAD of origin/main)
+PR #21:      OPEN — unreviewed
+deploycheck: behind 0, config clean -> NO ALERT
+```
+
+`behind_upstream()` asks `HEAD..origin/main` — *what does main have that I
+lack*. Nothing did. It had no way to ask the opposite. Divergence #7 was
+production **behind** main; this was production **ahead** of it, running code no
+review had passed, and the module written specifically to catch "the running
+code is not the reviewed code" could not see it.
+
+**Fixed** with `ahead_of_upstream()` (`origin/main..HEAD`), reported as its own
+clause. One count covers both shapes: a feature branch, and `main` carrying
+unpushed local commits — the second being the more dangerous, because the branch
+name looks right. Checking the branch NAME instead would have missed it.
+Injection-proven against the real state above rather than a synthetic one; the
+repository was itself the failing case.
+
+### THE PATTERN — three decorative controls in one session
+
+| control | looked like | actually |
+|---|---|---|
+| §23 monotonicity check | rejects fitted parameters | passed `[1.0, 1.1, 9.0, 1.2, 1.0]` — the exact lone spike it existed to catch |
+| §27 clause (e) | "the actual capacity claim" | unsatisfiable by construction; reach was 37/38 at every arm, so it could never fire |
+| `deploycheck` | catches production drift | reported clean on this repo's own drifted production checkout |
+
+Each was written in good faith, read as rigour, and could not do its job. Two
+were caught only because something forced them against a real case; the third
+because its own repository happened to be broken in the way it was built to
+detect.
+
+**Binding rule, now with three data points:**
+
+> **A control must be demonstrated FIRING on the real failure it was built for.**
+> Not on a hypothetical, not on a unit-test fixture that was written from the
+> same mental model as the code. The §25 split detector met this bar — it was
+> run against an injected 10:1 split before being trusted. The three above did
+> not, and all three were hollow.
+
+Corollary for pre-registration: before a clause is registered, run the extreme
+arm and confirm the clause *can* flip. A clause that cannot fire does not make a
+gate conservative; it makes a weak gate look strict, which is worse than an
+absent one because it stops anybody looking further.
