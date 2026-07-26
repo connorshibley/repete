@@ -96,7 +96,26 @@ def test_hero_negative_pl_gets_loss_class(tmp_path, cfg):
     assert 'class="hv loss"' in html
 
 
+def _close_n(led, n, start=0):
+    """n closed trades, alternating win/loss, for chart-density tests."""
+    for i in range(start, start + n):
+        tid = led.log_decision(f"S{i}", "buy", "sig", {}, None, executed=True,
+                               entry_price=100.0, qty=5, strategy="meanrev")
+        win = i % 2 == 0
+        led.close_trade(tid, exit_price=104.0 if win else 96.0,
+                        pnl=20.0 if win else -20.0,
+                        pnl_pct=4.0 if win else -4.0,
+                        exit_reason="take_profit" if win else "stop_loss")
+
+
 def test_trade_bars_one_rect_per_closed_trade(tmp_path, cfg):
+    """The bar chart renders once there is a distribution worth looking at.
+
+    Threshold added 2026-07-26: below 5 closed trades a lone bar in a 940px
+    field read as a broken render rather than as a small sample, so the chart
+    is replaced by the trades written out. This test now supplies enough to
+    clear that and still asserts one bar per trade.
+    """
     cfg = _cfg_paths(cfg, tmp_path)
     led = Ledger(cfg["memory"]["ledger_path"])
     t1 = led.log_decision("NVDA", "buy", "dip", {}, None, executed=True,
@@ -107,11 +126,23 @@ def test_trade_bars_one_rect_per_closed_trade(tmp_path, cfg):
                     exit_reason="take_profit")
     led.close_trade(t2, exit_price=195.0, pnl=-15.0, pnl_pct=-2.5,
                     exit_reason="stop_loss")
+    _close_n(led, 4)                      # 6 total — clears the threshold
     html = open(dashboard.render(
         cfg, out_path=str(tmp_path / "dash.html"))).read()
     assert '<rect class="win"' in html and '<rect class="loss"' in html
     assert "NVDA · +$20.00 (+4.00%) · take_profit" in html
     assert "AAPL · -$15.00 (-2.50%) · stop_loss" in html
+
+
+def test_trade_bars_below_threshold_list_trades_instead_of_a_lone_bar(
+        tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _close_n(led, 2)
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert "too few for the distribution to have a shape" in html
+    assert '<rect class="win"' not in html
 
 
 def test_filter_chips_and_row_classes(tmp_path, cfg):

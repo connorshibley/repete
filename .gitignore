@@ -9,6 +9,7 @@ logs/
 memory/
 .pytest_cache/
 dashboard.html
+dashboard_data.json
 .site/
 journal.html
 blog.html

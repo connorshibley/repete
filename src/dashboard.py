@@ -8,6 +8,7 @@ judge calibration, measured slippage, and exit reasons. Dark trading-terminal
 theme with vanilla inline JS (hover tooltips, count-up, decision filters) —
 pure file reads, no network, no external libraries; open it in any browser.
 """
+import hashlib
 import html
 import json
 import os
@@ -26,8 +27,27 @@ import disclaimer
 import review
 
 OUT_PATH = "dashboard.html"
+DATA_PATH = "dashboard_data.json"
 N_DECISIONS = 30
 DEFAULT_START_EQUITY = 100_000.0
+
+# Ratio statistics below this many closed trades render as "not yet meaningful"
+# instead of as a number.
+#
+# On 2026-07-26 this page showed `profit factor: inf` and `win rate: 100%` off
+# ONE closed trade. Both were arithmetically correct and both invited exactly
+# the wrong conclusion — anyone glancing at the page would read a flawless bot.
+# A figure a viewer cannot help but misread is a reporting defect, not a
+# rounding preference.
+#
+# 10 sits below `risk.live_kill.min_trades` (15) deliberately: that value gates
+# a RAIL that stops trading and is conservative for that reason. This one gates
+# only what a human is shown.
+MIN_CLOSED_FOR_RATIOS = 10
+
+# Freshness badge thresholds. Display only — nothing here can block a trade.
+STALE_AMBER_HOURS = 8
+STALE_RED_HOURS = 24
 
 # Chart palette validated for the dark surface (#131722): CVD separation and
 # >=3:1 contrast all pass; green/red always ship with $ labels, never alone.
@@ -95,11 +115,42 @@ a.x:hover{text-decoration:underline}
       background:var(--green);margin-right:5px;vertical-align:1px;
       animation:tippulse 1.6s ease-in-out infinite;
       box-shadow:0 0 8px rgba(12,163,12,.7)}
+/* Stat cards. Colour is SEMANTIC only — green/red mean signed money and
+   nothing else. The previous 4-colour repeating border encoded position in
+   the list, which reads as meaning and is not. */
 .cards .card{border-top:2px solid var(--line)}
-.cards .card:nth-child(4n+1){border-top-color:var(--cyan)}
-.cards .card:nth-child(4n+2){border-top-color:var(--violet)}
-.cards .card:nth-child(4n+3){border-top-color:var(--amber)}
-.cards .card:nth-child(4n+4){border-top-color:var(--pink)}
+.cardgroup{margin:14px 0 4px}
+.cardgroup h3{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--ink2);font-weight:600;margin:0 0 6px;padding-bottom:4px;
+      border-bottom:1px solid var(--line)}
+.card.win{border-top-color:var(--green)}
+.card.loss{border-top-color:var(--red)}
+.card.big{min-width:150px}
+.card.big .v{font-size:25px}
+/* Ratio with too small a sample: shown, but visibly not load-bearing. */
+.card.pending{border-top-color:var(--line);opacity:.72}
+.pendingv{color:var(--ink2)}
+.pendingn{display:block;font-size:10px;color:var(--ink2);
+      font-variant-numeric:tabular-nums;margin-top:1px}
+td.pending .pendingn{display:inline;margin-left:6px}
+.tinylist{list-style:none;padding:0;margin:6px 0 0;display:flex;
+      flex-wrap:wrap;gap:8px}
+.tinylist li{background:var(--surf);border:1px solid var(--line);
+      border-radius:8px;padding:5px 10px;font-size:12px;
+      font-variant-numeric:tabular-nums}
+/* Collapsed run of quiet holds — present, findable, not shouting. */
+.holdrun td{color:var(--ink2);font-size:12px;background:rgba(255,255,255,.012)}
+.holdsyms{color:var(--mut);font-size:11px;margin-left:6px}
+/* Freshness badge. Amber/red are the whole point — a dashboard that looks
+   identical whether it is 2 minutes or 2 days old is worse than none, because
+   it invites decisions on data that silently stopped arriving. */
+.fresh{display:inline-block;font-size:10px;letter-spacing:.04em;
+      padding:2px 8px;border-radius:999px;border:1px solid var(--line);
+      color:var(--ink2);font-variant-numeric:tabular-nums;vertical-align:1px}
+.fresh.green{border-color:rgba(12,163,12,.5);color:var(--green)}
+.fresh.amber{border-color:rgba(201,133,0,.55);color:var(--amber)}
+.fresh.red{border-color:rgba(208,59,59,.6);color:var(--red);
+      background:rgba(208,59,59,.08)}
 #boot{position:fixed;inset:0;z-index:50;display:none;cursor:pointer;
   flex-direction:column;align-items:center;justify-content:center;gap:0;
   background:
@@ -281,6 +332,83 @@ if(bl&&src&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
 })();
 """
 
+# Self-refresh. The page polls its own data file and swaps the volatile regions
+# in place, so a decision landing mid-session appears without a reload and
+# without losing your scroll position.
+#
+# Replaces a <meta http-equiv=refresh content=300>, which hard-reloaded the
+# whole document every five minutes — it did keep the page current, but it
+# threw away scroll position and any open filter, so reading a long decisions
+# table meant racing the timer.
+#
+# The freshness badge is computed from the generation stamp on EVERY tick, not
+# only on a successful fetch. That is the important part: if polling breaks,
+# the badge still goes amber and then red on schedule. A staleness indicator
+# that depends on the update path working is exactly the control that fails
+# silently when you need it.
+LIVE_JS = """
+(function(){
+var badge=document.getElementById('fresh');
+if(!badge)return;
+var genAt=new Date(badge.getAttribute('data-gen'));
+var hash=badge.getAttribute('data-hash');
+var AMBER=%(amber)d, RED=%(red)d, canPoll=location.protocol!=='file:';
+
+function paint(note){
+  var hrs=(Date.now()-genAt.getTime())/3600000;
+  var cls=hrs>=RED?'red':hrs>=AMBER?'amber':'green';
+  var age=hrs<1?Math.max(0,Math.round(hrs*60))+'m':Math.round(hrs)+'h';
+  badge.className='fresh '+cls;
+  badge.textContent=(cls==='green'?'live · ':'stale · ')+age+' old'+
+                    (note?' · '+note:'');
+}
+paint(canPoll?'':'auto-update unavailable — opened as a local file');
+setInterval(function(){paint(canPoll?'':
+            'auto-update unavailable — opened as a local file');},30000);
+if(!canPoll)return;
+
+function swap(d){
+  Object.keys(d.regions||{}).forEach(function(k){
+    var el=document.getElementById('rgn-'+k);
+    if(el&&el.innerHTML!==d.regions[k])el.innerHTML=d.regions[k];
+  });
+  hash=d.hash; genAt=new Date(d.generated_at);
+  badge.setAttribute('data-gen',d.generated_at);
+  paint('updated just now');
+}
+function poll(){
+  fetch('%(data)s',{cache:'no-store'}).then(function(r){
+    if(!r.ok)throw 0; return r.json();
+  }).then(function(d){
+    if(d&&d.hash&&d.hash!==hash)swap(d); else paint('');
+  }).catch(function(){ paint('update check failed'); });
+}
+setInterval(poll,60000);
+})();
+"""
+
+
+def ratio_is_meaningful(n_closed: int | None,
+                        min_n: int = MIN_CLOSED_FOR_RATIOS) -> bool:
+    """Is there enough closed history for a win rate / profit factor to mean
+    anything? Pure and separately testable — see MIN_CLOSED_FOR_RATIOS."""
+    return bool(n_closed) and n_closed >= min_n
+
+
+def _ratio_cell(text: str, n_closed: int | None) -> tuple[str, str]:
+    """(display_text, css_tone) for a ratio statistic.
+
+    Returns the number when the sample supports it, and an explicit
+    'n=N · not yet meaningful' otherwise. It deliberately still shows N —
+    hiding the sample size entirely would trade one kind of opacity for
+    another.
+    """
+    if ratio_is_meaningful(n_closed):
+        return text, ""
+    return (f"<span class=pendingv>{text}</span>"
+            f"<span class=pendingn>n={n_closed or 0} · not yet meaningful</span>",
+            "pending")
+
 
 def _fmt_money(v):
     return f"${v:,.2f}"
@@ -337,6 +465,7 @@ def _chart_geometry(series, width, height, pad, include_zero=False):
 
     step = (width - 2 * pad) / max(len(series) - 1, 1)
     pts = [(pad + i * step, y_of(v)) for i, (_, v) in enumerate(series)]
+    y_of.lo, y_of.hi = lo, hi          # exposed so callers can label the axis
     return pts, y_of
 
 
@@ -359,6 +488,27 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
 
     parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" '
              f'preserveAspectRatio="xMidYMid meet">']
+
+    # Gridlines + value labels. Without these a line has no frame of reference:
+    # the P/L series was entirely negative and read as "a shape" rather than a
+    # quantity. Drawn first so the data line sits on top of them.
+    lo, hi = y_of.lo, y_of.hi
+    for frac in (0.0, 0.5, 1.0):
+        v = lo + (hi - lo) * frac
+        gy = y_of(v)
+        parts.append(f'<line x1="{pad}" y1="{gy:.1f}" x2="{width - pad}" '
+                     f'y2="{gy:.1f}" stroke="#252c3a" stroke-width="1"/>')
+        parts.append(f'<text x="{pad - 6}" y="{gy + 3:.1f}" font-size="10" '
+                     f'text-anchor="end" fill="{C_MUTED}">'
+                     f'{v:,.0f}</text>')
+    # A zero line whenever zero is actually inside the plotted range, not only
+    # on zero_area charts — an equity curve that crosses its starting capital
+    # needs the same reference the P/L curve gets.
+    if not zero_area and lo < 0 < hi:
+        parts.append(f'<line x1="{pad}" y1="{y_of(0.0):.1f}" '
+                     f'x2="{width - pad}" y2="{y_of(0.0):.1f}" '
+                     f'stroke="#4a5468" stroke-width="1" '
+                     f'stroke-dasharray="2 3"/>')
     if zero_area:
         y0 = y_of(0.0)
         area = (line + f" {pts[-1][0]:.1f},{y0:.1f} {pts[0][0]:.1f},{y0:.1f}")
@@ -374,8 +524,10 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
             f'<polygon points="{area}" fill="{C_LOSS}" opacity="0.18" '
             f'clip-path="url(#{uid}-below)"/>'
             f'<line x1="{pad}" y1="{y0:.1f}" x2="{width - pad}" '
-            f'y2="{y0:.1f}" stroke="#383f4f" stroke-width="1" '
-            f'stroke-dasharray="2 3"/>')
+            f'y2="{y0:.1f}" stroke="#5a6478" stroke-width="1" '
+            f'stroke-dasharray="2 3"/>'
+            f'<text x="{width - pad + 4}" y="{y0 + 3:.1f}" font-size="10" '
+            f'fill="{C_MUTED}">0</text>')
     if overlay and len(overlay) >= 2:
         opts, _ = _chart_geometry(overlay, width, height, pad)
         oline = " ".join(f"{x:.1f},{y:.1f}" for x, y in opts)
@@ -408,6 +560,20 @@ def svg_trade_bars(closed: list[dict], width=940, height=180) -> str:
     if not closed:
         return ("<p class=small>No closed trades yet — one bar appears per "
                 "closed trade, green for wins, red for losses.</p>")
+    # A chart is a comparison. Below a handful of trades there is nothing to
+    # compare, and a lone bar in a wide empty field reads as a broken render
+    # rather than as a small sample. Say it in words until the shape means
+    # something. Same threshold family as MIN_CLOSED_FOR_RATIOS.
+    if len(closed) < 5:
+        rows = "".join(
+            f"<li>{_esc(t.get('symbol', '?'))} "
+            f"<b class={'win' if (t.get('pnl') or 0) >= 0 else 'loss'}>"
+            f"{_fmt_signed(t.get('pnl') or 0.0)}</b></li>"
+            for t in closed)
+        return (f"<p class=small>{len(closed)} closed trade"
+                f"{'s' if len(closed) != 1 else ''} so far — too few for the "
+                f"distribution to have a shape, so here they are individually. "
+                f"The chart appears at 5.</p><ul class=tinylist>{rows}</ul>")
     pad = 46
     pnls = [t.get("pnl") or 0.0 for t in closed]
     lo, hi = min(min(pnls), 0.0), max(max(pnls), 0.0)
@@ -709,7 +875,41 @@ def _positions_rows(open_trades: dict, now: datetime,
 def _decisions_rows(records: list[dict]) -> str:
     decisions = [r for r in records if r.get("type") == "decision"][-N_DECISIONS:]
     rows = []
+
+    def _is_quiet_hold(rec) -> bool:
+        """A 'nothing happened' row: held, no judge verdict, nothing to read.
+
+        These made up the bulk of the table and each consumed a full row to
+        say "no entry from 3 strategies", pushing the rows that DO carry
+        bull/bear/judge reasoning off the screen.
+        """
+        return (rec.get("action") == "hold" and not rec.get("llm_review")
+                and not rec.get("executed"))
+
+    pending_holds: list[dict] = []
+
+    def _flush_holds():
+        """Collapse a run of quiet holds into one line, naming the symbols.
+
+        The symbols are listed rather than hidden behind a toggle — the list
+        IS the information, and a disclosure widget that has to be opened to
+        learn nothing happened is worse than a sentence.
+        """
+        if not pending_holds:
+            return
+        syms = [h.get("symbol", "?") for h in pending_holds]
+        n = len(syms)
+        rows.append(
+            f'<tr class="r-skip r-hold holdrun"><td colspan=7>'
+            f'<b>{n}</b> symbol{"s" if n != 1 else ""} held — no entry '
+            f'<span class=holdsyms>{_esc(", ".join(syms))}</span></td></tr>')
+        pending_holds.clear()
+
     for r in reversed(decisions):
+        if _is_quiet_hold(r):
+            pending_holds.append(r)
+            continue
+        _flush_holds()
         rev = r.get("llm_review") or {}
         verdict = rev.get("verdict") or ""
         badge = (f'<span class="badge {verdict}">{_esc(verdict)}</span>'
@@ -733,6 +933,7 @@ def _decisions_rows(records: list[dict]) -> str:
             f"<td>{badge}</td><td>{status}</td>"
             f"<td class=reason>{why}" + debate
             + (f"<br><i>judge: {judge}</i>" if judge else "") + "</td></tr>")
+    _flush_holds()          # a run ending the list must still be emitted
     if not rows:
         return "<p class=small>No decisions yet.</p>"
     chips = "".join(
@@ -853,31 +1054,63 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
         book_cards = [("open position value", _fmt_money(_val)),
                       ("unrealized P&L", f"{_fmt_signed(_upl)}{_pct}")]
 
+    # ---- stat cards, grouped and semantically coloured -------------------
+    #
+    # Was twelve equal cards on a 4-colour repeating border, so "days of
+    # history" carried the same visual weight as unrealized P&L and the colour
+    # meant only "position in the list". Now: four labelled groups, colour
+    # reserved for signed money, and Performance set larger than Activity so
+    # the hierarchy survives with the labels covered up.
+    n_closed = rep["n_closed"]
+    wr_txt, wr_tone = _ratio_cell(wr, n_closed)
+    pf_txt, pf_tone = _ratio_cell(pf, n_closed)
+
+    def _tone_for_money(v):
+        return "win" if v > 0 else "loss" if v < 0 else ""
+
+    perf = [("realized P&L", _fmt_money(rep["realized_pnl"]),
+             _tone_for_money(rep["realized_pnl"]))]
+    if mark:
+        perf.append(("unrealized P&L", book_cards[1][1],
+                     _tone_for_money(_upl)))
+    perf += [("win rate", wr_txt, wr_tone), ("profit factor", pf_txt, pf_tone)]
+
+    book = [("open positions", rep["n_open"], ""),
+            ("closed trades", n_closed, "")]
+    if mark:
+        book.insert(1, ("open position value", book_cards[0][1], ""))
+
+    groups = [
+        ("Performance", "big", perf),
+        ("Book", "", book),
+        ("Activity", "", [("decisions", rep["n_decisions"], ""),
+                          ("days of history", rep["history_days"], ""),
+                          ("rail rejections", rep["n_risk_rejections"], ""),
+                          ("LLM vetoes", rep["n_vetoes"], "")]),
+        ("Execution", "", [("slippage", slip_txt, "")]),
+    ]
     cards = "".join(
-        f'<div class=card><div class=v>{v}</div><div class=k>{k}</div></div>'
-        for k, v in [
-            ("days of history", rep["history_days"]),
-            ("decisions", rep["n_decisions"]),
-            ("closed trades", rep["n_closed"]),
-            ("open positions", rep["n_open"]),
-            ("win rate", wr),
-            ("profit factor", pf),
-            ("realized P&L", _fmt_money(rep["realized_pnl"])),
-            *book_cards,
-            ("LLM vetoes", rep["n_vetoes"]),
-            ("rail rejections", rep["n_risk_rejections"]),
-            ("slippage", slip_txt),
-        ])
+        f'<section class=cardgroup><h3>{_esc(title)}</h3><div class=cards>'
+        + "".join(
+            f'<div class="card {size} {tone}"><div class=v>{v}</div>'
+            f'<div class=k>{_esc(k)}</div></div>' for k, v, tone in items)
+        + "</div></section>"
+        for title, size, items in groups if items)
 
     def _pf_text(v):
         if v is None:
             return "n/a"
         return "inf" if v == float("inf") else f"{v:.2f}"
 
+    # Per-strategy ratios get the same n= guard as the cards. A strategy row
+    # reading "100% / inf" off one trade is the same misreading in a smaller
+    # font.
     strat_rows = "".join(
         f"<tr><td>{_esc(n)}</td><td>{s['n_closed']}</td>"
-        f"<td>{s['win_rate']:.0%}</td>"
-        f"<td>{_pf_text(s['profit_factor'])}</td>"
+        f"<td class={_ratio_cell('', s['n_closed'])[1]}>"
+        f"{_ratio_cell('%.0f%%' % (s['win_rate'] * 100), s['n_closed'])[0]}</td>"
+        f"<td class={_ratio_cell('', s['n_closed'])[1]}>"
+        f"{_ratio_cell(_pf_text(s['profit_factor']), s['n_closed'])[0]}</td>"
         f"<td class={'win' if s['realized_pnl'] >= 0 else 'loss'}>"
         f"{_fmt_money(s['realized_pnl'])}</td></tr>"
         for n, s in sorted(per_strat.items()))
@@ -938,9 +1171,37 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
                  "<p class=small>Monthly scorecard appears after the first "
                  "full month of equity history.</p>")
 
+    # ---- volatile regions, rendered once and re-served as JSON -----------
+    # Everything here can change between cycles. The page swaps these in place
+    # on poll; anything not listed is static chrome and never moves.
+    regions = {
+        "tape": _tape(_ticker_chips(rep, open_now, total_pl, equity_now,
+                                    regime_now, n_symbols, card, mark)),
+        "hero": _hero(total_pl, start, equity_now, realized_only, speech),
+        "cards": cards,
+        "positions": _positions_rows(ledger.open_buys(), now, mark),
+        "decisions": _decisions_rows(records),
+        "plchart": pl_chart,
+        "eqchart": eq_chart + chart_note,
+        "bars": bars,
+        "strat": strat_tbl,
+        "months": month_tbl,
+    }
+    payload = {"generated_at": now.isoformat(), "regions": regions}
+    payload["hash"] = hashlib.sha256(
+        json.dumps(regions, sort_keys=True).encode()).hexdigest()[:16]
+    data_path = os.path.join(os.path.dirname(out_path) or ".", DATA_PATH)
+    with open(data_path, "w") as f:
+        json.dump(payload, f)
+
+    live_js = LIVE_JS % {"amber": STALE_AMBER_HOURS, "red": STALE_RED_HOURS,
+                         "data": DATA_PATH}
+    badge = (f'<span id=fresh class="fresh green" '
+             f'data-gen="{now.isoformat()}" data-hash="{payload["hash"]}">'
+             f'live</span>')
+
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="300">
 <title>trading-agent dashboard</title><style>{CSS}</style></head><body>
 {_boot(total_pl, len(open_now), n_symbols)}
 <div class=wrap>
@@ -951,23 +1212,22 @@ rel="noopener">@Repete2026 on X ↗</a>
 &nbsp; <a class=x href="journal.html">trade journal →</a>
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
 <p class=small><span class=livedot></span>live paper account · rebuilt
-after every cycle from the append-only ledger</p>
-{_tape(_ticker_chips(rep, open_now, total_pl, equity_now, regime_now,
-                     n_symbols, card, mark))}
-{_hero(total_pl, start, equity_now, realized_only, speech)}
-<div class=cards>{cards}</div>
-<h2>📈 P/L over time</h2>{pl_chart}
-<h2>🪙 Trade scoreboard</h2>{bars}
-<h2>💰 Equity</h2>{eq_chart}{chart_note}
-<h2>🗓️ Monthly vs S&amp;P</h2>{month_tbl}
-<h2>💼 Open positions{_mark_age_note(mark_ts, now)}</h2>\
-{_positions_rows(ledger.open_buys(), now, mark)}
-<h2>🧭 Per-strategy</h2>{strat_tbl}
-<p class=small>Exits — {_esc(exits)}</p>
+after every cycle from the append-only ledger &nbsp;{badge}</p>
+<div id=rgn-tape>{regions['tape']}</div>
+<div id=rgn-hero>{regions['hero']}</div>
+<div id=rgn-cards>{regions['cards']}</div>
+<h2>💼 Open positions{_mark_age_note(mark_ts, now)}</h2>
+<div id=rgn-positions>{regions['positions']}</div>
 <h2>⚖️ Recent decisions (last {N_DECISIONS})</h2>
 <details open><summary>every signal, the judge's verdict, and what
 happened — filter with the chips</summary>
-{_decisions_rows(records)}</details>
+<div id=rgn-decisions>{regions['decisions']}</div></details>
+<h2>📈 P/L over time</h2><div id=rgn-plchart>{regions['plchart']}</div>
+<h2>💰 Equity</h2><div id=rgn-eqchart>{regions['eqchart']}</div>
+<h2>🪙 Trade scoreboard</h2><div id=rgn-bars>{regions['bars']}</div>
+<h2>🧭 Per-strategy</h2><div id=rgn-strat>{regions['strat']}</div>
+<p class=small>Exits — {_esc(exits)}</p>
+<h2>🗓️ Monthly vs S&amp;P</h2><div id=rgn-months>{regions['months']}</div>
 <h2>🧠 Lesson book</h2>
 <details open><summary>falsifiable hypotheses the bot is testing from its
 own closed trades</summary>{_lessons_rows(states)}</details>
@@ -978,7 +1238,7 @@ The bot narrates its trades and reasoning at
 <a class=x href="https://x.com/Repete2026" target="_blank"
 rel="noopener">x.com/Repete2026</a>.</p>
 <p class=small>{_esc(disclaimer.DISCLAIMER)}</p>
-</div><script>{JS}</script></body></html>"""
+</div><script>{JS}</script><script>{live_js}</script></body></html>"""
     with open(out_path, "w") as f:
         f.write(doc)
     return out_path

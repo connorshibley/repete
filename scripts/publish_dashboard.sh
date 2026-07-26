@@ -12,6 +12,15 @@ if [ -f dashboard.html ] && ! cmp -s dashboard.html .site/index.html; then
   git -C .site add index.html
   changed=1
 fi
+# dashboard_data.json is what the published page POLLS. Without it the live
+# badge on the deployed site drifts amber then red while the HTML beside it is
+# perfectly current — the page would look broken precisely BECAUSE the
+# freshness indicator works. It has to ship on the same commit as index.html.
+if [ -f dashboard_data.json ] && ! cmp -s dashboard_data.json .site/dashboard_data.json; then
+  cp dashboard_data.json .site/dashboard_data.json
+  git -C .site add dashboard_data.json
+  changed=1
+fi
 if [ -f journal.html ] && ! cmp -s journal.html .site/journal.html; then
   cp journal.html .site/journal.html
   git -C .site add journal.html
