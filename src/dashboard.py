@@ -8,6 +8,7 @@ judge calibration, measured slippage, and exit reasons. Dark trading-terminal
 theme with vanilla inline JS (hover tooltips, count-up, decision filters) —
 pure file reads, no network, no external libraries; open it in any browser.
 """
+import base64
 import hashlib
 import html
 import json
@@ -101,6 +102,15 @@ a.x:hover{text-decoration:underline}
       margin:18px 0;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
 .hero .htext{flex:1 1 260px}
 .robotbox{display:flex;align-items:center;gap:10px;flex:0 1 auto}
+/* Repete on the swing. 240px is exactly half the 480px asset, so it lands on
+   whole device pixels at 2x. The pivot sits above the frame because that is
+   where the chains converge -- rotating about the image's own centre reads as
+   a wobble, not a swing. */
+.swing{width:240px;max-width:40vw;height:auto;display:block;
+       transform-origin:50% -22%;will-change:transform;
+       animation:swingarc 4.6s ease-in-out infinite}
+@keyframes swingarc{0%,100%{transform:rotate(-3.5deg)}
+                    50%{transform:rotate(3.5deg)}}
 .robot{animation:bob 3.4s ease-in-out infinite}
 .robot .eye{transform-origin:center;transform-box:fill-box;
             animation:blink 4.2s infinite}
@@ -108,12 +118,24 @@ a.x:hover{text-decoration:underline}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes blink{0%,92%,100%{transform:scaleY(1)}95%,97%{transform:scaleY(.08)}}
 @keyframes tippulse{0%,100%{opacity:.55}50%{opacity:1}}
-.bubble{position:relative;background:var(--surf2);border:1px solid var(--line);
+/* White, not --surf2. The bubble used to sit beside a 62px robot, well inside
+   the light end of the hero gradient. The swing illustration pushes it to the
+   far right, where the gradient IS --surf2 -- same fill on same fill, and the
+   bubble lost its shape entirely. White reads at every point along it. */
+.bubble{position:relative;background:#ffffff;border:1px solid var(--line);
         border-radius:12px;padding:8px 12px;font-size:12.5px;color:var(--ink2);
         max-width:210px;min-height:38px;display:flex;align-items:center;
         transition:opacity .45s}
 .bubble:before{content:"";position:absolute;left:-7px;top:50%;margin-top:-6px;
         border:6px solid transparent;border-right-color:var(--line)}
+/* Narrow viewports: the illustration and a 210px bubble side by side need
+   ~430px, which pushed the bubble off the right edge of a phone. Stack them
+   and drop the tail, which points at nothing once the bubble is underneath. */
+@media (max-width:620px){
+  .robotbox{flex-wrap:wrap;justify-content:center}
+  .swing{width:200px;max-width:70vw}
+  .bubble{max-width:none;flex:1 1 100%}
+  .bubble:before{display:none}}
 .tape{overflow:hidden;border:1px solid var(--line);border-radius:10px;
       background:var(--surf);margin:14px 0;white-space:nowrap;position:relative}
 .tape:before,.tape:after{content:"";position:absolute;top:0;bottom:0;width:26px;
@@ -232,7 +254,7 @@ td.pending .pendingn{display:inline;margin-left:6px}
 #boot .skip{font-size:10px;letter-spacing:.22em;color:var(--mut);
   text-transform:uppercase}
 @media (prefers-reduced-motion: reduce){
-  .tape-track,.robot,.robot .eye,.robot .tip,.livedot,
+  .tape-track,.robot,.robot .eye,.robot .tip,.livedot,.swing,
   #boot .mark b,#candles i,#boot .bl.on.cur:after{animation:none}}
 .hero .hk{font-size:12px;letter-spacing:.14em;color:var(--ink2);
           text-transform:uppercase}
@@ -659,6 +681,54 @@ def _robot(total: float) -> str:
 </svg>"""
 
 
+SWING_ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "assets", "repete_swing.webp")
+_SWING_CACHE: str | None = None
+
+
+def _swing_data_uri() -> str | None:
+    """The swing illustration as a base64 data URI, or None if it is missing.
+
+    Inlined rather than linked on purpose. scripts/publish_dashboard.sh copies
+    four hardcoded named files into .site/ -- no glob, no directory copy -- so a
+    linked asset could ship one commit behind its HTML and render as a broken
+    image on the live site. That is the same failure the sidecar comment in
+    that script warns about. A data URI cannot desynchronise from its page.
+
+    Read once and cached: render() is called on every cycle and this is 40 KB
+    of base64 that never changes between builds.
+    """
+    global _SWING_CACHE
+    if _SWING_CACHE is None:
+        try:
+            with open(SWING_ASSET, "rb") as fh:
+                _SWING_CACHE = base64.b64encode(fh.read()).decode("ascii")
+        except OSError as e:                          # noqa: BLE001
+            print(f"dashboard: swing asset unavailable ({e}) -- "
+                  f"falling back to the SVG robot", file=sys.stderr)
+            return None
+    return f"data:image/webp;base64,{_SWING_CACHE}"
+
+
+def _swing(total: float) -> str:
+    """Repete swinging -- the landing-page hero, used when P/L is not negative.
+
+    On a losing book this deliberately gives way to _robot(), which wears the
+    determined face. The illustration only has one expression, and a bot
+    grinning on a swing above a red number would be the page lying about how
+    the day went. The honesty of that signal is worth more than the artwork.
+
+    Falls back to the SVG if the asset is missing, because a decorative image
+    must never be able to break a render.
+    """
+    uri = _swing_data_uri()
+    if uri is None:
+        return _robot(total)
+    return (f'<img class=swing src="{uri}" width="240" height="323" '
+            f'alt="Repete the trading robot, swinging on a playground swing" '
+            f'decoding="async">')
+
+
 def _boot(total: float, n_positions: int, n_symbols: int) -> str:
     """Repete's CRT power-on splash (~3s, click to skip, once per visit):
     scanline terminal, wordmark igniting letter by letter, robot eyes
@@ -703,7 +773,8 @@ def _hero(total: float, start: float, equity_now: float | None,
            + (" · realized only (equity snapshots start next cycle)"
               if realized_only else ""))
     lines = speech_lines or ["beep boop — paper trading, honestly"]
-    bubble = (f'<div class=robotbox>{_robot(total)}'
+    mascot = _swing(total) if total >= 0 else _robot(total)
+    bubble = (f'<div class=robotbox>{mascot}'
               f'<div class=bubble id=bubble>{_esc(lines[0])}</div></div>'
               f'<script type="application/json" id=replines>'
               f'{json.dumps(lines)}</script>')
