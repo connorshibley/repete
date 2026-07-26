@@ -37,6 +37,7 @@ import risk
 import regime as regime_mod
 import earnings as earnings_mod
 import intraday
+import judge_model
 
 
 # ---------------------------------------------------------------- data models
@@ -340,6 +341,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     guard_skips = 0
     n_heat_blocked = 0      # §13: rails the sim previously ignored
     n_corr_blocked = 0
+    sim_peak = 0.0          # §31: running equity high-water for the drawdown rail
     fills_by_date: dict = {}
     last_exit: dict = {}  # symbol -> exit ts (re-entry cooldown, §9)
     pending: list = []  # (symbol, action) to fill at that symbol's next open
@@ -379,7 +381,10 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
             bar = today[sym]
             date = ts[:10]
             if action == "buy":
-                if fills_by_date.get(date, 0) >= cfg["risk"]["max_trades_per_day"]:
+                # §29: 0 disables, exactly as pre_trade_checks does live. If
+                # only one of the two honoured 0 this would be divergence #9.
+                _cap_day = cfg["risk"].get("max_trades_per_day") or 0
+                if _cap_day and fills_by_date.get(date, 0) >= _cap_day:
                     continue  # rate limit across symbols, mirroring the live bot
                 fill = bar["open"] * (1 + slip / 1e4)
                 i = idx[sym][ts]
@@ -394,16 +399,26 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                                       bars=hist,
                                       strategy=strategy_name,
                                       stop_price=stop)
+                # §29 / divergence #8: live cuts 53.5% of buys before they are
+                # placed. Off by default, so every gate run before 2026-07-26
+                # reproduces byte-identically.
+                qty = judge_model.apply(qty, sym, ts, cfg)
                 try:
                     # Single-strategy sim: every open position belongs to the
                     # strategy under test, so its slot allocation (§13) is
                     # exactly len(positions).
+                    # §31: the sim keeps its OWN running peak — live reads a
+                    # file, the sim cannot. The ARITHMETIC is shared
+                    # (risk.drawdown_pct), so the two cannot disagree about
+                    # what a drawdown is, only about where the peak came from.
+                    sim_peak = max(sim_peak, acct.equity(last_close))
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
                                      regime_label=regime_labels.get(ts),
                                      strategy=strategy_name,
-                                     strategy_open=len(acct.positions))
+                                     strategy_open=len(acct.positions),
+                                     peak_equity=sim_peak)
                     # The heat + correlation caps live in pre_trade_checks,
                     # which the sim cannot call (it does HALT/trade-count file
                     # I/O). They were therefore NEVER simulated: every gate
@@ -634,6 +649,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     guard_skips = 0
     n_heat_blocked = 0
     n_corr_blocked = 0
+    sim_peak = 0.0          # §31: running equity high-water for the drawdown rail
     fills_by_date: dict = {}
     last_exit: dict = {}          # (strategy, symbol) -> exit ts; cooldown is
                                   # per-strategy, matching risk.cooldown_days_for
@@ -709,7 +725,10 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
             if action == "buy":
                 # SHARED rate limit — the whole point of this function. One
                 # strategy exhausting the daily cap blocks the others.
-                if fills_by_date.get(date, 0) >= cfg["risk"]["max_trades_per_day"]:
+                # §29: 0 disables, exactly as pre_trade_checks does live. If
+                # only one of the two honoured 0 this would be divergence #9.
+                _cap_day = cfg["risk"].get("max_trades_per_day") or 0
+                if _cap_day and fills_by_date.get(date, 0) >= _cap_day:
                     by_strategy[owner]["blocked"] += 1
                     continue
                 if sym in acct.positions:
@@ -724,17 +743,21 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
                                       bars=hist, strategy=owner,
                                       stop_price=stop)
+                # §29 / divergence #8 — see the single-strategy path above.
+                qty = judge_model.apply(qty, sym, ts, cfg)
                 try:
                     # §13 slot allocation counts only THIS strategy's positions;
                     # the global ceiling inside pure_checks sees all of them.
                     strategy_open = sum(1 for p in acct.positions.values()
                                         if p["owner"] == owner)
+                    sim_peak = max(sim_peak, acct.equity(last_close))   # §31
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
                                      regime_label=regime_labels.get(ts),
                                      strategy=owner,
-                                     strategy_open=strategy_open)
+                                     strategy_open=strategy_open,
+                                     peak_equity=sim_peak)
                     _sim_open_trades = {
                         s: {"qty": p["qty"], "entry_price": p["avg_entry"],
                             "order": {"stop_price": p.get("stop")}}
@@ -1075,6 +1098,15 @@ def main():
                         "(the live evidence-velocity bottleneck)")
     p.add_argument("--max-trades-day", type=int, default=None, metavar="N",
                    help="CANDIDATE: risk.max_trades_per_day rate limit")
+    p.add_argument("--judge-model", action="store_true",
+                   help="CANDIDATE §29: simulate the LLM judge's downsizing. "
+                        "OFF by default so pre-2026-07-26 gates reproduce; "
+                        "every number in backtest_candidates.md before that "
+                        "date was produced WITHOUT it (divergence #8)")
+    p.add_argument("--judge-salt", default=None, metavar="S",
+                   help="redraw the simulated judge's verdicts. For testing "
+                        "that a result survives a different draw — NOT for "
+                        "shopping until one looks good")
     p.add_argument("--strategy-max-positions", type=int, default=None,
                    metavar="N",
                    help="CANDIDATE §13: per-strategy slot allocation for the "
@@ -1135,6 +1167,17 @@ def main():
         if flag is not None:
             cfg["risk"][key] = flag
             print(f"(CANDIDATE on: {label} = {flag})")
+    if args.judge_model:
+        cfg.setdefault("backtest", {}).setdefault("judge_model", {})[
+            "enabled"] = True
+        cal = judge_model.load_calibration()
+        print(f"(CANDIDATE §29 on: simulated judge — cuts "
+              f"{cal['downsize_rate']:.1%} of buys, mean scale "
+              f"{cal['mean_scale']:.3f}, n={cal['n_judged_buys']} live)")
+    if args.judge_salt:
+        cfg.setdefault("backtest", {}).setdefault("judge_model", {})[
+            "salt"] = args.judge_salt
+        print(f"(judge draw re-salted: {args.judge_salt})")
     if args.strategy_max_positions is not None:
         cfg.setdefault("strategies", {}).setdefault(args.strategy, {})[
             "max_open_positions"] = args.strategy_max_positions

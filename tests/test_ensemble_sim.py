@@ -236,9 +236,27 @@ def test_entry_priority_is_the_gated_order():
         f"entry priority is {order}; §22 gated ma_crossover -> tsmom -> meanrev")
 
 
-def test_trade_cap_stays_at_the_tighter_value():
-    """§20c reverted 5 -> 3 after the ensemble showed loosening it bought
-    nothing. A circuit breaker that drifts back up without evidence is exactly
-    the regression this pins."""
+def test_trade_cap_is_a_runaway_guard_not_a_risk_rail():
+    """§29 (2026-07-26) raised this 3 -> 15 by owner decision; it is no longer
+    a risk rail, it is a runaway guard.
+
+    The original guard (§20c) pinned it at 3 so a circuit breaker could not
+    drift back up WITHOUT EVIDENCE. That property is kept, not dropped — the
+    value is still pinned, it just moved once, deliberately, with the reasoning
+    recorded in config.yaml and §29.
+
+    Why 3 measured as harmless in §20c and was not: the ensemble found caps of
+    3/5/8/12 giving +3.237/+3.232/+3.232/+3.232% because the GLOBAL SLOT CEILING
+    bound first. That ceiling is now 0/disabled, so the cap is the only thing
+    left in that position and its old measurement no longer applies. Live it was
+    refusing 59 of 146 buy signals.
+
+    It must stay LOOSE (above real demand of ~15 signals/day) but non-zero, so
+    an API retry loop or a bad feed still cannot place unbounded orders.
+    """
     cfg = bt.load_config()
-    assert cfg["risk"]["max_trades_per_day"] == 3
+    cap = cfg["risk"]["max_trades_per_day"]
+    assert cap == 15, (
+        "max_trades_per_day moved without a recorded decision — §29 set 15")
+    assert cap >= 15, "below observed live demand; it would refuse real signals"
+    assert cap, "0 disables the runaway guard entirely — an unbounded order loop"

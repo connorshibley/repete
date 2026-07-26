@@ -1944,3 +1944,211 @@ cross-vendor guards had always caught bad bars first.
 §28's clause (e) was unsatisfiable in exactly the same way, and the probe caught
 it **before a single rule was written**. Checking satisfiability first cost one
 script and about two minutes.
+
+---
+
+## §29 — UNCAP THE BOOK AND RAISE SIZING (owner decision, 2026-07-26)
+
+**PRE-REGISTERED BEFORE THE SIZING SWEEP RAN.** The uncapped-count baseline
+(arm B below) had already been measured when this was written and its numbers
+appear here; the `risk_per_trade_pct` sweep — the arm that actually decides the
+question — had not. Thresholds in "Decision rule" are fixed from this point.
+
+### Why this is not §27 again
+
+§27 raised `risk_per_trade_pct` 1.0 → 4.0 with `max_order_value_usd` 2000 → 4000
+and was **REJECTED** on maxDD 5.06% against a 3.0pp ceiling. Two things have
+changed, and neither is "we decided we liked the answer better":
+
+1. **The ceiling moved, by owner decision, and is recorded as such.** The owner
+   set a **10.0pp maxDD tolerance** on 2026-07-26. §27's 5.06% would clear it.
+   This is a change of risk appetite, not a re-analysis — stated plainly so
+   nobody later reads §29 as having refuted §27's arithmetic. It did not.
+2. **The simulator §27 ran on was wrong.** It never applied the judge's
+   downsize (divergence #8, live half). Measured this session: the judge cuts
+   **53.5% of buys at mean scale 0.752**, so every OOS figure in this document
+   before today — §27's included — is roughly **34% optimistic**. Confirmed
+   directly: tsmom OOS +0.62% without the model, **+0.41% with it**.
+
+### The finding that reframes the whole document
+
+`max_order_value_usd: 2000` on ~$100k equity was a 2% ceiling on every position,
+and it fired **before every other rail**. That single line is why this document
+is full of rails that measured as inert:
+
+| section | recorded verdict | actual cause |
+|---|---|---|
+| §11 | `risk_pct` 1.0 / 2.0 / 5.0 byte-identical | clamp fired first |
+| §18 | `regime_exposure` REJECTED, "gross never nears the cap" | clamp fired first |
+| §20b | per-strategy slots INERT | clamp fired first |
+| heat cap | "four positions total ~$560 against a $4,000 cap" | clamp fired first |
+
+Measured on the frozen snapshot, it held **average deployment at 2.5% of
+capital**. The bot was ~97% in cash. That, not signal quality, is the leading
+explanation for OOS returns sitting near zero.
+
+### Arms
+
+All on `memory/bars_snapshot_2020_2026-07-10.json` + `earnings_snapshot.json`,
+slippage pinned 5 bps, 70/30 walk-forward, tsmom, `--judge-model` ON for every
+arm so they are mutually comparable and comparable to live.
+
+- **A — status quo ante**: caps as of 2026-07-25, judge model on.
+  Measured: OOS **+0.41%**, 100 trades, PF 1.331, maxDD 0.5%, deployment 1.9%.
+- **B — counts uncapped, sizing unchanged** (`max_open_positions: 0`,
+  per-strategy 0, `max_trades_per_day: 15`, `max_order_value_usd: 0`).
+  Measured: OOS **+1.94%**, 312 trades, PF 1.607, maxDD 0.73%, deployment 5.04%,
+  0 heat blocks, 130 correlation blocks.
+- **C — the sweep, NOT YET RUN**: arm B plus `risk_per_trade_pct` ∈
+  {1, 2, 4, 6, 8}. This is the arm that decides the question, because arm B
+  showed the count caps were never the binding constraint on deployment — the
+  1%-of-equity sizing *target* is.
+
+### Decision rule — fixed before arm C runs
+
+Adopt the **highest** `risk_per_trade_pct` that satisfies ALL of:
+
+- (a) OOS maxDD **≤ 10.0pp** (owner ceiling, 2026-07-26)
+- (b) OOS profit factor **≥ 1.3** (the standing enablement bar, unchanged)
+- (c) OOS return **> arm B's +1.94%** — scaling must buy something
+- (d) OOS trades **≥ 15** (standing bar)
+- (e) profit factor must not fall below **1.3**; if PF degrades monotonically
+      with size while return rises, prefer the knee, not the maximum — §12
+      measured exactly that shape for tsmom (2.398 → 1.977 → 1.730)
+
+If no arm satisfies (a)-(d), `risk_per_trade_pct` **stays at 1.0** and that is
+recorded as the result. Raising it anyway would be adopting a change the
+measurement rejected, which is the one thing this document exists to prevent.
+
+### Counter-evidence carried forward, not buried
+
+§12 measured tsmom's PF **degrading** as slots rise (2.398 → 1.977 → 1.730)
+while return rises — extra trades bought at a worse rate. Arm B is the first
+test of that claim at non-trivial deployment, and **it did not replicate**: PF
+went 1.331 → 1.607 as trades went 100 → 312. The honest reading is that §12 was
+measured behind the clamp, at 2.5% deployment, and may simply not describe the
+uncapped regime. It is not yet refuted — one arm is not a refutation — and it
+remains the reason clause (e) exists.
+
+### Known limitations of the judge model, stated up front
+
+It reproduces the judge's *distribution*, not its *decisions*. Nothing can
+recover which specific trades a model would have vetoed in 2024. The calibration
+rests on **146 decisions over 7 live days in one market regime**, heavily
+serially correlated, so the effective sample is far below 146 and the tails are
+unmeasured. It is strictly closer to live than modelling no judge at all, which
+is the bar it has to clear — not accuracy it does not have.
+
+### §29 RESULT — ADOPTED at `risk_per_trade_pct: 8.0`
+
+Arm C, run 2026-07-26 on the frozen snapshot, judge model on, counts uncapped:
+
+| risk% | OOS return | trades | PF | maxDD | deployment | return/maxDD |
+|---|---|---|---|---|---|---|
+| 1 | +1.94% | 312 | 1.607 | 0.73% | 5.0% | 2.65 |
+| 2 | +4.00% | 322 | 1.567 | 1.55% | 10.6% | 2.58 |
+| 4 | +8.30% | 322 | 1.539 | 3.39% | 22.4% | 2.45 |
+| 6 | +13.25% | 322 | 1.547 | 5.12% | 34.2% | 2.59 |
+| **8** | **+17.45%** | 319 | 1.549 | **7.51%** | 43.6% | 2.32 |
+
+Every arm clears (a) maxDD ≤ 10.0pp, (b) PF ≥ 1.3 and (d) trades ≥ 15. Arms
+2-8 clear (c) return > +1.94%. Clause (e)'s knee does not trigger: PF is
+1.607 → 1.567 → 1.539 → 1.547 → 1.549, which flattens rather than degrading
+monotonically, so §12's slot-quality decay did not reappear as a sizing decay.
+The rule selects the highest qualifying arm: **8.0**.
+
+**What this result is NOT.** Return rose 9x and maxDD rose 10.3x; return/maxDD
+went 2.65 → 2.32. Risk-adjusted quality got slightly *worse*. This is leverage,
+correctly measured, not a better strategy — and it still loses outright to B&H
++36.21%, passing the enablement gate only through the exposure-matched hatch.
+Anyone reading "+17.45%" without this paragraph has misread the table.
+
+**The boundary was not found.** 8 was the top of the pre-registered range and it
+cleared the ceiling with 2.5pp to spare. 10 might also clear. Extending the
+sweep now, having seen the shape, would be shopping — it needs its own gate.
+
+**Regime exposure, enabled on §18's own condition.** §18 rejected
+`regime_exposure` as untestable because "gross never nears the cap ... Revisit
+only if sizing scales up." At risk 8.0, deployment is 43.6% and it binds:
+
+| arm | OOS return | PF | maxDD | return/maxDD |
+|---|---|---|---|---|
+| off | +17.45% | 1.549 | 7.51% | 2.32 |
+| `down_max_gross_pct: 50` | **+20.25%** | **1.694** | **5.71%** | **3.55** |
+
+Better on all three axes. Unlike the sizing raise this IS a risk-adjusted gain,
+and it is the documented momentum-crash result (Kaminski-Lo, Daniel-Moskowitz).
+**Adopted at 50.**
+
+### §30 CANDIDATE — tighter down-regime gross cap. NOT ADOPTED.
+
+A 30% arm scored better than 50 on every metric (+22.55%, PF 1.791, maxDD
+4.90%, return/maxDD 4.60). It is **not adopted**, because 50 was the value §18
+had already configured whereas 30 was chosen after seeing the OOS result.
+Testing two values and keeping the winner is in-sample selection performed on
+the holdout, and one contaminated pick is how a document like this stops being
+trustworthy. A proper gate needs a pre-registered range and a fresh split.
+
+### §31 CANDIDATE — `daily_loss_limit_pct` is now inconsistent with the DD ceiling
+
+Not a backtest question; an operational one, flagged rather than silently
+changed. `daily_loss_limit_pct: 3.0` flattens the book and engages HALT on a
+single -3% day. At 5% deployment that was nearly unreachable. At **43.6%
+deployment** a ~7% adverse move in the held names reaches it, and the owner's
+accepted drawdown tolerance is now **10pp** — so the kill switch would fire and
+liquidate at roughly a third of the drawdown the owner has said is acceptable.
+
+Left at 3.0 deliberately. Raising a kill switch is a safety decision and it is
+the owner's, not something to fold into a sizing gate.
+
+### §31 RESOLVED — drawdown circuit breaker built, daily limit realigned
+
+Owner approved both on 2026-07-26.
+
+**`max_drawdown_pct: 10.0` (new).** Peak-to-trough from an equity high-water
+mark. Blocks new **entries** only; exits always run. A rail that stopped you
+selling during a drawdown would trap you in the book it exists to protect you
+from, at the moment getting out matters most.
+
+Deliberately distinct from `daily_loss_limit_pct`, which flattens and HALTs:
+
+| | measures | acts |
+|---|---|---|
+| `daily_loss_limit_pct` | one session | **liquidate + HALT** — hard stop |
+| `max_drawdown_pct` | peak to trough, any duration | **block entries** — soft brake |
+
+A book that bled 10% over three weeks, never losing 5% in one session, passed
+every rail the bot had before today.
+
+**`daily_loss_limit_pct: 3.0 → 5.0`.** At 5% deployment a -3% day was nearly
+unreachable; at 43.6% it is not. Against the owner's 10pp tolerance the old
+value would have liquidated the book at roughly a THIRD of the accepted
+drawdown — converting a survivable correction into a realised loss at the low.
+Half the total tolerance is the reasoning: one day consuming half the drawdown
+budget is a genuine emergency.
+
+**Enforced in the simulator too.** Live reads a persisted high-water file; the
+backtester keeps a running peak. Both call the same `risk.drawdown_pct()`, so
+they cannot disagree about what a drawdown is — a live-only rail would have
+been divergence #9, created by the work closing #8. Pinned by
+`test_the_backtester_enforces_the_same_rail`.
+
+At the adopted settings it does not bind: OOS maxDD is 5.71% against a 10.0
+limit. It is a backstop, not an active constraint, which is the correct state
+for a circuit breaker.
+
+### Method note: a negative-control harness that lied
+
+Two mutations happened to leave `src/risk.py` **exactly 11 bytes shorter** than
+the original. CPython validates `.pyc` files on (mtime, size) at one-second
+resolution, so the second mutation silently reused bytecode compiled during the
+first — and the harness reported a **broken guard as verified**. The ratchet
+test was green while the ratchet was disabled.
+
+Caught because the same mutation went red when run standalone and green inside
+the loop. Fixed by purging `src/__pycache__` and setting
+`PYTHONDONTWRITEBYTECODE=1` per mutation; all three suites re-run, 18/18 red.
+
+Worth recording because the failure direction is the dangerous one: a false RED
+is noisy and self-correcting, a false GREEN is a rail you believe is tested and
+is not. Any mutation-testing harness in this repo needs the same treatment.

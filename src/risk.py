@@ -85,6 +85,68 @@ def record_trade():
             os.unlink(tmp)
 
 
+_HIGHWATER_FILE = os.path.join("memory", ".equity_highwater.json")
+
+# Same polarity as _TRADECOUNT_UNKNOWN: if we cannot read the peak, we do not
+# know how far below it we are, so the rail assumes the worst for one cycle.
+# It self-heals — update_high_water() rewrites the file from live equity every
+# cycle — so a corrupt file costs one cycle of entries, not a wedged bot.
+_PEAK_UNKNOWN = float("inf")
+
+
+def read_high_water() -> float:
+    try:
+        with open(_HIGHWATER_FILE) as f:
+            v = float(json.load(f)["peak_equity"])
+        return v if v > 0 else _PEAK_UNKNOWN
+    except FileNotFoundError:
+        return 0.0                    # never seeded — first run, no drawdown yet
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError, OSError) as e:
+        log.critical("equity high-water unreadable (%s) — treating the drawdown "
+                     "rail as BREACHED until the next cycle rewrites it", e)
+        return _PEAK_UNKNOWN          # fail CLOSED
+
+
+def update_high_water(equity: float) -> float:
+    """Ratchet the peak upward and persist it. Returns the current peak.
+
+    Never ratchets DOWN: a drawdown rail measured against a peak that follows
+    equity downward would never fire, which is the failure mode of every
+    trailing metric that forgets to keep its high-water mark.
+    """
+    peak = read_high_water()
+    if peak is _PEAK_UNKNOWN or peak == _PEAK_UNKNOWN:
+        peak = 0.0                    # corrupt: reseed from live equity below
+    peak = max(peak, float(equity))
+    os.makedirs(os.path.dirname(_HIGHWATER_FILE), exist_ok=True)
+    tmp = f"{_HIGHWATER_FILE}.tmp{os.getpid()}"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"peak_equity": peak,
+                       "updated": datetime.now(timezone.utc).isoformat()}, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _HIGHWATER_FILE)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return peak
+
+
+def drawdown_pct(equity: float, peak: float) -> float:
+    """Peak-to-trough drawdown as a positive percentage. Pure — no I/O.
+
+    Lives here rather than in pre_trade_checks so the backtester can call the
+    exact same arithmetic against its own running peak. A drawdown rail that
+    existed only on the live path would be divergence #9.
+    """
+    if peak is _PEAK_UNKNOWN or peak == _PEAK_UNKNOWN:
+        return float("inf")
+    if peak <= 0:
+        return 0.0
+    return max(0.0, (peak - equity) / peak * 100)
+
+
 def daily_loss_breached(account: dict, cfg: dict) -> bool:
     """True if today's P&L is below the configured loss limit."""
     limit_pct = cfg["risk"]["daily_loss_limit_pct"]
@@ -169,9 +231,23 @@ def size_order(account: dict, price: float, cfg: dict,
     else:
         dollars = equity * r["risk_per_trade_pct"] / 100      # fixed fractional
         dollars *= vol_scale(bars, r.get("vol_target") or {}, strategy)
-    ceiling = min(r["max_order_value_usd"],                     # per-order cap
-                  equity * r["max_position_pct"] / 100,         # concentration cap
-                  account["buying_power"])
+    # §29 (2026-07-26, owner decision): max_order_value_usd is 0-disableable.
+    #
+    # It was $2,000 on ~$100k — a 2% ceiling on every position — and it fired
+    # BEFORE every other rail, which is why portfolio heat, regime_exposure and
+    # risk_sizing.risk_pct all measured as inert (§11's "1.0, 2.0 and 5.0 are
+    # byte-identical", §18's "gross never nears the cap"). It also held average
+    # deployment at 2.5% of capital, measured on the frozen snapshot.
+    #
+    # Disabling it does NOT remove per-name concentration control:
+    # max_position_pct remains, and is deliberately NOT 0-disableable — a 0
+    # there yields a ceiling of 0, i.e. no trades, which is the fail-safe
+    # direction. Buying power still binds regardless.
+    caps = [equity * r["max_position_pct"] / 100,               # concentration cap
+            account["buying_power"]]
+    if r.get("max_order_value_usd"):                            # 0 disables
+        caps.append(r["max_order_value_usd"])                   # per-order cap
+    ceiling = min(caps)
     dollars = min(dollars, ceiling)
 
     qty = int(dollars // price)
@@ -524,7 +600,8 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
                 regime_label: str | None = None,
                 strategy: str | None = None,
-                strategy_open: int | None = None):
+                strategy_open: int | None = None,
+                peak_equity: float | None = None):
     """The side-effect-free subset of the rails (no HALT/trade-count file I/O).
 
     Shared with the offline backtester so simulated fills obey the exact same
@@ -536,11 +613,37 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
         raise RiskRejection("computed quantity is zero (account too small for caps)")
 
     order_value = qty * price
-    if order_value > r["max_order_value_usd"]:
+    if r.get("max_order_value_usd") and order_value > r["max_order_value_usd"]:
         raise RiskRejection(f"order value ${order_value:,.0f} exceeds cap ${r['max_order_value_usd']:,}")
 
     if action == "buy":
-        if len(positions) >= r["max_open_positions"] and symbol not in positions:
+        # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26). Entries only — exits ALWAYS
+        # run, because a rail that trapped you in a losing book while it fell
+        # would be the opposite of a risk control.
+        #
+        # This is the SOFT brake: stop adding risk. daily_loss_limit_pct is the
+        # hard one — it flattens the book and engages HALT. Two different acts
+        # for two different situations, deliberately not merged: a slow bleed to
+        # -10% over weeks should stop new entries, not liquidate at the bottom.
+        dd_cap = r.get("max_drawdown_pct") or 0
+        if dd_cap and peak_equity is not None:
+            dd = drawdown_pct(account["equity"], peak_equity)
+            if dd >= dd_cap:
+                raise RiskRejection(
+                    f"drawdown circuit breaker: {dd:.2f}% from peak "
+                    f"${peak_equity:,.0f} (limit {dd_cap:.1f}%) — entries "
+                    f"blocked, exits still run")
+
+        # §29: 0 disables the count ceiling. Owner decision 2026-07-26 — "if
+        # there's more to hold onto then hold onto it". Position COUNT is not
+        # itself a risk measure: eight $250 positions and eight $25,000 ones
+        # are the same number and wildly different exposure. What actually
+        # bounds the book is max_portfolio_heat_pct (total stop-risk),
+        # max_position_pct (per name), the correlation cap (co-moving names are
+        # one bet) and buying power — all of which stayed on, and all of which
+        # only START binding once the $2k order clamp is gone.
+        if (r["max_open_positions"] and len(positions) >= r["max_open_positions"]
+                and symbol not in positions):
             raise RiskRejection(f"max open positions reached ({r['max_open_positions']})")
         # Per-strategy slot allocation (§13). The global cap above is still a
         # hard ceiling over the whole book; this only ever makes a strategy's
@@ -583,17 +686,30 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
         raise RiskRejection("HALT file present — trading disabled")
-    if _trades_today() >= cfg["risk"]["max_trades_per_day"]:
-        raise RiskRejection(f"max trades per day reached ({cfg['risk']['max_trades_per_day']})")
+    # §29: 0 disables. This is no longer a risk rail — it is a RUNAWAY GUARD.
+    # Set well above observed demand (~15 buy signals/day live) so it never
+    # refuses a real opportunity, but still bounds an API loop, a bad feed, or
+    # a signal bug that would otherwise place orders until buying power ran out.
+    _cap_day = cfg["risk"].get("max_trades_per_day") or 0
+    if _cap_day and _trades_today() >= _cap_day:
+        raise RiskRejection(f"max trades per day reached ({_cap_day})")
 
     # Count THIS strategy's currently-open positions for its slot allocation.
     strategy_open = None
     if strategy and open_trades is not None:
         strategy_open = sum(1 for rec in open_trades.values()
                             if rec.get("strategy") == strategy)
+    # §31: ratchet the peak BEFORE checking against it, so a new high never
+    # reads as a drawdown, and so a corrupt file self-heals within one cycle.
+    # Runs for sells too — the peak must keep tracking even while entries are
+    # blocked, otherwise the breaker could never clear itself.
+    peak_equity = None
+    if cfg["risk"].get("max_drawdown_pct"):
+        peak_equity = update_high_water(account["equity"])
+
     pure_checks(action, symbol, qty, price, account, positions, cfg,
                 regime_label=regime_label, strategy=strategy,
-                strategy_open=strategy_open)
+                strategy_open=strategy_open, peak_equity=peak_equity)
 
     # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
     # risk must stay under max_portfolio_heat_pct of equity. Entries only.
