@@ -122,7 +122,14 @@ def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
         "n_decisions": len(decisions),
         "n_executed": len(executed),
         "n_closed": len(closed),
-        "n_open": len(executed) - len(closed) if executed else 0,
+        # Executed BUYS minus closed — `executed` also holds sells, and a sell
+        # is an exit, not an opening. Counting them inflated the open book by
+        # one per closed trade: the live ledger read "6 open positions" against
+        # a 5-row table and a broker reporting 5. Found 2026-07-25, when
+        # per-position marks made the page contradict itself. This is the same
+        # definition `Ledger.open_buys()` has always used.
+        "n_open": (len([r for r in executed if r.get("action") == "buy"])
+                   - len(closed)) if executed else 0,
         "win_rate": len(wins) / len(closed) if closed else None,
         "profit_factor": (gross_win / gross_loss if gross_loss > 0
                           else (float("inf") if gross_win > 0 else None)),

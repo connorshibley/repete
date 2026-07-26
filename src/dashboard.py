@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -181,6 +182,9 @@ th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;
 th{background:var(--surf2);font-size:12px;color:var(--ink2)}
 tr:hover td{background:var(--surf2)}
 .win{color:var(--green)}.loss{color:var(--red)}
+tr.totrow td{background:var(--surf2);border-top:2px solid var(--line)}
+tr.totrow:hover td{background:var(--surf2)}
+.warn{color:var(--amber)}
 .badge{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;
        background:var(--surf2);border:1px solid var(--line)}
 .veto{color:var(--red)}.downsize{color:var(--amber)}.approve{color:var(--green)}
@@ -524,7 +528,7 @@ def _hero(total: float, start: float, equity_now: float | None,
 
 def _ticker_chips(rep: dict, open_trades: dict, total_pl: float,
                   equity_now: float | None, regime: str | None,
-                  n_symbols: int, card: dict) -> str:
+                  n_symbols: int, card: dict, mark: dict | None = None) -> str:
     """One pass of Repete's tape — real facts only, chip-styled."""
     chips = ['<span class="tchip bot">🤖 REPETE · [PAPER]</span>']
     cls = "up" if total_pl >= 0 else "dn"
@@ -534,9 +538,23 @@ def _ticker_chips(rep: dict, open_trades: dict, total_pl: float,
     now = datetime.now(timezone.utc)
     for r in open_trades.values():
         age = (now - datetime.fromisoformat(r["ts"])).days
-        val = (r.get("qty") or 0) * (r.get("entry_price") or 0)
+        # With a mark, the tape carries CURRENT value and move. Without one it
+        # fell back to qty x the ledger's entry_price — which is the SIGNAL
+        # price, not the fill, so the chip advertised a number the bot never
+        # paid (SPY: $689.30 signalled, $753.14 filled). Same misleading figure
+        # as the positions table had; fixed in both places or in neither.
+        m = (mark or {}).get(r["symbol"]) or {}
+        val = m.get("market_value")
+        if val is None:
+            val = (r.get("qty") or 0) * (r.get("entry_price") or 0)
+            move = ""
+        else:
+            cost = (m.get("avg_entry") or 0) * (m.get("qty") or 0)
+            pl = m.get("unrealized_pl")
+            move = (f' <b class={"win" if pl >= 0 else "loss"}>{pl / cost * 100:+.1f}%</b>'
+                    if pl is not None and cost else "")
         chips.append(f'<span class=tchip>HOLDING <b>{_esc(r["symbol"])}</b> '
-                     f'{_fmt_money(val)} · {age}d</span>')
+                     f'{_fmt_money(val)}{move} · {age}d</span>')
     if not open_trades:
         chips.append('<span class=tchip>book is <b>flat</b> — '
                      'patience is a position</span>')
@@ -566,24 +584,126 @@ def _tape(chips_html: str) -> str:
             f'</div></div>')
 
 
-def _positions_rows(open_trades: dict, now: datetime) -> str:
-    rows = []
+def latest_position_mark(records: list[dict]) -> tuple[dict, str] | tuple[None, None]:
+    """Newest `positions_mark` event as ({symbol: {...}}, iso_ts), else (None, None).
+
+    The dashboard is a STATIC file published to GitHub Pages and the test suite
+    pins that it renders offline. So current value comes from the last mark the
+    agent recorded — never a live quote fetched at render time, which would need
+    broker keys everywhere this renders (CI included) and, for a genuinely live
+    public page, a credential shipped to the browser.
+    """
+    for r in reversed(records):
+        if r.get("type") == "event" and r.get("event") == "positions_mark":
+            try:
+                return json.loads(r.get("detail") or "{}"), r.get("ts")
+            except (ValueError, TypeError):
+                return None, None
+    return None, None
+
+
+def _mark_age_note(mark_ts: str | None, now: datetime) -> str:
+    """"as of" line for the positions heading. A number with no timestamp on a
+    page regenerated three times a weekday is a number that will eventually be
+    read as live when it is three days old."""
+    if not mark_ts:
+        return ""
+    try:
+        when = datetime.fromisoformat(mark_ts)
+    except (ValueError, TypeError):
+        return ""
+    hours = (now - when).total_seconds() / 3600
+    stamp = when.astimezone(ZoneInfo("America/New_York")).strftime("%a %d %b, %H:%M ET")
+    if hours > 24:
+        return (f' <span class="small warn">— valued {stamp}, '
+                f'{hours / 24:.0f}d old (market closed or no cycle since)</span>')
+    return f' <span class=small>— valued {stamp}</span>'
+
+
+def _positions_rows(open_trades: dict, now: datetime,
+                    mark: dict | None = None) -> str:
+    """Open book. With a mark, each row also carries what it is worth now.
+
+    Every derived number is guarded: a zero qty or zero entry renders an
+    em-dash rather than raising. `size_order()` carried exactly this bug
+    (ZeroDivisionError on a non-positive price) until 2026-07-25, and a crash
+    here would take down the whole page rather than one cell.
+    """
+    mark = mark or {}
+    live = bool(mark)
+    rows, tot_val, tot_pl, tot_cost = [], 0.0, 0.0, 0.0
+
     for tid, r in open_trades.items():
         age = (now - datetime.fromisoformat(r["ts"])).days
         stop = (r.get("order") or {}).get("stop_price")
-        rows.append(
-            f"<tr><td>{_esc(r['symbol'])}</td>"
-            f"<td>{_esc(r.get('strategy') or 'ma_crossover')}</td>"
-            f"<td>{r.get('qty') or ''}</td>"
-            f"<td>{_fmt_money(r['entry_price']) if r.get('entry_price') else ''}</td>"
-            f"<td>{_fmt_money(stop) if stop else '—'}</td>"
-            f"<td>{age}d</td>"
-            f"<td class=reason>{_esc(r.get('strategy_reason'))}</td></tr>")
+        m = mark.get(r["symbol"]) or {} if live else {}
+        # WHICH entry price? The ledger's `entry_price` is the SIGNAL price —
+        # the close the decision was made on — NOT what the bot paid.
+        # fill_quality shows the gap is real and can be large (SPY signalled
+        # 689.30, filled 753.14: 926 bps, a hangover from the 2026-07-16
+        # stale-bars incident). Printing the signal price next to a live "Now"
+        # invites the reader to subtract them and read a gain where the account
+        # shows a loss. So a marked row uses the broker's avg_entry — the true
+        # cost basis — and Cost -> Now -> Value -> Unrealized all reconcile.
+        # Unmarked rows keep the old column and the old meaning.
+        basis = m.get("avg_entry") if live else None
+        shown_entry = basis if basis else r.get("entry_price")
+        cells = [
+            f"<td>{_esc(r['symbol'])}</td>",
+            f"<td>{_esc(r.get('strategy') or 'ma_crossover')}</td>",
+            f"<td>{r.get('qty') or ''}</td>",
+            f"<td>{_fmt_money(shown_entry) if shown_entry else '—'}</td>",
+        ]
+        if live:
+            # A broker position with no ledger record (or vice versa) must not
+            # invent a row or a number — absent symbols simply show em-dashes.
+            qty = m.get("qty") or 0
+            entry = m.get("avg_entry") or 0
+            value = m.get("market_value")
+            pl = m.get("unrealized_pl")
+            now_px = (value / qty) if (value is not None and qty) else None
+            cost = entry * qty
+            pct = (pl / cost * 100) if (pl is not None and cost) else None
+            if value is not None:
+                tot_val += value
+                tot_cost += cost
+            if pl is not None:
+                tot_pl += pl
+            pl_cls = "win" if (pl or 0) >= 0 else "loss"
+            cells += [
+                f"<td>{_fmt_money(now_px) if now_px is not None else '—'}</td>",
+                f"<td>{_fmt_money(value) if value is not None else '—'}</td>",
+                (f'<td class={pl_cls}>{_fmt_signed(pl)}'
+                 f'{f" ({pct:+.2f}%)" if pct is not None else ""}</td>'
+                 if pl is not None else "<td>—</td>"),
+            ]
+        cells += [
+            f"<td>{_fmt_money(stop) if stop else '—'}</td>",
+            f"<td>{age}d</td>",
+            f"<td class=reason>{_esc(r.get('strategy_reason'))}</td>",
+        ]
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
     if not rows:
         return "<p class=small>No open positions.</p>"
-    return ("<div class=tblwrap><table><tr><th>Symbol</th><th>Strategy</th>"
-            "<th>Qty</th><th>Entry</th><th>Stop</th><th>Age</th>"
-            "<th>Entry reason</th></tr>" + "".join(rows) + "</table></div>")
+
+    # "Cost" when marked (broker avg_entry, the price actually paid) vs "Entry"
+    # when not (the ledger's signal price). Different numbers, different names.
+    head = ("<tr><th>Symbol</th><th>Strategy</th><th>Qty</th>"
+            + ("<th>Cost</th><th>Now</th><th>Value</th><th>Unrealized</th>"
+               if live else "<th>Entry</th>")
+            + "<th>Stop</th><th>Age</th><th>Entry reason</th></tr>")
+    total = ""
+    if live:
+        tpct = (tot_pl / tot_cost * 100) if tot_cost else None
+        tcls = "win" if tot_pl >= 0 else "loss"
+        total = (f'<tr class=totrow><td colspan=5><b>Book</b></td>'
+                 f'<td><b>{_fmt_money(tot_val)}</b></td>'
+                 f'<td class={tcls}><b>{_fmt_signed(tot_pl)}'
+                 f'{f" ({tpct:+.2f}%)" if tpct is not None else ""}</b></td>'
+                 f'<td colspan=3></td></tr>')
+    return ("<div class=tblwrap><table>" + head + "".join(rows) + total
+            + "</table></div>")
 
 
 def _decisions_rows(records: list[dict]) -> str:
@@ -669,6 +789,11 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
         JudgmentStore(lcfg.get("judgments_path",
                                "memory/judgments.jsonl")).replay()))
 
+    # Last recorded broker valuation of the open book (display only — never an
+    # input to a trading decision; invariant #4). Absent on an old ledger or a
+    # host that has not run a cycle, in which case the table renders as before.
+    mark, mark_ts = latest_position_mark(records)
+
     eq = equity_series(records)
     start = (cfg.get("reporting") or {}).get("starting_equity")
     if start is None:
@@ -716,6 +841,18 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
                 if slip and slip.get("median_bps") is not None
                 else "no clean fills yet")
 
+    # Book value / unrealized only appear when a mark exists — a card reading
+    # "$0.00" would be indistinguishable from a flat book.
+    book_cards = []
+    if mark:
+        _val = sum(p.get("market_value") or 0 for p in mark.values())
+        _upl = sum(p.get("unrealized_pl") or 0 for p in mark.values())
+        _cost = sum((p.get("avg_entry") or 0) * (p.get("qty") or 0)
+                    for p in mark.values())
+        _pct = f" ({_upl / _cost * 100:+.1f}%)" if _cost else ""
+        book_cards = [("open position value", _fmt_money(_val)),
+                      ("unrealized P&L", f"{_fmt_signed(_upl)}{_pct}")]
+
     cards = "".join(
         f'<div class=card><div class=v>{v}</div><div class=k>{k}</div></div>'
         for k, v in [
@@ -726,6 +863,7 @@ def render(cfg: dict | None = None, out_path: str = OUT_PATH,
             ("win rate", wr),
             ("profit factor", pf),
             ("realized P&L", _fmt_money(rep["realized_pnl"])),
+            *book_cards,
             ("LLM vetoes", rep["n_vetoes"]),
             ("rail rejections", rep["n_risk_rejections"]),
             ("slippage", slip_txt),
@@ -815,14 +953,15 @@ rel="noopener">@Repete2026 on X ↗</a>
 <p class=small><span class=livedot></span>live paper account · rebuilt
 after every cycle from the append-only ledger</p>
 {_tape(_ticker_chips(rep, open_now, total_pl, equity_now, regime_now,
-                     n_symbols, card))}
+                     n_symbols, card, mark))}
 {_hero(total_pl, start, equity_now, realized_only, speech)}
 <div class=cards>{cards}</div>
 <h2>📈 P/L over time</h2>{pl_chart}
 <h2>🪙 Trade scoreboard</h2>{bars}
 <h2>💰 Equity</h2>{eq_chart}{chart_note}
 <h2>🗓️ Monthly vs S&amp;P</h2>{month_tbl}
-<h2>💼 Open positions</h2>{_positions_rows(ledger.open_buys(), now)}
+<h2>💼 Open positions{_mark_age_note(mark_ts, now)}</h2>\
+{_positions_rows(ledger.open_buys(), now, mark)}
 <h2>🧭 Per-strategy</h2>{strat_tbl}
 <p class=small>Exits — {_esc(exits)}</p>
 <h2>⚖️ Recent decisions (last {N_DECISIONS})</h2>

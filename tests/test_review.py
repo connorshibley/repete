@@ -92,3 +92,32 @@ def test_per_strategy_breakdown_with_legacy_records():
     assert out["tsmom"]["profit_factor"] == 2.5
     assert out["ma_crossover"]["n_closed"] == 2  # legacy default owner
     assert out["ma_crossover"]["realized_pnl"] == 20.0
+
+
+def test_n_open_ignores_executed_sells(tmp_path):
+    """A sell is an exit, not an opening.
+
+    `executed` holds both sides, so `len(executed) - len(closed)` counted every
+    exit as a live position. On the real ledger that rendered "6 open positions"
+    beside a 5-row table and a broker reporting 5 — caught 2026-07-25 when
+    per-position marks put the two numbers next to each other.
+    """
+    from datetime import datetime, timezone
+
+    from ledger import Ledger
+    led = Ledger(str(tmp_path / "l.jsonl"))
+    a = led.log_decision("AAA", "buy", "r", {}, {}, executed=True,
+                         entry_price=10.0, qty=1)
+    led.log_decision("BBB", "buy", "r", {}, {}, executed=True,
+                     entry_price=20.0, qty=1)
+    # close AAA: an executed SELL plus its outcome
+    led.log_decision("AAA", "sell", "exit", {}, {}, executed=True, qty=1)
+    led.close_trade(a, exit_price=12.0, pnl=2.0, pnl_pct=20.0,
+                    exit_reason="strategy_sell")
+
+    rep = review.build_report(led.all_records(), [],
+                              datetime.now(timezone.utc))
+    assert rep["n_closed"] == 1
+    assert rep["n_open"] == 1, "the executed sell must not count as open"
+    # and the two definitions of "open" must agree
+    assert rep["n_open"] == len(led.open_buys())
