@@ -34,6 +34,10 @@ log = logging.getLogger("scheduler")
 # cleanly on a container without publishing configured. `&&` ties publish to a
 # clean job completion; main.py keeps its own failure logging.
 _PUBLISH = "sh scripts/publish_dashboard.sh"
+# ET hours in which the book is re-marked, at :30. Starts at 10 because the
+# 09:35 open cycle has just marked, ends at 15 because the 15:45 cycle marks
+# again — six extra read-only broker calls per session, no gaps over an hour.
+MARK_HOURS = range(10, 16)
 JOBS = [
     ("news-brain",   range(0, 5), None, 25, [PY, "src/market_context.py"]),
     ("plan-post",    range(0, 5), 9,    35,
@@ -51,6 +55,20 @@ JOBS = [
     # Trading decisions stay on completed bars, because partial-bar inputs have
     # never been through a gate (§19a declined exactly that).
     ("midday-scan",  range(0, 5), 12,   0,  [PY, "src/opportunity_scan.py"]),
+    # Hourly at :30 through the session. MARKS ONLY — it reads the open book
+    # and writes one positions_mark so the dashboard's value and unrealized ±%
+    # track the market. It cannot trade (src/mark_positions.py holds no order
+    # call path; a test pins it), and it publishes so the deployed page moves
+    # too.
+    #
+    # Why it exists: until 2026-07-26 the ONLY writers of positions_mark were
+    # the trading cycle and the post job, so between 09:35 and 15:45 the
+    # dashboard showed morning prices for six hours, and over a weekend it
+    # showed Friday's close — under a heading that gave a reader no reason to
+    # doubt them. The live mark measured 20.9 hours old.
+    ("mark-book",    range(0, 5), MARK_HOURS, 30,
+     ["sh", "-c", f"{PY} src/mark_positions.py && {PY} src/dashboard.py "
+                  f"&& {_PUBLISH}"]),
     ("cycle",        range(0, 5), 15,   45,
      ["sh", "-c", f"{PY} src/main.py && {_PUBLISH}"]),
     ("catch-up",     range(0, 5), 15,   55, [PY, "src/watchdog.py", "--catchup"]),
@@ -78,7 +96,9 @@ def due(job, now: datetime) -> bool:
         return False
     if hour is None:                      # hourly window job (news-brain)
         return now.hour in NEWS_HOURS
-    return now.hour == hour
+    if isinstance(hour, int):
+        return now.hour == hour
+    return now.hour in hour               # explicit hour window (mark-book)
 
 
 def run(job):
