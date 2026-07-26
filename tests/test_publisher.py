@@ -535,3 +535,98 @@ def test_marketing_page_shows_subscribe_only_when_gate_open(open_gate_env):
     r = client.get("/")
     assert r.status_code == 200
     assert "Subscribe" in r.text and "Subscriptions are not open" not in r.text
+
+
+# ---- QA sweep regressions (2026-07-25, scripts/qa_sweep.py) ----
+#
+# Found by driving the publisher as a real user against a production-scale
+# fixture (18,597 records / 450 closed trades / 549 days) rather than the
+# 11-day live ledger. That scale matters: gates.py needs 30 closed trades and
+# 90 days, so on live data the whole paid path is unreachable and had never
+# been exercised end to end.
+
+def test_session_email_is_normalised_at_the_boundary(tmp_path, monkeypatch):
+    """F-02: SubscriberDB lowercases inside every method, so tier lookups were
+    already case-insensitive — but the raw session string reached responses
+    un-normalised. `/account` echoed `PAID1@Example.Invalid` while resolving
+    the correct tier, showing one person two spellings of their own identity.
+
+    Normalising at the session boundary fixes every route at once instead of
+    each remembering to do it."""
+    from publisher import app as papp
+
+    class _Req:
+        def __init__(self, cookie):
+            self.cookies = {"repete_session": cookie}
+
+    monkeypatch.setattr(papp, "_cfg", lambda r: {
+        "publisher": {"session_cookie": "repete_session"}})
+    monkeypatch.setattr(papp, "_secret", lambda r: b"x" * 32)
+    monkeypatch.setattr(papp.auth, "verify_session",
+                        lambda s, c: "  PAID1@Example.Invalid  ")
+
+    assert papp.session_email(_Req("anything")) == "paid1@example.invalid"
+
+
+def test_session_email_stays_none_when_unauthenticated(monkeypatch):
+    """The normalisation must not turn a missing session into a truthy one."""
+    from publisher import app as papp
+
+    class _Req:
+        cookies: dict = {}
+
+    monkeypatch.setattr(papp, "_cfg", lambda r: {
+        "publisher": {"session_cookie": "repete_session"}})
+    monkeypatch.setattr(papp, "_secret", lambda r: b"x" * 32)
+    monkeypatch.setattr(papp.auth, "verify_session", lambda s, c: None)
+
+    assert papp.session_email(_Req()) is None
+
+
+def test_active_emails_excludes_unsubscribed(tmp_path):
+    """F-01 safety property, pinned for whoever wires the daily digest.
+
+    `daily_digest_html()` and `active_emails()` both exist; NOTHING in
+    production joins them — there is no digest caller and no scheduler job, so
+    no digest is sent to anyone today. The risk is the next person wiring it up
+    and iterating `subscriber` rows instead of this filter, which would mail
+    people who unsubscribed. This test is the thing to point at."""
+    from publisher.subscribers import SubscriberDB
+
+    db = SubscriberDB(str(tmp_path / "s.db"))
+    for e in ("stay@example.invalid", "leave@example.invalid"):
+        db.upsert_subscriber(e)
+    db.unsubscribe("leave@example.invalid")
+
+    active = db.active_emails()
+    assert "stay@example.invalid" in active
+    assert "leave@example.invalid" not in active, (
+        "unsubscribed address in the digest recipient list — do not send")
+
+
+def test_resubscribing_restores_a_previously_unsubscribed_address(tmp_path):
+    """upsert_subscriber ON CONFLICT sets status='active', so signing up again
+    must genuinely re-enable delivery rather than leaving a dead row."""
+    from publisher.subscribers import SubscriberDB
+
+    db = SubscriberDB(str(tmp_path / "s.db"))
+    db.upsert_subscriber("back@example.invalid")
+    db.unsubscribe("back@example.invalid")
+    assert "back@example.invalid" not in db.active_emails()
+
+    db.upsert_subscriber("back@example.invalid")
+    assert "back@example.invalid" in db.active_emails()
+
+
+def test_an_expired_paid_entitlement_resolves_to_free(tmp_path):
+    """The tier boundary the fixture exists to exercise: a lapsed subscriber
+    must stop receiving paid content, not coast on an expired grant."""
+    from datetime import datetime, timedelta, timezone
+
+    from publisher.subscribers import SubscriberDB
+
+    db = SubscriberDB(str(tmp_path / "s.db"))
+    db.upsert_subscriber("lapsed@example.invalid")
+    db.grant("lapsed@example.invalid", "paid", source="test",
+             expires=datetime.now(timezone.utc) - timedelta(seconds=1))
+    assert db.tier("lapsed@example.invalid") == "free"

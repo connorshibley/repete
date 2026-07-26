@@ -101,8 +101,19 @@ FastAPI service in `publisher/`, importing the agent's stores through a
 token hashes only), Stripe checkout + webhooks + entitlements (stub mode
 without keys), tiered content (free = 1-day delay, judge reasoning
 withheld; paid = same-day + full reasoning/debate/confidence + journal),
-dry-run email digests (outbox.jsonl unless RESEND_API_KEY set), DRAFT
-legal pages, and the revenue gate enforced at the checkout boundary.
+DRAFT legal pages, and the revenue gate enforced at the checkout boundary.
+
+**Email digests are HALF-BUILT — corrected 2026-07-25 after a QA sweep.** This
+line previously read "dry-run email digests," which overstated it.
+`digest.daily_digest_html()` builds the HTML and
+`SubscriberDB.active_emails()` returns the unsubscribe-respecting recipient
+list, but **nothing in production joins them** — no caller, no scheduler job,
+so no digest reaches anyone. (`digest.send()` is used only for the
+single-recipient magic-link email, which is correct.) Whoever wires the
+broadcast **must** iterate `active_emails()` and not the `subscribers` table,
+or people who unsubscribed will be mailed;
+`tests/test_publisher.py::test_active_emails_excludes_unsubscribed` pins that
+property so the requirement is executable rather than a note.
 
 Run it:
 ```bash
