@@ -36,6 +36,26 @@ DEFAULTS = {
                 # An unsigned stub webhook must not grant entitlements in a real
                 # deployment; enable only for offline testing.
                 "stub_webhook_grants": False},
+    # The daily digest broadcast. `enabled` is a THIRD switch, deliberately
+    # independent of email.dry_run and RESEND_API_KEY. Those two gate all
+    # email including the magic-link sign-in, which is transactional: one
+    # recipient, user-initiated, sent seconds after they asked for it. The day
+    # someone flips dry_run so a subscriber can sign in, that must not also arm
+    # an unattended mailer against the whole list. Same two-key interlock shape
+    # as invariant #1 (mode: live AND LIVE_TRADING_CONFIRMED=YES).
+    #   real broadcast  = digest.enabled AND NOT email.dry_run AND RESEND_API_KEY
+    #   magic-link mail =                     NOT email.dry_run AND RESEND_API_KEY
+    "digest": {
+        "enabled": False,
+        "subject_prefix": "Repete daily",
+        # CAN-SPAM requires the opt-out to keep working >= 30 days after a
+        # send; people archive newsletters and unsubscribe months later. An
+        # expired opt-out link that says "sign in first" becomes a spam
+        # complaint, which is strictly worse than a long-lived capability
+        # whose only power is to STOP mail.
+        "unsubscribe_token_ttl_days": 90,
+        "max_recipients_per_run": 500,   # blast-radius cap; refuse above it
+    },
     "free_delay_days": 1,            # free tier sees decisions delayed
     # Per-IP token buckets (Phase D). request-link is strictest: it sends
     # email, so it is the abuse magnet. capacity = burst, per minute = refill.

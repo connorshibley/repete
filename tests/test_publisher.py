@@ -584,13 +584,17 @@ def test_session_email_stays_none_when_unauthenticated(monkeypatch):
 
 
 def test_active_emails_excludes_unsubscribed(tmp_path):
-    """F-01 safety property, pinned for whoever wires the daily digest.
+    """F-01 safety property at the unit level: the recipient filter itself.
 
-    `daily_digest_html()` and `active_emails()` both exist; NOTHING in
-    production joins them — there is no digest caller and no scheduler job, so
-    no digest is sent to anyone today. The risk is the next person wiring it up
-    and iterating `subscriber` rows instead of this filter, which would mail
-    people who unsubscribed. This test is the thing to point at."""
+    Written when `daily_digest_html()` and `active_emails()` both existed and
+    nothing joined them. `publisher/broadcast.py` now does, so the end-to-end
+    version of this property lives in
+    tests/test_digest_broadcast.py::test_broadcast_never_mails_an_unsubscribed_address
+    — that one drives the real send loop and reads the outbox.
+
+    This test stays because it pins the primitive both of them depend on: an
+    `active_emails()` that stopped filtering would break the broadcast in a way
+    no amount of care at the call site could catch."""
     from publisher.subscribers import SubscriberDB
 
     db = SubscriberDB(str(tmp_path / "s.db"))

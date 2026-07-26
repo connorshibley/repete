@@ -158,6 +158,55 @@ a trading fix to babysit the publisher.
 
 ---
 
+## The digest didn't go out
+
+**Symptoms:** subscribers report no email, or you expected one and saw none.
+
+**Diagnose — read the audit trail before changing anything:**
+```bash
+tail -3 publisher_data/digest_runs.jsonl   # every run records why it stopped
+tail -5 publisher_data/outbox.jsonl        # per-recipient delivery records
+```
+
+`skipped_reason` names the cause outright. The four you will actually see:
+
+| `skipped_reason` | meaning |
+|---|---|
+| `publisher.digest.enabled is false` | working as designed — the digest is **off by default** |
+| `already ran today (…)` | it already went out; check `outbox.jsonl` before re-sending |
+| `no active subscribers` | the list is empty, or you are pointed at the wrong `data_dir` |
+| `… exceeds max_recipients_per_run` | the blast-radius cap refused rather than truncating |
+
+If `dry_run: true` on every outbox line, nothing was ever sent: a real send
+needs **all three** of `publisher.digest.enabled`, `email.dry_run: false`, and
+`RESEND_API_KEY`. Deliberately three — see PRODUCT.md.
+
+**Rehearse before arming anything:**
+```bash
+python scripts/send_digest.py --dry-run
+```
+
+**Verify:** a run line with `skipped_reason: null` and `failed: 0`.
+
+---
+
+## The digest went out twice
+
+**Symptoms:** subscribers received two copies.
+
+**Cause:** almost always a human re-running the CLI. `send_daily_digest()`
+refuses a second run the same **ET** day, but `--force` bypasses that guard —
+which is what it is for, and why it should not live in a cron line.
+
+**Diagnose:** `grep '"date_et": "YYYY-MM-DD"' publisher_data/digest_runs.jsonl`
+— more than one line with `queued + sent > 0` is a double send.
+
+**Fix:** nothing to roll back; mail is gone. Remove `--force` from whatever
+invoked it. If two hosts are running the publisher, stop one — the same-day
+guard reads a local file and cannot see the other machine.
+
+---
+
 ## Backup / restore
 
 **Take a backup now:** `scripts/backup.sh`

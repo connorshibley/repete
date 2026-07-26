@@ -65,7 +65,14 @@ Checkout physically refuses until all four hold:
 - [ ] Bookkeeping picked (even a spreadsheet) before revenue, not after.
 - [ ] Disclosures re-checked everywhere the product speaks: X bio + pinned
   post, GitHub Pages footer (shipped Phase C), publisher pages (shipped
-  Phase B), digest emails (shipped Phase B).
+  Phase B), digest emails (built 2026-07-25; disclaimer in the body AND
+  `[PAPER]` in the subject, since subjects survive forwarding when footers
+  get trimmed).
+- [ ] Before the first digest actually sends: a verified sending domain, then
+  set `publisher.digest.enabled: true` **and** `email.dry_run: false` **and**
+  `RESEND_API_KEY`. All three, deliberately — see PRODUCT.md. Rehearse with
+  `scripts/send_digest.py --dry-run` and read `publisher_data/outbox.jsonl`
+  before arming any of them.
 - [ ] Insurance quote for media/E&O once revenue is real (cheap peace of
   mind for a publication business; attorney will have opinions).
 

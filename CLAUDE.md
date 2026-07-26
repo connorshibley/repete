@@ -175,7 +175,12 @@ publisher/       Phase B subscription publication (2026-07-22, PRODUCT.md): Fast
                  store.configure or issues DDL. Magic-link auth (token hashes only),
                  Stripe stub/live billing, tiered feed (free: 1-day delay, no judge
                  reasoning; paid: same-day + reasoning/debate/confidence + journal),
-                 dry-run email outbox, DRAFT legal pages. Checkout is refused in code
+                 dry-run email outbox, DRAFT legal pages. The daily digest broadcast
+                 (publisher/broadcast.py + scripts/send_digest.py) needs THREE
+                 switches to mail anyone — digest.enabled AND email.dry_run:false AND
+                 RESEND_API_KEY — and is not scheduled; its opt-out link is a
+                 non-mutating GET confirm page because mail scanners prefetch links.
+                 Checkout is refused in code
                  until gates.revenue_gate passes (invariant #10); the numeric
                  thresholds are HARDCODED constants (gates.MIN_CLOSED_TRADES /
                  MIN_HISTORY_DAYS), not config knobs, and the billing webhook refuses

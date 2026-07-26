@@ -103,17 +103,42 @@ without keys), tiered content (free = 1-day delay, judge reasoning
 withheld; paid = same-day + full reasoning/debate/confidence + journal),
 DRAFT legal pages, and the revenue gate enforced at the checkout boundary.
 
-**Email digests are HALF-BUILT — corrected 2026-07-25 after a QA sweep.** This
-line previously read "dry-run email digests," which overstated it.
-`digest.daily_digest_html()` builds the HTML and
-`SubscriberDB.active_emails()` returns the unsubscribe-respecting recipient
-list, but **nothing in production joins them** — no caller, no scheduler job,
-so no digest reaches anyone. (`digest.send()` is used only for the
-single-recipient magic-link email, which is correct.) Whoever wires the
-broadcast **must** iterate `active_emails()` and not the `subscribers` table,
-or people who unsubscribed will be mailed;
-`tests/test_publisher.py::test_active_emails_excludes_unsubscribed` pins that
-property so the requirement is executable rather than a note.
+**Email digests — built 2026-07-25, deliberately not scheduled.** This line has
+been wrong twice: first "dry-run email digests" (overstated — nothing joined
+the pieces), then "HALF-BUILT" (accurate at the time). What exists now:
+
+- `publisher/broadcast.py::send_daily_digest()` joins `content.feed()` to
+  `SubscriberDB.active_emails()`. One feed is built **per tier**, not per
+  recipient — `content.feed()` walks the whole record stream several times, so
+  per-recipient builds were tens of millions of traversals for identical output.
+- `scripts/send_digest.py` is the entry point.
+- **Three independent switches** must all be set before mail leaves:
+  `publisher.digest.enabled` **and** `publisher.email.dry_run: false` **and**
+  `RESEND_API_KEY`. The first exists separately because the other two also gate
+  the magic-link sign-in email, which is transactional — one recipient, sent
+  seconds after they asked. Flipping `dry_run` so someone can sign in must not
+  also arm an unattended mailer against the whole list.
+- The opt-out link is `GET /unsubscribe` — a confirmation page that **mutates
+  nothing** — plus `POST /unsubscribe/confirm`, with a single-use 90-day token.
+  This shape is not cosmetic: Gmail's link proxy, Outlook Safe Links and
+  Proofpoint all prefetch links in email, so a mutating GET would silently
+  unsubscribe people via their employer's security scanner.
+
+**It is not scheduled in production, and that is on purpose.** The agent
+container cannot run it — its Dockerfile never copies `publisher/` and it has
+no `publisher_data` mount — so automating it means a new compose service for a
+job that today mails nobody. The shape when that changes: a `digest` service
+under the `publisher` profile running `scheduler.py --set publisher`, with
+`PUBLISHER_JOBS = [("daily-digest", range(0,5), 17, 30, [PY,
+"scripts/send_digest.py"])]`. Use `compose exec`, not `run --rm`, or two
+containers write one sqlite file.
+
+Known gaps, named rather than glossed: no plain-text alternate part, and no
+`List-Unsubscribe` / RFC 8058 one-click header (that needs a verified sending
+domain, which does not exist yet).
+
+`tests/test_digest_broadcast.py` pins all of it — including that a GET never
+unsubscribes and that an unsubscribed address is never mailed.
 
 Run it:
 ```bash

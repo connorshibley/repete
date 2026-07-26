@@ -8,6 +8,8 @@ emailed magic link; billing = Stripe (stub mode without keys).
 """
 import os
 import sys
+import urllib.parse
+from html import escape as html_escape
 
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -221,8 +223,103 @@ def feed(request: Request):
 
 @app.post("/unsubscribe")
 def unsubscribe(request: Request, email: str = Depends(require_session)):
+    """Session-based opt-out, driven by the signed-in account UI.
+
+    Unchanged. The token routes below serve a DIFFERENT caller — someone
+    clicking a link in an email, who has no session — and the two coexist:
+    GET /unsubscribe and POST /unsubscribe are separate operations.
+    """
     _db(request).unsubscribe(email)
     return {"ok": True, "unsubscribed": email}
+
+
+# ---- unsubscribe from an emailed link (no session) ----
+#
+# Rate limiting: these deliberately get NO dedicated bucket and fall through to
+# the global one (60/min per IP). They are capability-gated by a 256-bit token,
+# so brute force is not the threat model, and the false positive of a tight
+# limit is a 429 served to someone actively trying to leave a mailing list —
+# which converts straight into a spam complaint. A control whose failure mode
+# is a compliance incident is worse than no control.
+
+_UNSUB_CSS = ("font:15px/1.5 -apple-system,system-ui,sans-serif;"
+              "max-width:34rem;margin:4rem auto;padding:0 1rem")
+
+
+def _unsub_page(title: str, body: str, status: int = 200) -> HTMLResponse:
+    return HTMLResponse(
+        f'<!doctype html><meta name="viewport" content="width=device-width,'
+        f'initial-scale=1"><title>{title} — Repete</title>'
+        f'<div style="{_UNSUB_CSS}"><h2>{title}</h2>{body}</div>',
+        status_code=status)
+
+
+def _bad_token_page() -> HTMLResponse:
+    """One response for invalid / expired / already-used.
+
+    Deliberately does not distinguish them: three different messages would let
+    an attacker with a guessed token learn whether an address exists.
+    """
+    return _unsub_page(
+        "This link no longer works",
+        "<p>It may have expired, or already been used.</p>"
+        "<p>You can manage your subscription by signing in with a new "
+        "magic link.</p>", status=400)
+
+
+@app.get("/unsubscribe", response_class=HTMLResponse)
+def unsubscribe_page(request: Request, token: str = ""):
+    """Confirmation page for an emailed opt-out link. MUTATES NOTHING.
+
+    This is a GET reached from a mail client, so it must be safe to fetch
+    repeatedly by something that is not the subscriber. Gmail's link proxy,
+    Outlook Safe Links and Proofpoint URL Defense all issue unauthenticated
+    GETs against links in mail. If this handler unsubscribed, a corporate
+    security scanner would silently opt people out of a list they wanted, and
+    neither side would ever find out — the failure is invisible in both
+    directions.
+
+    So: peek_token (no UPDATE), render a form, and let the POST do the work.
+    Note this takes NO session dependency — the recipient is not signed in,
+    which is the whole point.
+    """
+    email = _db(request).peek_token(token, "unsubscribe") if token else None
+    if not email:
+        return _bad_token_page()
+    safe = html_escape(email)
+    return _unsub_page(
+        "Unsubscribe",
+        f"<p>Stop sending the daily digest to <b>{safe}</b>?</p>"
+        f'<form method="post" action="/unsubscribe/confirm'
+        f'?token={urllib.parse.quote(token, safe="")}">'
+        f'<button type="submit">Unsubscribe me</button></form>')
+
+
+@app.post("/unsubscribe/confirm")
+def unsubscribe_confirm(request: Request, token: str = ""):
+    """Burn the token and opt the address out. The only mutating step.
+
+    The token rides the QUERY STRING rather than a form field because
+    `Form(...)` needs python-multipart, which the publisher does not install.
+    /auth/verify?token= already sets that precedent for a burn-on-use
+    capability.
+
+    Redirects to a TOKENLESS page so a browser reload cannot re-POST a
+    now-spent token and show the user a failure for succeeding.
+    """
+    email = _db(request).consume_token(token, "unsubscribe") if token else None
+    if not email:
+        return _bad_token_page()
+    _db(request).unsubscribe(email)
+    return RedirectResponse("/unsubscribe/done", status_code=303)
+
+
+@app.get("/unsubscribe/done", response_class=HTMLResponse)
+def unsubscribe_done():
+    return _unsub_page(
+        "Unsubscribed",
+        "<p>You will not receive further digests.</p>"
+        "<p>Changed your mind? Request a magic link to resubscribe.</p>")
 
 
 # ---- billing ----
