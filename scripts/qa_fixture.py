@@ -253,12 +253,20 @@ def main() -> int:
     with open(led, "w") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")
-    for name in ("lessons.jsonl", "judgments.jsonl", "postexit.jsonl"):
+    # journal.jsonl is in this list for a reason: content.feed() reads the
+    # journal for the PAID tier, so a fixture without one leaves the paid path
+    # reading the operator's REAL memory/journal.jsonl. Read-only, so invariant
+    # #9 holds — but real write-ups have no business flowing through QA.
+    for name in ("lessons.jsonl", "judgments.jsonl", "postexit.jsonl",
+                 "journal.jsonl"):
         open(os.path.join(args.out, name), "a").close()
 
     pub_dir = os.path.join(args.out, "publisher_data")
     os.makedirs(pub_dir, exist_ok=True)
-    roles = build_subscribers(os.path.join(pub_dir, "subscribers.db"), rng)
+    # pub.db, NOT subscribers.db — publisher/app.py opens <data_dir>/pub.db.
+    # SubscriberDB creates whatever path it is handed, so a fixture on a
+    # different filename silently hands every tool an empty database.
+    roles = build_subscribers(os.path.join(pub_dir, "pub.db"), rng)
 
     print(f"  wrote {led}")
     print(f"  subscribers: " + ", ".join(f"{k}={len(v)}" for k, v in roles.items()))

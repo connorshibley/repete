@@ -132,6 +132,25 @@ class SubscriberDB:
                  (_now() + timedelta(minutes=ttl_minutes)).isoformat()))
             self._conn.commit()
 
+    def peek_token(self, raw_token: str, purpose: str) -> str | None:
+        """Email for a valid unused token WITHOUT burning it. None otherwise.
+
+        Exists for `GET /unsubscribe`, which must render a confirmation page
+        without consuming anything. Mail clients and security scanners (Gmail's
+        proxy, Outlook Safe Links, Proofpoint) prefetch links in email; if that
+        GET consumed the token, the scanner would destroy it and the human's
+        real click would then fail with "link already used".
+
+        Read-only by construction — no UPDATE — so the route cannot mutate
+        state even if a future edit forgets that it must not.
+        """
+        with _LOCK:
+            r = self._conn.execute(
+                "SELECT email FROM tokens WHERE token_hash=? AND purpose=? "
+                "AND used_ts IS NULL AND expires_ts > ?",
+                (token_hash(raw_token), purpose, _now().isoformat())).fetchone()
+        return r["email"] if r else None
+
     def consume_token(self, raw_token: str, purpose: str) -> str | None:
         """Email for a valid unused token — and burn it. None otherwise."""
         h = token_hash(raw_token)

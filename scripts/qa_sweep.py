@@ -21,6 +21,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -58,13 +59,20 @@ def build_client(fixture: str, *, gate_open: bool):
 
     cfg = copy.deepcopy(pconfig.load())
     cfg["memory"]["ledger_path"] = os.path.join(fixture, "ledger.jsonl")
+    # The journal has to move too. content.feed() reads it for the PAID tier,
+    # so leaving this pointed at the repo meant every paid-tier criterion was
+    # reading the operator's real journal instead of the fixture's.
+    cfg.setdefault("x_posting", {})["journal_path"] = os.path.join(
+        fixture, "journal.jsonl")
     cfg["publisher"]["data_dir"] = os.path.join(fixture, "publisher_data")
     cfg["publisher"]["attorney_signoff"] = gate_open
     cfg["publisher"]["legal_pages_final"] = gate_open
 
     app.state.cfg = cfg
+    # pub.db is the name publisher/app.py:73 opens. This used to open
+    # subscribers.db — a database production never reads.
     app.state.db = SubscriberDB(
-        os.path.join(fixture, "publisher_data", "subscribers.db"))
+        os.path.join(fixture, "publisher_data", "pub.db"))
     app.state.ledger = ReadOnlyLedger(cfg["memory"]["ledger_path"], cfg)
     if hasattr(app.state, "secret"):
         del app.state.secret
@@ -241,6 +249,10 @@ def run_all(fixture: str, verbose: bool) -> list[dict]:
     rec("UNSUB-01", "/unsubscribe", "free", "unsubscribe flips status",
         r.status_code == 200 and sub.get("status") == "unsubscribed",
         f"HTTP {r.status_code} status={sub.get('status')!r}")
+    # Put free3 back. This criterion mutated the fixture and never restored it,
+    # so the sweep was already non-idempotent — harmless while nothing read the
+    # active set, and no longer harmless now that DIGEST-01 does.
+    db.upsert_subscriber("free3@example.invalid")
 
     # ---- authenticated dashboard, both tiers ----
     for email, tier in [("free1@example.invalid", "free"),
@@ -376,14 +388,108 @@ def run_all(fixture: str, verbose: bool) -> list[dict]:
         reps["n_open"] == feed_now.get("open_positions"),
         f"review={reps['n_open']} feed={feed_now.get('open_positions')}")
 
-    # ---- digest wiring (F-01) ----
-    import inspect as _inspect
+    # ---- the daily digest broadcast (F-01) ----
+    #
+    # These replaced a criterion that grepped inspect.getsource(digest) for the
+    # string "active_emails". That tested TEXT, not behaviour: it could not
+    # tell a correct broadcast from one that greps clean and mails the wrong
+    # list, and it passed trivially because the function it guarded against did
+    # not exist yet. Everything below drives the real thing.
+    import copy as _copy
+
+    from publisher import broadcast as _bc
     from publisher import digest as _digest
-    joined = "active_emails" in _inspect.getsource(_digest)
-    rec("DIGEST-01", "publisher/digest.py", "system",
-        "IF a digest broadcast exists it must use active_emails()",
-        joined or not hasattr(_digest, "send_daily"),
-        "a broadcast path exists that does not filter unsubscribed addresses")
+
+    dcfg = _copy.deepcopy(cfg)
+    dcfg["publisher"]["digest"]["enabled"] = True
+    dcfg["publisher"]["email"]["dry_run"] = True     # belt; braces below
+    outbox_path = os.path.join(cfg["publisher"]["data_dir"], "outbox.jsonl")
+    before = os.path.getsize(outbox_path) if os.path.exists(outbox_path) else 0
+
+    bodies = {}
+    _real_send = _digest.send
+
+    def _spy(cfg_, to_email, subject, html):
+        bodies[to_email] = html
+        return _real_send(cfg_, to_email, subject, html)
+
+    _digest.send = _spy
+    try:
+        run = _bc.send_daily_digest(dcfg, db, app_ledger(c), force=True)
+    finally:
+        _digest.send = _real_send
+
+    active = set(db.active_emails())
+    mailed = set(bodies)
+    rec("DIGEST-01", "publisher/broadcast.py", "system",
+        "reaches every active subscriber and no unsubscribed one",
+        mailed == active and "gone1@example.invalid" not in mailed,
+        f"mailed-not-active={sorted(mailed - active)} "
+        f"active-not-mailed={sorted(active - mailed)}")
+
+    exp = bodies.get("expired1@example.invalid", "")
+    rec("DIGEST-02", "publisher/broadcast.py", "expired",
+        "a lapsed entitlement receives the FREE body, not the paid one",
+        bool(exp) and "[FREE]" in exp and "judge:" not in exp,
+        "expired subscriber received paid content — the entitlement expiry "
+        "did not reach the digest")
+
+    # DIGEST-03/04 drive the emailed link exactly as a mail client would:
+    # signed out, starting from the href that is actually in the body.
+    link = re.search(r'href="([^"]*/unsubscribe\?token=[^"]+)"',
+                     bodies.get("free1@example.invalid", "") or "")
+    logout(c, cfg)
+    if link:
+        url = link.group(1)
+        tok = url.split("token=")[1]
+        g1 = c.get(url)
+        g2 = c.get(url)                       # a scanner, then a preview pane
+        still_active = "free1@example.invalid" in db.active_emails()
+        conf = c.post(f"/unsubscribe/confirm?token={tok}",
+                      follow_redirects=False)
+        gone_now = "free1@example.invalid" not in db.active_emails()
+    else:
+        g1 = g2 = conf = None
+        still_active = gone_now = False
+
+    rec("DIGEST-03", "/unsubscribe", "email-recipient",
+        "the emailed opt-out link works with NO session",
+        bool(link) and g1.status_code == 200 and conf.status_code == 303
+        and gone_now,
+        f"link={bool(link)} "
+        f"get={getattr(g1, 'status_code', None)} "
+        f"confirm={getattr(conf, 'status_code', None)} unsubscribed={gone_now}")
+
+    rec("DIGEST-04", "/unsubscribe", "mail-scanner",
+        "GET alone never unsubscribes (link-prefetch safety)",
+        bool(link) and g2.status_code == 200 and still_active,
+        "a GET mutated state — Gmail/Outlook/Proofpoint prefetch would "
+        "silently unsubscribe people who never clicked")
+
+    # Leave the fixture as we found it, or a second sweep sees a different
+    # active set and DIGEST-01 drifts. A harness that is not rerunnable is
+    # itself a defect.
+    db.upsert_subscriber("free1@example.invalid")
+
+    lines = []
+    if os.path.exists(outbox_path):
+        with open(outbox_path) as f:
+            f.seek(before)
+            lines = [json.loads(x) for x in f.read().splitlines() if x.strip()]
+    rec("DIGEST-05", "publisher/digest.py", "system",
+        "no real email was possible: dry-run everywhere, no API key",
+        not os.environ.get("RESEND_API_KEY") and bool(lines)
+        and all(x["dry_run"] for x in lines),
+        f"RESEND_API_KEY set={bool(os.environ.get('RESEND_API_KEY'))} "
+        f"non-dry lines={[x for x in lines if not x.get('dry_run')][:3]}")
+
+    rec("DIGEST-06", "publisher/broadcast.py", "system",
+        "the run is auditable (recipients, tiers, failures recorded)",
+        run.get("skipped_reason") is None and run.get("failed") == 0
+        and bool(run.get("by_tier")),
+        f"run record thin or the send was skipped: "
+        f"skipped={run.get('skipped_reason')} failed={run.get('failed')} "
+        f"by_tier={run.get('by_tier')}")
 
     return out
 

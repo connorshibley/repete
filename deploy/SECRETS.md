@@ -16,7 +16,7 @@ image, committed, or logged (`src/log.py` redacts secret-named env values, and
 | `HEARTBEAT_PING_URL` | **strongly recommended off-laptop** | No external monitor. Every other check runs ON the host, so if the container or machine dies there is nothing left to notice, and silence is indistinguishable from a quiet market. This is the only check that survives the host going away. Treat the URL as a secret. |
 | `LIVE_TRADING_CONFIRMED` | **set to `NO`** | Half of the live interlock. Live needs BOTH this `=YES` **and** `mode: live`. Leave it `NO`. |
 | `PUBLISHER_SESSION_SECRET` | publisher only | The publisher refuses to start rather than sign sessions with a default key. Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `RESEND_API_KEY` | publisher only | Email digests write to a dry-run outbox instead of sending. |
+| `RESEND_API_KEY` | publisher only | All email writes to a dry-run outbox instead of sending. Setting it does **not** by itself arm the daily digest — that needs `publisher.digest.enabled: true` and `publisher.email.dry_run: false` as well. The key alone re-enables only transactional mail (the magic-link sign-in), which is the point of the separate flag. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | publisher only | Billing runs in stub mode. **Stub mode grants nothing** unless `publisher.billing.stub_webhook_grants` is explicitly enabled — a production deploy that forgets these cannot hand out free entitlements. |
 
 ## Setting them
