@@ -72,6 +72,10 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         "heartbeat_age_hours": None,
         "storage_backend": "jsonl",
         "last_cycle": None,
+        # Default False, not None: if the ledger cannot be read we must not
+        # conclude the cycle was fine. Unknown is treated as not-completed.
+        "cycle_completed_today": False,
+        "cycle_crashed_today": False,
         "open_positions": None,
         "degradations_today": 0,
         "slo_breach_today": False,
@@ -100,7 +104,11 @@ def status(cfg: dict | None = None, now: datetime | None = None,
                 continue
             if r.get("event") == "cycle_complete":
                 out["last_cycle"] = r.get("ts")
+                if (r.get("ts") or "")[:10] == today:
+                    out["cycle_completed_today"] = True
             if (r.get("ts") or "")[:10] == today:
+                if r.get("event") == "cycle_crashed":
+                    out["cycle_crashed_today"] = True
                 if r.get("event") == "degradation":
                     out["degradations_today"] += 1
                 elif r.get("event") == "slo_breach":
@@ -116,6 +124,15 @@ def status(cfg: dict | None = None, now: datetime | None = None,
     elif age > MAX_HEARTBEAT_AGE_HOURS and now.weekday() < 5:
         out["problems"].append(
             f"heartbeat is {age:.1f}h old — a weekday cycle was missed")
+    elif now.weekday() < 5 and not out["cycle_completed_today"]:
+        # The heartbeat is fresh, so the process ran. `last_cycle` has been
+        # collected here since this file was written but was only ever
+        # reported, never asserted on — so a cycle that started and died read
+        # as healthy (2026-07-24). This is the assertion that was missing.
+        out["problems"].append(
+            "cycle ran today but never completed"
+            + (" — see the cycle_crashed record"
+               if out["cycle_crashed_today"] else ""))
     if out["slo_breach_today"]:
         out["problems"].append("degradation SLO breached today")
 

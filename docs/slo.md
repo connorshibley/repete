@@ -4,9 +4,21 @@ These formalize targets the code already measures — nothing here is
 aspirational monitoring to be built later. Each SLO names its measurement
 and its alert path.
 
+> **2026-07-26.** Row 1 used to claim cycle completion was measured by
+> `cycle_complete` events. It was not: `watchdog.check()` compared only the
+> heartbeat file, and `write_heartbeat()` runs in a `finally:` — so a cycle
+> that crashed still stamped a fresh heartbeat and read as healthy. On
+> 2026-07-24 that cost a full trading day in silence, and the same date-only
+> test in `catchup()` suppressed the recovery run. The claim is now true:
+> `watchdog.completed_on()` asserts a `cycle_complete` dated today, and
+> `tests/test_cycle_completion.py` replays the incident.
+>
+> The lesson generalises past this row. **A documented check is not a check.**
+
 | SLO | Target | Measured by | Alert path |
 |---|---|---|---|
-| Cycle completion | every market day gets a cycle (15:45, or 15:55 catch-up) | `cycle_complete` events; heartbeat file | watchdog 16:15 ET → macOS notification |
+| Cycle completion | every market day gets a cycle (15:45, or 15:55 catch-up) that reaches `cycle_complete` | `watchdog.completed_on()` — a `cycle_complete` dated today, not merely a fresh heartbeat | catch-up re-runs it 15:55; watchdog 16:15 ET → `alerting.send()` (webhook if `ALERT_WEBHOOK_URL`, else macOS banner) |
+| Cycle crash visibility | a cycle that dies leaves a record saying so | `cycle_crashed` ledger event with the traceback tail | surfaced by the completion SLO above; `health.status()` names it |
 | Heartbeat freshness | < 26h old on weekdays | src/health.py (`MAX_HEARTBEAT_AGE_HOURS`) | health.py nonzero exit; Docker HEALTHCHECK → container unhealthy |
 | Degradations (fail-open guard skips) | < `ops.max_degradations_per_day` (3) per day | ledgered `degradation` events, counted in main.py | `slo_breach` event + macOS alert |
 | Data freshness | no cycle trades on stale bars, ever | risk.bars_fresh gate (aborts/drops) | cycle log + ledger record |

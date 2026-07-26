@@ -33,14 +33,20 @@ import risk
 import strategies
 import x_poster
 
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-    handlers=[logging.StreamHandler(),
-              logging.FileHandler("logs/agent.log", mode="a")],
-)
 log = logging.getLogger("daily")
+
+
+def configure_logging() -> None:
+    """Attach file handlers. Called from __main__ only — see the note in
+    main.configure_logging()."""
+    os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(),
+                  logging.FileHandler("logs/agent.log", mode="a")],
+        force=True,
+    )
 
 ET = ZoneInfo("America/New_York")
 PLAN_MARKER = "memory/last_plan_post"   # bare YYYY-MM-DD of the last attempt
@@ -260,6 +266,7 @@ def run(mode: str):
 
 
 if __name__ == "__main__":
+    configure_logging()
     p = argparse.ArgumentParser(description="Morning plan / evening review post")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--plan", action="store_true")

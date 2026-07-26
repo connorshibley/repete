@@ -21,14 +21,21 @@ from datetime import date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-    handlers=[logging.StreamHandler(),
-              logging.FileHandler("logs/agent.log", mode="a")],
-)
 log = logging.getLogger("watchdog")
+
+
+def configure_logging() -> None:
+    """Attach file handlers. Called from __main__ only — see the note in
+    main.configure_logging() for why import-time setup polluted the real
+    production logs during every test run."""
+    os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(),
+                  logging.FileHandler("logs/agent.log", mode="a")],
+        force=True,
+    )
 
 HEARTBEAT_FILE = "memory/heartbeat"
 HALT_FILE = "HALT"
@@ -59,10 +66,57 @@ def heartbeat_date(path: str = HEARTBEAT_FILE) -> date | None:
         return None
 
 
+_UNREADABLE = object()          # distinct from "read it, found nothing"
+
+
+def completed_on(day: date, records=None) -> bool | None:
+    """Did a cycle reach `cycle_complete` on `day`?
+
+    True / False / None, where None means the ledger could not be read at all.
+    The three-way answer matters: a monitor that cannot see its input must say
+    so rather than report all-clear, which is the failure this whole module is
+    being corrected for.
+    """
+    if records is _UNREADABLE:
+        return None
+    if records is None:
+        try:
+            import yaml
+            from ledger import Ledger
+            with open("config.yaml") as f:
+                cfg = yaml.safe_load(f)
+            records = Ledger(cfg["memory"]["ledger_path"]).all_records()
+        except Exception:  # noqa: BLE001 — reported by the caller, not swallowed
+            return None
+    for r in records:
+        if r.get("event") != "cycle_complete":
+            continue
+        ts = r.get("ts") or r.get("timestamp") or ""
+        try:
+            if datetime.fromisoformat(ts).astimezone().date() == day:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def check(today: date | None = None,
           heartbeat_path: str = HEARTBEAT_FILE,
-          halt_path: str = HALT_FILE) -> list[str]:
-    """Return the list of problems found (empty = all clear)."""
+          halt_path: str = HALT_FILE,
+          records=None) -> list[str]:
+    """Return the list of problems found (empty = all clear).
+
+    Two different questions, deliberately kept apart:
+
+      * did the PROCESS run?    -> the heartbeat file
+      * did the CYCLE finish?   -> a `cycle_complete` record in the ledger
+
+    Until 2026-07-26 only the first was asked, and `write_heartbeat()` runs in
+    a `finally:` — so a cycle that crashed six seconds in still stamped a
+    fresh heartbeat and read as healthy. That is exactly what happened on
+    2026-07-24: no decisions, no abort record, no alert. `docs/slo.md` had
+    claimed completion was measured all along; it never was.
+    """
     today = today or date.today()
     problems = []
     if today.weekday() < 5:  # Mon-Fri: a cycle should have run
@@ -73,13 +127,23 @@ def check(today: date | None = None,
         elif hb < today:
             problems.append(f"last heartbeat {hb} — today's trading cycle "
                             "did NOT run")
+        else:
+            # The process ran today. Did it get anywhere?
+            done = completed_on(today, records)
+            if done is None:
+                problems.append("cannot read the ledger to confirm today's "
+                                "cycle completed — treating as a failure")
+            elif not done:
+                problems.append("the cycle process ran today but never "
+                                "reached cycle_complete — it died or aborted "
+                                "part-way; check for a cycle_crashed record")
     if os.path.exists(halt_path):
         problems.append("HALT file present — trading is disabled until you "
                         "review and delete it")
     return problems
 
 
-def catchup(now: datetime | None = None) -> str:
+def catchup(now: datetime | None = None, records=None) -> str:
     """Late catch-up (2026-07-21): scheduled ~15:55 ET weekdays. If today's
     cycle hasn't run (machine was asleep at 15:45) and the market is still
     open, run it NOW instead of losing the trading day. Safe to double-fire:
@@ -91,10 +155,15 @@ def catchup(now: datetime | None = None) -> str:
         return "weekend — no action"
     if not (9 <= now.hour < 16 and (now.hour, now.minute) >= (9, 30)):
         return "market closed — no action"
-    hb = heartbeat_date()
-    if hb is not None and hb >= now.date():
+    # Completion, NOT the heartbeat. This used to test `hb >= now.date()`,
+    # which meant a cycle that crashed at 15:45 stamped a fresh heartbeat on
+    # its way out and thereby suppressed the very catch-up that exists to
+    # rescue it. On 2026-07-24 that cost a whole trading day: the crash
+    # silenced its own recovery. Asking "did a cycle finish today?" makes the
+    # catch-up fire on a crash, which is exactly when it is wanted.
+    if completed_on(now.date(), records):
         return "cycle already ran today — no action"
-    log.warning("catch-up: today's cycle missing at %s ET — running it late",
+    log.warning("catch-up: no completed cycle today at %s ET — running it late",
                 now.strftime("%H:%M"))
     notify("Trading agent: late catch-up",
            "3:45 cycle was missed; running it now before the close")
@@ -126,4 +195,5 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_logging()
     main()

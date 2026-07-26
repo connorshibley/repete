@@ -14,11 +14,30 @@ def _write_heartbeat(tmp_path, when: datetime) -> str:
     return str(p)
 
 
-def test_fresh_heartbeat_all_clear(tmp_path):
-    hb = _write_heartbeat(tmp_path, datetime.now(timezone.utc))
-    assert watchdog.check(today=date.today(),
+def _completed(day: date):
+    """Ledger records containing one completed cycle on `day`."""
+    return [{"type": "event", "event": "cycle_complete",
+             "ts": datetime(day.year, day.month, day.day, 19, 50,
+                            tzinfo=timezone.utc).isoformat()}]
+
+
+def test_fresh_heartbeat_and_a_completed_cycle_is_all_clear(tmp_path):
+    """All-clear now needs BOTH signals: the process ran, and it finished.
+
+    Two things were wrong with the version this replaces. It asserted a fresh
+    heartbeat ALONE was sufficient — which is the 2026-07-24 bug stated as a
+    guarantee. And it used `date.today()`, so on a weekend the weekday branch
+    never executed and the test asserted nothing at all; it would have gone
+    red the next Monday morning in CI for reasons unrelated to any change.
+    Both the date and the ledger are pinned here.
+    """
+    hb = _write_heartbeat(
+        tmp_path, datetime(MONDAY.year, MONDAY.month, MONDAY.day, 19, 50,
+                           tzinfo=timezone.utc))
+    assert watchdog.check(today=MONDAY,
                           heartbeat_path=hb,
-                          halt_path=str(tmp_path / "HALT")) == []
+                          halt_path=str(tmp_path / "HALT"),
+                          records=_completed(MONDAY)) == []
 
 
 def test_missing_heartbeat_flagged_on_weekday(tmp_path):

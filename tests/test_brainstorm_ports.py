@@ -128,17 +128,49 @@ def test_catchup_runs_when_cycle_missed(tmp_path, monkeypatch):
     assert out == "ran late cycle" and ran == [1]
 
 
+def _done(day="2026-07-21"):
+    """A ledger containing one completed cycle on `day`."""
+    return [{"type": "event", "event": "cycle_complete",
+             "ts": f"{day}T19:50:00+00:00"}]
+
+
 def test_catchup_noop_when_already_ran_or_closed(tmp_path, monkeypatch):
+    """The no-op condition is a COMPLETED cycle, not a fresh heartbeat.
+
+    This used to pass a fresh heartbeat and assert "already ran" — the
+    2026-07-24 bug written down as a guarantee. write_heartbeat() runs in a
+    `finally:`, so a cycle that crashed at 15:45 stamped today's heartbeat,
+    and this check then suppressed the 15:55 catch-up that existed to rescue
+    it. See test_catchup_runs_when_the_cycle_crashed.
+    """
     _hb(tmp_path, monkeypatch, "2026-07-21T19:50:00+00:00")  # today
     monkeypatch.setattr(main, "run_cycle",
                         lambda: (_ for _ in ()).throw(AssertionError))
     assert "already ran" in watchdog.catchup(
-        datetime(2026, 7, 21, 15, 55, tzinfo=ET))
+        datetime(2026, 7, 21, 15, 55, tzinfo=ET), records=_done())
     _hb(tmp_path, monkeypatch, "2026-07-20T19:50:00+00:00")
     assert "closed" in watchdog.catchup(
-        datetime(2026, 7, 21, 16, 5, tzinfo=ET))     # after close
+        datetime(2026, 7, 21, 16, 5, tzinfo=ET), records=[])   # after close
     assert "weekend" in watchdog.catchup(
-        datetime(2026, 7, 19, 15, 55, tzinfo=ET))    # Sunday
+        datetime(2026, 7, 19, 15, 55, tzinfo=ET), records=[])  # Sunday
+
+
+def test_catchup_runs_when_the_cycle_crashed(tmp_path, monkeypatch):
+    """The 2026-07-24 regression, exactly.
+
+    Heartbeat stamped today — the crash's own `finally:` wrote it — but no
+    cycle_complete anywhere. The catch-up must fire. Under the old
+    heartbeat-date test it did not, and a full trading day was lost in
+    silence: no decisions, no alert, an EOD post reading "nothing today".
+    """
+    _hb(tmp_path, monkeypatch, "2026-07-21T19:45:06+00:00")  # today, crashed
+    ran = []
+    monkeypatch.setattr(main, "run_cycle", lambda: ran.append(1))
+    out = watchdog.catchup(datetime(2026, 7, 21, 15, 55, tzinfo=ET),
+                           records=[])
+    assert out == "ran late cycle" and ran == [1], (
+        "a fresh heartbeat from a crashed cycle must not suppress the "
+        "catch-up that exists to rescue it")
 
 
 # ---- 5. revalidation report (offline smoke) ----
