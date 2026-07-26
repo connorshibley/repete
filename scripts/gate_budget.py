@@ -42,6 +42,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import backtest as bt                                     # noqa: E402
 import significance as sig                                # noqa: E402
 
+# SUPERSEDED by §29 (2026-07-26). None means the harness is live and its
+# baseline arm must equal the shipped config; a string names what replaced it.
+#
+# ARMS below is deliberately NOT updated to match the new config. It is a
+# PRE-REGISTERED record of what §27 committed to before it ran, and editing it
+# after the fact to keep a test green would falsify the register that gives
+# every verdict in backtest_candidates.md its weight. §27's rejection stands on
+# these numbers, measured against a $2,000 clamp and 1%/trade sizing — a bot
+# that no longer exists.
+#
+# Re-running this file today measures a phantom: §29 replaced both levers it
+# tests (max_order_value_usd -> 0/disabled, risk_per_trade_pct -> 8.0).
+SUPERSEDED_BY = "§29 (2026-07-26) — counts uncapped, order clamp removed"
+
 # (name, risk_per_trade_pct, max_order_value_usd). Baseline first.
 # Discrete and pre-registered — no continuous knob to slide toward a result.
 ARMS = [

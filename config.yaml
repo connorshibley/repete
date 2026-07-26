@@ -73,18 +73,30 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     priority: 1        # §20a demoted this to 3; §22 REVERTED that — see below.
     fast_period: 10
     slow_period: 30
-    max_open_positions: 5   # §13: untested at wider allocation — held at the
-                            # status quo so it cannot absorb meanrev's headroom.
+    max_open_positions: 0   # 0 = disabled (§29 2026-07-26). Was 5 — §13 held it
+                            # at status quo so it could not absorb meanrev's
+                            # headroom. With the global ceiling gone there is no
+                            # headroom to compete over: heat and concentration
+                            # bound the book, not a queue for slots.
   tsmom:               # time-series momentum (Moskowitz/Ooi/Pedersen)
     enabled: true      # PASSED gate 2026-07-15: OOS +1.45%, PF 2.56, 51 trades
     priority: 2        # (exposure-matched benchmark; see memory/backtest_trials.jsonl)
     momentum_bars: 63  # in-sample grid winner — never re-picked after OOS
     skip_bars: 0
-    max_open_positions: 5   # §13 clause (b): tsmom is HELD at 5 on purpose.
-                            # §12 showed its PF collapses as slots rise
+    max_open_positions: 0   # 0 = disabled (§29, owner decision 2026-07-26).
+                            # THIS IS THE ONE WITH COUNTER-EVIDENCE AGAINST IT.
+                            # Was 5, held there by §13 clause (b) because §12
+                            # measured tsmom's PF COLLAPSING as slots rise
                             # (2.398 -> 1.977 -> 1.730) while return rises — the
-                            # extra trades are risk bought at a worse rate. It
-                            # must not absorb the new headroom.
+                            # extra trades are risk bought at a worse rate.
+                            # That evidence has not been refuted; the owner has
+                            # accepted the tradeoff (more trades, worse average
+                            # trade) in exchange for the sample rate needed to
+                            # learn anything at all — 1 closed trade in 10 live
+                            # days puts the 30-trade revenue gate 300 days out.
+                            # §29 re-measures it at the new sizing, where the
+                            # §12 result may not even hold: it was produced
+                            # behind the $2k clamp, at 2.5% deployment.
     trend_sma_period: 200
     index_sma_period: 0   # SPY<SMA50 entry gate: adopted 2026-07-16, REVERTED
                           # 2026-07-17 — the IS win didn't replicate on a
@@ -131,7 +143,11 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     trend_sma_period: 200
     exit_sma_period: 5
     max_hold_days: 7
-    max_open_positions: 8   # §13 slot allocation (2026-07-23). NOTE §20b: measured
+    max_open_positions: 0   # 0 = disabled (§29 2026-07-26). Was 8, and §20b had
+                            # already found it INERT. Prior note kept below —
+                            # it documents exactly why a count cap was never
+                            # doing the work it appeared to do:
+                            # [prior] §13 slot allocation (2026-07-23). NOTE §20b: measured
                             # under the ensemble simulator this value is INERT —
                             # an arm with 5/5/5 produces byte-identical OOS results,
                             # because the GLOBAL ceiling of 8 is consumed by the two
@@ -148,9 +164,52 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                             # maxDD unchanged 0.5%. The global cap still binds.
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
-  risk_per_trade_pct: 1.0        # % of current equity risked per trade (fixed-fractional)
-  max_position_pct: 10.0         # no single position may exceed this % of equity
-  max_order_value_usd: 2000      # absolute per-order dollar cap
+  risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
+                                 # the pre-registered rule: highest arm clearing
+                                 # maxDD <= 10.0pp (owner ceiling), PF >= 1.3,
+                                 # and beating the uncapped-baseline +1.94%.
+                                 # Sweep {1,2,4,6,8} OOS, judge model on:
+                                 #   1 -> +1.94%  PF 1.607  maxDD 0.73%  deploy  5.0%
+                                 #   2 -> +4.00%  PF 1.567  maxDD 1.55%  deploy 10.6%
+                                 #   4 -> +8.30%  PF 1.539  maxDD 3.39%  deploy 22.4%
+                                 #   6 -> +13.25% PF 1.547  maxDD 5.12%  deploy 34.2%
+                                 #   8 -> +17.45% PF 1.549  maxDD 7.51%  deploy 43.6%
+                                 # READ THIS BEFORE CELEBRATING THE RETURN: return
+                                 # rose 9x and maxDD rose 10.3x. return/maxDD went
+                                 # 2.65 -> 2.32, i.e. slightly WORSE. This is
+                                 # LEVERAGE, not a better strategy. It still loses
+                                 # outright to B&H +36.21%; it passes only on the
+                                 # exposure-matched benchmark.
+                                 # 8 was the top of the pre-registered range, so
+                                 # the boundary was NOT found — 10 may also clear
+                                 # 10pp. Extending the sweep after seeing results
+                                 # would be shopping; it needs its own gate.
+  max_position_pct: 10.0         # no single position may exceed this % of equity.
+                                 # §29 (2026-07-26): this is now THE per-name
+                                 # exposure rail — max_order_value_usd below is
+                                 # disabled, so nothing else bounds a single
+                                 # position. Deliberately NOT 0-disableable: a 0
+                                 # here yields a sizing ceiling of 0, i.e. no
+                                 # trades at all, which is the fail-safe
+                                 # direction. Scales with the account, so unlike
+                                 # a fixed dollar cap it cannot go stale as
+                                 # equity grows.
+  max_order_value_usd: 0         # 0 = DISABLED (§29, owner decision 2026-07-26).
+                                 # Was 2000 — a 2% ceiling on ~$100k equity, and
+                                 # it fired BEFORE every other rail. That single
+                                 # line is why the sophisticated rails all
+                                 # measured as inert: §11 found risk_pct 1.0/2.0/
+                                 # 5.0 byte-identical, §18 rejected regime_exposure
+                                 # because "gross never nears the cap", and the
+                                 # portfolio heat comment records four positions
+                                 # totalling ~$560 against a $4,000 cap.
+                                 # Measured on the frozen snapshot, it held
+                                 # AVERAGE DEPLOYMENT AT 2.5% OF CAPITAL — the bot
+                                 # was ~97% in cash, which is the real reason OOS
+                                 # return sat near zero.
+                                 # Per-name exposure is now governed by
+                                 # max_position_pct below, which scales with the
+                                 # account instead of going stale as equity grows.
   min_one_share: false           # §28 CANDIDATE (2026-07-25) — NOT YET GATED.
                                  # When the sizing budget is below one share the
                                  # name becomes unbuyable: GS at $1,098 vs a $999
@@ -182,7 +241,19 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # what makes that record interpretable (§18:
                                  # the backtest cannot certify any edge, so the
                                  # forward record is the only clean holdout).
-  max_trades_per_day: 3          # circuit breaker on order rate. §19b raised this
+  max_trades_per_day: 15         # RUNAWAY GUARD, NOT A RISK RAIL (§29, owner
+                                 # decision 2026-07-26). Was 3, which blocked 59
+                                 # of 146 live buy signals — 40% of everything the
+                                 # bot wanted to do. Set above observed demand
+                                 # (~15 buy signals/day) so it should never refuse
+                                 # a real opportunity; what it still bounds is an
+                                 # API retry loop, a bad data feed, or a signal
+                                 # bug placing orders until buying power runs out.
+                                 # 0 disables entirely. Prior rationale below is
+                                 # kept because it explains why 3 measured as
+                                 # harmless — it was measured behind the GLOBAL
+                                 # SLOT CEILING, which no longer exists:
+                                 # [prior] circuit breaker on order rate. §19b raised this
                                  # 3 -> 5 earlier the same day; §20c REVERTED it
                                  # once the ensemble simulator could measure the
                                  # rail properly. §19b's evidence summed three
@@ -194,12 +265,54 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # binds first. Reverted to the tighter value — a
                                  # circuit breaker should be as tight as it can be
                                  # when loosening it buys nothing.
-  daily_loss_limit_pct: 3.0      # if daily P&L drops below -3%, flatten + HALT
-  max_open_positions: 8          # GLOBAL ceiling over the whole book. Raised
-                                 # 5 -> 8 by §13 (2026-07-23) so meanrev's
-                                 # allocation can actually be used; per-strategy
-                                 # allocations under strategies.<name> only ever
-                                 # TIGHTEN this. tsmom stays pinned at 5.
+  daily_loss_limit_pct: 5.0      # §31 (owner decision 2026-07-26, was 3.0): if
+                                 # daily P&L drops below this, FLATTEN + HALT.
+                                 # This is the HARD stop — it liquidates.
+                                 # Raised because 3.0 became inconsistent with the
+                                 # owner's 10pp drawdown tolerance once deployment
+                                 # went 5% -> 43.6%: it would have liquidated the
+                                 # book at roughly a THIRD of the drawdown the
+                                 # owner has accepted, turning a survivable
+                                 # correction into a realised loss at the bottom.
+                                 # Half the total tolerance is the reasoning — a
+                                 # single day consuming half the drawdown budget
+                                 # is a genuine emergency, not a bad Tuesday.
+  max_drawdown_pct: 10.0         # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26).
+                                 # Peak-to-trough from the equity high-water mark.
+                                 # This is the SOFT brake: it blocks new ENTRIES
+                                 # and never touches exits, so a slow bleed stops
+                                 # you adding risk without liquidating you at the
+                                 # low. Distinct from daily_loss_limit_pct above
+                                 # on purpose — different situations, different
+                                 # acts. 0 disables.
+                                 # Set to the owner's stated tolerance. The high
+                                 # water mark persists in memory/.equity_highwater
+                                 # .json and ratchets UP only; an unreadable file
+                                 # fails CLOSED (assumes breached) for one cycle
+                                 # and self-heals on the next write.
+                                 # The backtester enforces the same rail against
+                                 # its own running peak via risk.drawdown_pct —
+                                 # a live-only rail would be divergence #9.
+  max_open_positions: 0          # 0 = DISABLED (§29, owner decision 2026-07-26):
+                                 # "if there's more to hold onto then hold onto
+                                 # it". Was 8.
+                                 # Position COUNT was never a risk measure —
+                                 # eight $250 positions and eight $25,000 ones
+                                 # are the same number and wildly different
+                                 # exposure. It only LOOKED like a rail because
+                                 # the $2k order clamp made every position the
+                                 # same size.
+                                 # What bounds the book now: max_portfolio_heat_pct
+                                 # (total stop-risk), max_position_pct (per name),
+                                 # correlation_cap (co-moving names are one bet),
+                                 # max_drawdown_pct (peak-to-trough halt) and
+                                 # buying power. All were already here; all were
+                                 # inert behind the clamp.
+                                 # COUNTER-EVIDENCE ON RECORD: §12 measured tsmom's
+                                 # profit factor DEGRADING as slots rise —
+                                 # 2.398 -> 1.977 -> 1.730 — while return rises.
+                                 # More positions has a known cost in trade
+                                 # quality. That is what §29 gates.
   max_bar_age_days: 4            # FRESHNESS GUARD: refuse to trade if the newest bar is
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
@@ -270,9 +383,29 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     min_scale: 0.5               # clamp so sizing never swings more than 2x either way
     max_scale: 1.5
   regime_exposure:               # down-regime gross-exposure cap. Gate 2026-07-18:
-    enabled: false               # REJECTED — at 1%/trade sizing gross never nears
-                                 # the cap, results identical to baseline (untestable
-                                 # benefit). Revisit only if sizing scales up.
+    enabled: true                # §29 2026-07-26: ENABLED, on §18's own condition.
+                                 # §18 rejected it as untestable — "at 1%/trade
+                                 # sizing gross never nears the cap ... Revisit
+                                 # only if sizing scales up." Sizing has now
+                                 # scaled 8x and deployment 5% -> 43.6%, so the
+                                 # condition §18 itself named is met.
+                                 # Measured at risk_per_trade_pct 8.0, OOS:
+                                 #   off      -> +17.45%  PF 1.549  maxDD 7.51%
+                                 #   50% cap  -> +20.25%  PF 1.694  maxDD 5.71%
+                                 # Better return, better PF, LOWER drawdown —
+                                 # return/maxDD 2.32 -> 3.55. Unlike the sizing
+                                 # raise, this is a real risk-adjusted gain, and
+                                 # it is the documented momentum-crash behaviour
+                                 # (Kaminski-Lo, Daniel-Moskowitz): trend books
+                                 # bleed when the trend inverts, so cutting gross
+                                 # in a down regime protects the tail.
+                                 # ADOPTED AT 50, NOT 30. A 30% arm scored better
+                                 # still (+22.55%, PF 1.791, maxDD 4.90%) but 50
+                                 # is the value §18 had already configured, while
+                                 # 30 was chosen by me AFTER seeing the OOS result
+                                 # — testing two values and keeping the winner is
+                                 # in-sample selection on the holdout. It is
+                                 # registered as a §30 candidate instead.
     down_max_gross_pct: 50       # in a down-trend regime, total position value <= 50% equity
   risk_sizing:                   # stop-distance sizing: dollars = equity·risk_pct /
     enabled: true                # stop-distance-fraction (equal TRUE risk per
@@ -393,6 +526,32 @@ backtest:               # offline harness (src/backtest.py) — never touches th
   fee_per_trade_usd: 0.0
   walk_forward_split: 0.7          # in-sample fraction; the rest is out-of-sample
   trials_path: memory/backtest_trials.jsonl  # append-only log of EVERY variant tried
+  judge_model:            # SIMULATED JUDGE (§29, 2026-07-26) — closes the live
+    enabled: false        # half of divergence #8. backtest.py never imports llm
+    salt: judge-v1        # (by design), so the judge has been ABSENT from every
+                          # backtest this project has run, while live it cuts
+                          # 53.5% of buys at mean scale 0.752. The simulator has
+                          # therefore been sizing entries ~33% larger than the
+                          # live bot on the majority of trades, and every OOS
+                          # number in knowledge/backtest_candidates.md inherits
+                          # that.
+                          #
+                          # It cannot recover WHICH trades the judge would have
+                          # cut — nothing can, retroactively. It reproduces the
+                          # DISTRIBUTION (knowledge/judge_calibration.json,
+                          # regenerate with scripts/calibrate_judge.py), drawn
+                          # from a hash of (symbol, ts, salt) so gate re-runs
+                          # reproduce byte-identically and adding a symbol to
+                          # the universe cannot change the verdict on another.
+                          #
+                          # Default OFF so every gate run before 2026-07-26
+                          # still reproduces. §29 turns it on and records the
+                          # deltas; do not flip it silently, the whole document
+                          # of past verdicts is denominated in the old setting.
+                          #
+                          # Changing `salt` redraws every simulated verdict. It
+                          # exists to test that a result is not an artifact of
+                          # one draw — not to shop for a favourable one.
 
 learning:                # the learning loop: hypothesis book + judge calibration
   model: claude-fable-5  # weekly lesson generation/evaluation/merge stays on the

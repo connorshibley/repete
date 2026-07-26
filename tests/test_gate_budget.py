@@ -31,10 +31,31 @@ gb = load()
 # ---------------- the arm grid ----------------
 
 def test_baseline_is_first_and_matches_the_shipped_config():
+    """A LIVE gate harness must measure against the bot that actually exists.
+
+    §29 (2026-07-26) retired this one: it tests two levers that no longer hold
+    their §27 values. The pre-registered ARMS grid is deliberately NOT edited to
+    match — rewriting a pre-registration after the fact to keep a test green
+    would falsify the record that gives every verdict in
+    backtest_candidates.md its weight.
+
+    So the guard becomes conditional rather than deleted. While a harness is
+    live, its baseline must equal the shipped config; once superseded, it must
+    say so out loud. What stays forbidden is the silent third state — a harness
+    still presenting itself as current while measuring a bot that no longer
+    exists.
+    """
     import backtest as bt
     name, rpt, cap = gb.ARMS[0]
-    cfg = bt.load_config()
     assert name == "baseline"
+
+    superseded = getattr(gb, "SUPERSEDED_BY", None)
+    if superseded:
+        assert isinstance(superseded, str) and superseded.strip(), (
+            "SUPERSEDED_BY must NAME what replaced this gate, not just be truthy")
+        return
+
+    cfg = bt.load_config()
     assert rpt == cfg["risk"]["risk_per_trade_pct"]
     assert cap == cfg["risk"]["max_order_value_usd"], (
         "the baseline arm must BE the live config; if it drifts, every arm is "
