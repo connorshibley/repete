@@ -89,8 +89,21 @@ def _secret(request: Request) -> bytes:
 
 
 def session_email(request: Request) -> str | None:
+    """The signed-in email, NORMALISED the way the database stores it.
+
+    `SubscriberDB` lowercases and strips inside every method, so tier and
+    entitlement lookups were already case-insensitive — but the raw session
+    string flowed straight through to responses. A session minted for
+    `PAID1@Example.Invalid` resolved the correct paid tier while `/account`
+    echoed back the un-normalised text, so one person could see two different
+    spellings of their own identity depending how they typed it.
+
+    Normalising once at the session boundary means every route downstream sees
+    a single canonical form, rather than each remembering to normalise itself.
+    """
     cookie = request.cookies.get(_cfg(request)["publisher"]["session_cookie"])
-    return auth.verify_session(_secret(request), cookie)
+    email = auth.verify_session(_secret(request), cookie)
+    return email.strip().lower() if email else None
 
 
 def require_session(request: Request) -> str:
