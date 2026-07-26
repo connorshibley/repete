@@ -49,18 +49,40 @@ MIN_CLOSED_FOR_RATIOS = 10
 STALE_AMBER_HOURS = 8
 STALE_RED_HOURS = 24
 
-# Chart palette validated for the dark surface (#131722): CVD separation and
-# >=3:1 contrast all pass; green/red always ship with $ labels, never alone.
-C_LINE = "#3987e5"
-C_WIN = "#0ca30c"
-C_LOSS = "#d03b3b"
-C_MUTED = "#898781"
+# ---- palette -------------------------------------------------------------
+#
+# LIGHT SURFACE (#ffffff), 2026-07-26. These are baked into SVG fill/stroke
+# attributes, so unlike everything in CSS they do NOT follow a variable —
+# miss them and the charts stay dark-theme on a white page.
+#
+# The previous values were chosen for #131722 and do not survive the move.
+# Measured against white: green #0ca30c fell to 3.35:1 and red #d03b3b sat at
+# 4.80:1, which made PROFIT less legible than LOSS — backwards, on a page
+# whose entire job is showing which one you have. Every colour below clears
+# 4.5:1 on white and is pinned by tests/test_dashboard_contrast.py, so the
+# claim in this comment can no longer quietly expire the way the old one did.
+#
+# CVD discipline is unchanged and is not decoration: red/green is the most
+# common colour-vision confusion, and this page is public. Every signed figure
+# ships with its sign and its $, so colour is reinforcement, never the only
+# channel carrying the meaning.
+SURFACE = "#ffffff"          # what these are drawn on; the contrast test's base
+C_LINE = "#1d5fbf"           # 6.10:1
+C_WIN = "#087a08"            # 5.53:1
+C_LOSS = "#93150f"           # 8.92:1
+C_MUTED = "#5c6673"          # 5.83:1
+C_GRID = "#dfe3ea"           # gridlines — decorative, deliberately below text
+C_ZERO = "#94a0b0"           # zero baseline, must read against gridlines
+C_AXIS = "#3d4652"           # axis value labels — 9.56:1
 
 CSS = """
-:root{--bg:#0b0e14;--surf:#131722;--surf2:#1a2130;--line:#232b3b;
-      --ink:#e6e9f0;--ink2:#9aa4b5;--mut:#6b7482;--blue:#3987e5;
-      --green:#0ca30c;--red:#d03b3b;--amber:#c98500;
-      --cyan:#22d3ee;--violet:#8b5cf6;--pink:#ec4899}
+/* Light surface, 2026-07-26. Every ink/accent below clears 4.5:1 on white and
+   is pinned by tests/test_dashboard_contrast.py. --line and --grid are
+   structural, not text, and are deliberately lighter. */
+:root{--bg:#ffffff;--surf:#f7f8fa;--surf2:#eef1f5;--line:#dfe3ea;
+      --ink:#141a22;--ink2:#3d4652;--mut:#5c6673;--blue:#1d5fbf;
+      --green:#087a08;--red:#93150f;--amber:#8a5a00;
+      --cyan:#0e7490;--violet:#6d28d9;--pink:#be185d}
 *{box-sizing:border-box}
 body{font-family:-apple-system,Segoe UI,sans-serif;margin:0;background:var(--bg);
      color:var(--ink);line-height:1.5}
@@ -86,12 +108,12 @@ a.x:hover{text-decoration:underline}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes blink{0%,92%,100%{transform:scaleY(1)}95%,97%{transform:scaleY(.08)}}
 @keyframes tippulse{0%,100%{opacity:.55}50%{opacity:1}}
-.bubble{position:relative;background:var(--surf2);border:1px solid #2e3950;
+.bubble{position:relative;background:var(--surf2);border:1px solid var(--line);
         border-radius:12px;padding:8px 12px;font-size:12.5px;color:var(--ink2);
         max-width:210px;min-height:38px;display:flex;align-items:center;
         transition:opacity .45s}
 .bubble:before{content:"";position:absolute;left:-7px;top:50%;margin-top:-6px;
-        border:6px solid transparent;border-right-color:#2e3950}
+        border:6px solid transparent;border-right-color:var(--line)}
 .tape{overflow:hidden;border:1px solid var(--line);border-radius:10px;
       background:var(--surf);margin:14px 0;white-space:nowrap;position:relative}
 .tape:before,.tape:after{content:"";position:absolute;top:0;bottom:0;width:26px;
@@ -107,7 +129,7 @@ a.x:hover{text-decoration:underline}
       font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums;
       flex:0 0 auto}
 .tchip b{color:var(--ink);font-weight:600}
-.tchip.up{border-color:rgba(12,163,12,.5)}.tchip.up b{color:var(--green)}
+.tchip.up{border-color:rgba(8,122,8,.55)}.tchip.up b{color:var(--green)}
 .tchip.dn{border-color:rgba(208,59,59,.5)}.tchip.dn b{color:var(--red)}
 .tchip.bot{border-color:var(--violet);color:var(--violet)}
 .tchip.fun{border-color:rgba(34,211,238,.45)}.tchip.fun b{color:var(--cyan)}
@@ -139,7 +161,7 @@ td.pending .pendingn{display:inline;margin-left:6px}
       border-radius:8px;padding:5px 10px;font-size:12px;
       font-variant-numeric:tabular-nums}
 /* Collapsed run of quiet holds — present, findable, not shouting. */
-.holdrun td{color:var(--ink2);font-size:12px;background:rgba(255,255,255,.012)}
+.holdrun td{color:var(--ink2);font-size:12px;background:var(--surf)}
 .holdsyms{color:var(--mut);font-size:11px;margin-left:6px}
 /* Freshness badge. Amber/red are the whole point — a dashboard that looks
    identical whether it is 2 minutes or 2 days old is worse than none, because
@@ -147,10 +169,10 @@ td.pending .pendingn{display:inline;margin-left:6px}
 .fresh{display:inline-block;font-size:10px;letter-spacing:.04em;
       padding:2px 8px;border-radius:999px;border:1px solid var(--line);
       color:var(--ink2);font-variant-numeric:tabular-nums;vertical-align:1px}
-.fresh.green{border-color:rgba(12,163,12,.5);color:var(--green)}
-.fresh.amber{border-color:rgba(201,133,0,.55);color:var(--amber)}
-.fresh.red{border-color:rgba(208,59,59,.6);color:var(--red);
-      background:rgba(208,59,59,.08)}
+.fresh.green{border-color:rgba(8,122,8,.55);color:var(--green)}
+.fresh.amber{border-color:rgba(138,90,0,.6);color:var(--amber)}
+.fresh.red{border-color:rgba(147,21,15,.6);color:var(--red);
+      background:rgba(147,21,15,.07)}
 #boot{position:fixed;inset:0;z-index:50;display:none;cursor:pointer;
   flex-direction:column;align-items:center;justify-content:center;gap:0;
   background:
@@ -172,7 +194,7 @@ td.pending .pendingn{display:inline;margin-left:6px}
 #boot.show .robot .eye{animation:eyeson 1s .3s both, blink 4.2s 2s infinite}
 @keyframes eyeson{0%{fill:#12314a}55%{fill:#12314a}75%{fill:#22d3ee}
   85%{fill:#0b6a80}100%{fill:#22d3ee}}
-#boot .sys{font-size:10px;letter-spacing:.5em;color:var(--mut);
+#boot .sys{font-size:10px;letter-spacing:.5em;color:#8e9bb0;
   text-transform:uppercase;margin-bottom:10px}
 #boot .mark{display:flex;gap:.14em;margin-bottom:6px}
 #boot .mark b{font-size:clamp(34px,7vw,64px);font-weight:800;line-height:1;
@@ -203,7 +225,7 @@ td.pending .pendingn{display:inline;margin-left:6px}
   margin-bottom:10px}
 #candles i{width:7px;border-radius:2px;transform-origin:bottom;
   transform:scaleY(0)}
-#candles i.g{background:var(--green);box-shadow:0 0 8px rgba(12,163,12,.5)}
+#candles i.g{background:var(--green);box-shadow:0 0 8px rgba(8,122,8,.55)}
 #candles i.r{background:var(--red);box-shadow:0 0 8px rgba(208,59,59,.4)}
 #boot.show #candles i{animation:candlepop .3s cubic-bezier(.2,.8,.3,1.4) forwards}
 @keyframes candlepop{to{transform:scaleY(1)}}
@@ -251,9 +273,9 @@ details>summary{cursor:pointer;color:var(--ink2);font-size:13px;
 .chip:hover{border-color:var(--blue)}
 .chip.on{color:var(--ink);border-color:var(--blue);background:var(--surf2)}
 #tip{position:absolute;display:none;background:var(--surf2);
-     border:1px solid #2e3950;color:var(--ink);padding:6px 10px;
+     border:1px solid var(--line);color:var(--ink);padding:6px 10px;
      border-radius:6px;font-size:12px;pointer-events:none;z-index:10;
-     box-shadow:0 4px 14px rgba(0,0,0,.5);max-width:280px}
+     box-shadow:0 4px 14px rgba(20,26,34,.18);max-width:280px}
 """
 
 JS = """
@@ -497,7 +519,7 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
         v = lo + (hi - lo) * frac
         gy = y_of(v)
         parts.append(f'<line x1="{pad}" y1="{gy:.1f}" x2="{width - pad}" '
-                     f'y2="{gy:.1f}" stroke="#252c3a" stroke-width="1"/>')
+                     f'y2="{gy:.1f}" stroke="{C_GRID}" stroke-width="1"/>')
         parts.append(f'<text x="{pad - 6}" y="{gy + 3:.1f}" font-size="10" '
                      f'text-anchor="end" fill="{C_MUTED}">'
                      f'{v:,.0f}</text>')
@@ -507,7 +529,7 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
     if not zero_area and lo < 0 < hi:
         parts.append(f'<line x1="{pad}" y1="{y_of(0.0):.1f}" '
                      f'x2="{width - pad}" y2="{y_of(0.0):.1f}" '
-                     f'stroke="#4a5468" stroke-width="1" '
+                     f'stroke="{C_ZERO}" stroke-width="1" '
                      f'stroke-dasharray="2 3"/>')
     if zero_area:
         y0 = y_of(0.0)
@@ -524,7 +546,7 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
             f'<polygon points="{area}" fill="{C_LOSS}" opacity="0.18" '
             f'clip-path="url(#{uid}-below)"/>'
             f'<line x1="{pad}" y1="{y0:.1f}" x2="{width - pad}" '
-            f'y2="{y0:.1f}" stroke="#5a6478" stroke-width="1" '
+            f'y2="{y0:.1f}" stroke="{C_ZERO}" stroke-width="1" '
             f'stroke-dasharray="2 3"/>'
             f'<text x="{width - pad + 4}" y="{y0 + 3:.1f}" font-size="10" '
             f'fill="{C_MUTED}">0</text>')
@@ -550,7 +572,7 @@ def svg_line_chart(series: list[tuple[str, float]], width=940, height=220,
     parts.append(f'<text x="{width - pad - 70}" y="{height - 8}" '
                  f'font-size="10" fill="{C_MUTED}">{series[-1][0][:10]}</text>')
     parts.append(f'<text x="{width - pad - 70}" y="16" font-size="11" '
-                 f'fill="#e6e9f0">{series[-1][1]:,.0f}</text>')
+                 f'fill="{C_AXIS}">{series[-1][1]:,.0f}</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -590,7 +612,7 @@ def svg_trade_bars(closed: list[dict], width=940, height=180) -> str:
     parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" '
              f'preserveAspectRatio="xMidYMid meet">',
              f'<line x1="{pad}" y1="{y0:.1f}" x2="{width - pad}" '
-             f'y2="{y0:.1f}" stroke="#383f4f" stroke-width="1"/>']
+             f'y2="{y0:.1f}" stroke="{C_ZERO}" stroke-width="1"/>']
     for i, t in enumerate(closed):
         pnl = t.get("pnl") or 0.0
         x = pad + i * slot + (slot - bar_w) / 2
