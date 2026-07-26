@@ -50,16 +50,34 @@ def journal_and_link(trade: dict, cfg: dict) -> str | None:
         log.warning("journal failed: %s", e)
     return None
 
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-    handlers=[logging.StreamHandler(),
-              logging.FileHandler("logs/agent.log", mode="a")],
-)
-import log as structlog  # noqa: E402 — after basicConfig on purpose
-structlog.attach_json_handler()  # JSON mirror w/ secret redaction (Phase D)
 log = logging.getLogger("main")
+
+
+def configure_logging() -> None:
+    """Attach the file handlers. Called from __main__, never on import.
+
+    This used to run at import time, and 14 test files import this module —
+    so every pytest run appended the whole session's log records to the real
+    `logs/agent.jsonl` (240 in a single run, measured). Two consequences, both
+    bad: production diagnostics were buried under fixture output, and
+    `logs/agent.log` stayed 0 bytes forever, because pytest attaches its own
+    root handler before collection and `basicConfig()` is a silent no-op when
+    the root logger already has handlers.
+
+    The second one is why the 2026-07-24 crash could not be diagnosed: there
+    was no stderr left to read. Same pattern as backfill_posts.py, which had
+    it right all along.
+    """
+    os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(),
+                  logging.FileHandler("logs/agent.log", mode="a")],
+        force=True,       # own the root logger; basicConfig is a no-op without it
+    )
+    import log as structlog
+    structlog.attach_json_handler()  # JSON mirror w/ secret redaction (Phase D)
 
 
 def handle_close(trade_id: str, open_rec: dict, exit_price: float,
@@ -335,6 +353,34 @@ def record_fill_quality(broker, ledger: Ledger, max_checks: int = 20):
         log.error("fill-quality pass failed: %s", e)
 
 
+def log_cycle_crash(exc: BaseException) -> None:
+    """Leave a ledger record saying the cycle died, and roughly where.
+
+    On 2026-07-24 the 15:45 cycle died about six seconds in, before its first
+    ledger write. The result was a day with no decisions, no abort record and
+    a perfectly fresh heartbeat — which read as a quiet market. The ledger is
+    the only durable surface (stderr is captured by the scheduler and the log
+    files had already rotated away by the time anyone looked), so the crash
+    has to land there.
+
+    Best-effort by construction: this runs while an exception is already in
+    flight and must never replace it with one of its own.
+    """
+    import traceback
+    try:
+        import yaml
+        with open("config.yaml") as fh:
+            path = yaml.safe_load(fh)["memory"]["ledger_path"]
+        tb = "".join(traceback.format_exception(
+            type(exc), exc, exc.__traceback__))[-1200:]
+        Ledger(path).log_event(
+            "cycle_crashed",
+            f"{type(exc).__name__}: {exc}\n{tb}"[:2000])
+    except BaseException:  # noqa: BLE001 — the ledger may be the thing that broke
+        log.critical("cycle crashed AND the crash could not be recorded: %r",
+                     exc)
+
+
 def run_cycle(completed_bars_only: bool = False):
     """One trading cycle.
 
@@ -343,10 +389,16 @@ def run_cycle(completed_bars_only: bool = False):
     False — at 15 minutes to the close the forming bar is effectively the
     close, which is what every gate measured. The 09:35 open cycle sets it
     True, because a five-minute-old stub is not a daily bar."""
-    ok = False
+    completed = False
     try:
-        _run_cycle(completed_bars_only=completed_bars_only)
-        ok = True
+        completed = bool(_run_cycle(completed_bars_only=completed_bars_only))
+    except BaseException as e:  # noqa: BLE001 — recorded, then re-raised
+        # BaseException, not Exception: broker.py raises SystemExit when the
+        # Alpaca keys are missing, and that is exactly the kind of death this
+        # needs to catch. The record is written, then the exception continues
+        # on its way so the exit code and the external ping stay truthful.
+        log_cycle_crash(e)
+        raise
     finally:
         write_heartbeat()
         # PUSH proof-of-life to an external monitor. The local heartbeat file
@@ -354,9 +406,14 @@ def run_cycle(completed_bars_only: bool = False):
         # the container or the host dies, silence looks exactly like a quiet
         # market. An outside observer alerting on missing pings is the only
         # check that survives that. No-op unless HEARTBEAT_PING_URL is set.
+        #
+        # `completed`, not "did not raise". The old flag was set on every
+        # deliberate early return too, so a HALT day, a kill-switch day and a
+        # stale-data abort all told the external monitor they had succeeded.
+        # A cycle that did not trade is not a cycle that worked.
         try:
             import alerting
-            alerting.heartbeat_ping(success=ok)
+            alerting.heartbeat_ping(success=completed)
         except Exception as e:  # noqa: BLE001 — never break a cycle to alert
             log.warning("heartbeat ping failed: %s", e)
 
@@ -1079,6 +1136,10 @@ def _run_cycle(completed_bars_only: bool = False):
     except Exception as e:  # noqa: BLE001
         log.warning("dashboard/blog render failed: %s", e)
     log.info("Cycle complete.")
+    # Reached only when every stage above ran. Every early return in this
+    # function falls out as None, which is falsy on purpose — "completed" is
+    # something a cycle has to earn, not the default.
+    return True
 
 
 if __name__ == "__main__":
@@ -1086,4 +1147,5 @@ if __name__ == "__main__":
     # reads only COMPLETED daily bars, so it acts on yesterday's close the way
     # the backtester does. Entries that were true at the close no longer wait
     # until 15:45 the next day.
+    configure_logging()
     run_cycle(completed_bars_only="--open-cycle" in sys.argv)
