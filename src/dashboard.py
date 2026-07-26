@@ -111,6 +111,9 @@ a.x:hover{text-decoration:underline}
        animation:swingarc 4.6s ease-in-out infinite}
 @keyframes swingarc{0%,100%{transform:rotate(-3.5deg)}
                     50%{transform:rotate(3.5deg)}}
+/* Losing book: same Repete, same swing, no colour. Stops short of full
+   grayscale so he reads as muted rather than as a broken image. */
+.swing.flat{filter:grayscale(.85) opacity(.92)}
 .robot{animation:bob 3.4s ease-in-out infinite}
 .robot .eye{transform-origin:center;transform-box:fill-box;
             animation:blink 4.2s infinite}
@@ -711,20 +714,28 @@ def _swing_data_uri() -> str | None:
 
 
 def _swing(total: float) -> str:
-    """Repete swinging -- the landing-page hero, used when P/L is not negative.
+    """Repete swinging -- the landing-page hero, on every day.
 
-    On a losing book this deliberately gives way to _robot(), which wears the
-    determined face. The illustration only has one expression, and a bot
-    grinning on a swing above a red number would be the page lying about how
-    the day went. The honesty of that signal is worth more than the artwork.
+    The illustration has one expression, and a bot grinning above a red number
+    would be the page flattering itself. This first shipped by handing losing
+    days back to _robot()'s determined face -- correct, but it meant the hero
+    art was simply absent on an ordinary down day, which is most of them early
+    on. Draining the colour out of him says the same thing and keeps the page
+    looking like itself: `.swing.flat` greyscales him, the number beside him
+    stays red, and the swing keeps moving because `filter` and `transform` do
+    not collide.
 
-    Falls back to the SVG if the asset is missing, because a decorative image
-    must never be able to break a render.
+    Colour is reinforcement here, not information -- the signed P/L figure
+    carries that -- so the alt text is the same either way.
+
+    Falls back to the SVG if the asset is missing, which is a different concern
+    entirely: a decorative file that failed to load must never break a render.
     """
     uri = _swing_data_uri()
     if uri is None:
         return _robot(total)
-    return (f'<img class=swing src="{uri}" width="240" height="323" '
+    cls = "swing" if total >= 0 else "swing flat"
+    return (f'<img class="{cls}" src="{uri}" width="240" height="323" '
             f'alt="Repete the trading robot, swinging on a playground swing" '
             f'decoding="async">')
 
@@ -773,7 +784,7 @@ def _hero(total: float, start: float, equity_now: float | None,
            + (" · realized only (equity snapshots start next cycle)"
               if realized_only else ""))
     lines = speech_lines or ["beep boop — paper trading, honestly"]
-    mascot = _swing(total) if total >= 0 else _robot(total)
+    mascot = _swing(total)
     bubble = (f'<div class=robotbox>{mascot}'
               f'<div class=bubble id=bubble>{_esc(lines[0])}</div></div>'
               f'<script type="application/json" id=replines>'

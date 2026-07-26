@@ -10,8 +10,11 @@ things that were previously guaranteed by there being nothing to get wrong:
      no glob, no directory copy -- so a linked asset could ship a commit
      behind its HTML and render as a broken image on the live site.
   2. The hero robot's expression tracked P/L. The illustration only smiles,
-     so on a losing day the page must fall back to the SVG robot rather than
-     grin above a red number.
+     so a losing day must still look like one. This first shipped by handing
+     red days back to the SVG robot's determined face, which was honest but
+     removed the hero art from most early days; the colour is now drained out
+     of the illustration instead. Both forms answer the same question -- the
+     page must not grin above a red number.
   3. Page weight had no ceiling because nothing large could be inlined.
 
 Each of those is pinned below.
@@ -70,22 +73,28 @@ def test_asset_stays_small_enough_to_inline():
 
 def test_profit_page_shows_the_swing_as_an_inline_data_uri(tmp_path, cfg):
     html = _render(cfg, tmp_path, 250.0)
-    assert "class=swing" in html
-    assert "src=\"data:image/webp;base64," in html
+    assert 'class="swing"' in html
+    assert 'src="data:image/webp;base64,' in html
 
 
-def test_losing_page_falls_back_to_the_determined_robot(tmp_path, cfg):
-    """The mood decision, pinned.
+def test_losing_page_shows_the_swing_but_drains_its_colour(tmp_path, cfg):
+    """The mood decision, pinned -- in its second form.
 
-    `mouth-flat` is _robot()'s losing face. If someone later simplifies
-    _hero() to always use the illustration, this is what says no: the page
-    would be showing a cheerful bot on a swing directly above a red total.
+    This originally asserted the illustration was ABSENT on a red day, with
+    _robot()'s determined face in its place. That was honest but meant the
+    hero art vanished on ordinary down days. The signal now rides on a class
+    instead of on which element renders; what must not regress is that a
+    losing page looks different from a winning one.
     """
     html = _render(cfg, tmp_path, -250.0)
-    assert "mouth-flat" in html
-    assert "class=swing" not in html, (
-        "the swing illustration only smiles -- it must not appear on a "
-        "losing book")
+    assert 'class="swing flat"' in html, (
+        "a losing book must still be visually distinguishable")
+
+
+def test_winning_page_shows_the_swing_in_full_colour(tmp_path, cfg):
+    html = _render(cfg, tmp_path, 250.0)
+    assert 'class="swing"' in html
+    assert "swing flat" not in html
 
 
 def test_the_two_branches_really_do_differ(tmp_path, cfg):
@@ -97,7 +106,32 @@ def test_the_two_branches_really_do_differ(tmp_path, cfg):
     """
     win = _render(cfg, tmp_path / "w", 250.0)
     loss = _render(cfg, tmp_path / "l", -250.0)
-    assert ("class=swing" in win) != ("class=swing" in loss)
+    assert ("swing flat" in win) != ("swing flat" in loss)
+
+
+def test_the_flat_class_actually_removes_colour():
+    """The class must do something.
+
+    Without this, `flat` is a comment that cannot fail: _swing() could keep
+    emitting it for years after the CSS rule was dropped and every other
+    assertion in this file would still pass, while every losing day quietly
+    rendered at full brightness.
+    """
+    m = re.search(r"\.swing\.flat\{([^}]*)\}", dashboard.CSS)
+    assert m, "no .swing.flat rule -- the class is decorative"
+    decl = m.group(1)
+    g = re.search(r"grayscale\(([\d.]+)\)", decl)
+    assert g, f"no grayscale in .swing.flat: {decl!r}"
+    assert float(g.group(1)) >= 0.5, (
+        f"grayscale({g.group(1)}) is too weak to read as muted")
+
+
+def test_the_svg_robots_mood_is_not_orphaned(tmp_path, cfg):
+    """_robot() no longer renders in the hero, so its losing face now reaches
+    a reader only through the boot splash. If that ever stops being true,
+    test_robot_mood_tracks_pl would be testing a function nothing calls."""
+    html = _render(cfg, tmp_path, -250.0)
+    assert "mouth-flat" in html
 
 
 def test_the_image_carries_alt_text(tmp_path, cfg):
@@ -108,7 +142,7 @@ def test_the_image_carries_alt_text(tmp_path, cfg):
     _robot(), so it would keep passing with the hero image unlabelled.
     """
     html = _render(cfg, tmp_path, 250.0)
-    m = re.search(r'<img class=swing[^>]*\balt="([^"]*)"', html)
+    m = re.search(r'<img class="swing[^"]*"[^>]*\balt="([^"]*)"', html)
     assert m, "swing image has no alt attribute"
     assert len(m.group(1).strip()) > 10, f"alt text too thin: {m.group(1)!r}"
 
@@ -117,8 +151,8 @@ def test_image_declares_its_size_to_avoid_reflow(tmp_path, cfg):
     """width/height on the tag reserve the box before decode, so the hero
     does not jump once a 40 KB data URI finishes decoding."""
     html = _render(cfg, tmp_path, 250.0)
-    m = re.search(r'<img class=swing[^>]*\bwidth="(\d+)"[^>]*\bheight="(\d+)"',
-                  html)
+    m = re.search(r'<img class="swing[^"]*"[^>]*\bwidth="(\d+)"'
+                  r'[^>]*\bheight="(\d+)"', html)
     assert m, "swing image is missing intrinsic width/height"
     w, h = int(m.group(1)), int(m.group(2))
     assert 0.6 < (w / h) < 0.9, f"declared aspect {w}x{h} is not the artwork's"
