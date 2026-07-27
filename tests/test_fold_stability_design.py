@@ -71,6 +71,72 @@ def test_there_are_enough_folds_to_average_over(s33):
     assert len(s33.FOLDS) >= 5
 
 
+def test_every_arm_can_actually_trade_in_every_fold(s33):
+    """The test that was MISSING, and whose absence let Run 1 print VALIDATED.
+
+    Run 1 sliced OOS as [is_end, stop) — 200 bars — with no history. `xsmom-12-1`
+    needs 253 bars of lookback, so both 12-1 arms placed **zero trades in every
+    fold**. Profit factor 0.000 by construction. They also ranked last
+    in-sample on their own merits, so two arms sat at the bottom of both
+    rankings for unrelated reasons and manufactured a large positive Spearman.
+    `both-10` degenerated into `lowvol-60-10`. Three of five candidate arms
+    were not data points.
+
+    Every other test in this file passed on that run. Leakage was checked;
+    whether an arm could *signal at all* was not. This closes it in pure
+    arithmetic, with no simulation: each arm's OOS slice must leave a real
+    number of bars on which that arm is capable of trading.
+    """
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import backtest as bt
+    import strategies
+
+    gate = _load(  "gate_wide_universe")
+    base = bt.load_config()
+    n_bars = 1638                      # the wide snapshot
+
+    # Asks the RUNNER for the slice rather than recomputing the intended
+    # arithmetic here. An earlier draft of this test derived the lead-in
+    # itself, which made it tautological: reverting the runner to Run 1's
+    # broken slice left it green.
+    fake = {"SYM": list(range(n_bars))}
+    for fi, (is_end, oos_end) in enumerate(s33.FOLDS, 1):
+        stop = oos_end if oos_end is not None else n_bars
+        for name, over in gate.ARMS:
+            cfg = gate.cfg_for(base, over)
+            lead = strategies.max_lookback_bars(cfg)
+            got = s33.oos_window(fake, is_end, stop, cfg)["SYM"]
+            tradeable = len(got) - lead
+            assert tradeable >= 100, (
+                f"fold {fi}, arm {name}: only {tradeable} tradeable bars "
+                f"(slice {len(got)}, lookback {lead}). The arm cannot signal "
+                f"enough to be ranked, and a zero would rank it last silently.")
+            # ...and the slice must START at the boundary minus the lead-in, so
+            # the first signal lands on the boundary itself.
+            assert got[0] == max(0, is_end - lead), (
+                f"fold {fi}, arm {name}: slice starts at {got[0]}, expected "
+                f"{max(0, is_end - lead)}")
+
+
+def test_the_runner_refuses_an_arm_that_places_no_trades(s33):
+    """Belt and braces at runtime, because the arithmetic above depends on
+    lookbacks the config could change tomorrow. A zero ranks last silently; a
+    raise cannot be ignored."""
+    src = open(os.path.join(ROOT, "scripts", "gate_fold_stability.py")).read()
+    assert "r_oos.n_trades == 0" in src
+    assert "Refusing to score" in src
+
+
+def test_each_arm_gets_lead_in_sized_to_its_own_lookback(s33):
+    """Not the family maximum: sizing every arm's lead-in to the longest arm's
+    lookback would hand short-lookback arms extra in-sample bars they could
+    trade on, which is contamination in the other direction."""
+    src = open(os.path.join(ROOT, "scripts", "gate_fold_stability.py")).read()
+    assert "strategies.max_lookback_bars(cfg)" in src
+    assert "b[max(0, is_end - lead):stop]" in src
+
+
 # ---- the arithmetic ----
 
 def test_spearman_is_right_at_both_extremes(s33):

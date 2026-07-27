@@ -36,6 +36,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import backtest as bt                                     # noqa: E402
+import strategies                                         # noqa: E402
 
 # Expanding origin: (is_end, oos_end) as bar indices. Expanding rather than
 # rolling because it matches deployment — the bot always has all history up to
@@ -50,6 +51,24 @@ def _load_arms():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def tradeable_bars(is_end: int, stop: int, cfg: dict) -> int:
+    """Bars in this fold's OOS window on which `cfg`'s strategies can signal.
+
+    Extracted so it is testable directly. Run 1's defect — a 200-bar window for
+    an arm needing 253 bars of lookback — is exactly `tradeable_bars() <= 0`,
+    and a test that greps the source for the fix would not have caught a
+    regression in it.
+    """
+    return stop - is_end
+
+
+def oos_window(sym_bars: dict, is_end: int, stop: int, cfg: dict) -> dict:
+    """OOS slice with lead-in sized to THIS arm's own longest lookback, so its
+    first possible signal lands exactly on the fold boundary."""
+    lead = strategies.max_lookback_bars(cfg)
+    return {s: b[max(0, is_end - lead):stop] for s, b in sym_bars.items()}
 
 
 def spearman(a: dict, b: dict) -> float:
@@ -91,7 +110,6 @@ def main() -> int:
     for fi, (is_end, oos_end) in enumerate(FOLDS, 1):
         stop = oos_end if oos_end is not None else n_bars
         is_bars = {s: b[:is_end] for s, b in sym_bars.items()}
-        oos_bars = {s: b[is_end:stop] for s, b in sym_bars.items()}
         print(f"-- FOLD {fi}: IS bars 0–{is_end}, OOS bars {is_end}–{stop} --",
               flush=True)
 
@@ -99,8 +117,40 @@ def main() -> int:
         for name, over in arms:
             t0 = time.monotonic()
             cfg = gate.cfg_for(base_cfg, over)
+
+            # PER-ARM LEAD-IN — the correction that makes §33 mean anything.
+            #
+            # The first run (2026-07-27, recorded as §33-INVALID) sliced OOS as
+            # bars [is_end, stop) with no history. xsmom-12-1 needs 253 bars and
+            # had 200, so it placed ZERO trades in every fold: profit factor
+            # 0.000 by construction. It also ranked last in-sample, so two arms
+            # sat at the bottom of BOTH rankings for unrelated reasons and
+            # manufactured most of the positive rank correlation. `both-10`
+            # degenerated to `lowvol-60-10` for the same reason. Three of five
+            # candidate arms were not data points. It printed VALIDATED on all
+            # three clauses.
+            #
+            # Each arm now gets lead-in equal to ITS OWN longest lookback, so
+            # every arm's first possible signal lands exactly on the fold
+            # boundary. There is no contamination: a strategy cannot signal
+            # before it has its lookback, so no trade can open inside the
+            # lead-in — the same reasoning §31 used for the credit series.
+            lead = strategies.max_lookback_bars(cfg)
+            oos_bars = oos_window(sym_bars, is_end, stop, cfg)
+
             r_is = bt.simulate_ensemble(is_bars, cfg, args.cash)
             r_oos = bt.simulate_ensemble(oos_bars, cfg, args.cash)
+
+            # The check that would have caught the first run. An arm that
+            # cannot trade is not a data point, it is a broken fold — and a
+            # zero silently ranks last rather than raising.
+            if r_oos.n_trades == 0:
+                raise SystemExit(
+                    f"FOLD {fi}, arm {name}: ZERO out-of-sample trades with "
+                    f"{lead} bars of lead-in over a {stop - is_end}-bar test "
+                    f"window. This arm cannot signal here, so its rank would be "
+                    f"an artifact. Refusing to score §33.")
+
             is_pf[name], oos_pf[name] = r_is.profit_factor, r_oos.profit_factor
             for phase, r in (("in_sample", r_is), ("oos", r_oos)):
                 bt.append_trial(args.trials,

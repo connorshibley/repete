@@ -2741,4 +2741,70 @@ Either way **no strategy is enabled by this section.**
 
 **Runner:** `scripts/gate_fold_stability.py` — committed.
 
-### §33 RESULT — *(to be written after the run, whichever way it lands)*
+### §33 RUN 1 — **INVALID.** The verdict was VALIDATED and it was an artifact.
+
+Recorded in full rather than deleted. A discarded run is an unrecorded degree of
+freedom, and this one printed the most convenient possible answer.
+
+**What it reported:**
+
+```
+[PASS] (a) mean spearman > 0        [+0.691]
+[PASS] (b) mean selection lift > 0  [+0.474]
+[PASS] (c) hit rate >= 4/5          [5/5]
+VERDICT: the walk-forward selection procedure is VALIDATED on this data.
+```
+
+All three clauses, 5/5 folds. It would have licensed continuing to hunt
+strategies with the existing method.
+
+**Why it is invalid.** The OOS windows were 200 bars, sliced as `[is_end, stop)`
+with no history. `xsmom-12-1` requires **253 bars** of lookback:
+
+| fold | xsmom-12-1-10 | xsmom-12-1-20 | xsmom-6-1-10 | lowvol-60-10 | both-10 |
+|---|---|---|---|---|---|
+| 1 | **0** | **0** | 148 | 237 | 237 |
+| 2 | **0** | **0** | 103 | 202 | 202 |
+| 3 | **0** | **0** | 156 | 194 | 194 |
+| 4 | **0** | **0** | 108 | 155 | 155 |
+
+*OOS trade counts.* Both 12-1 momentum arms placed **zero trades in every
+fold** — they could not signal at all. Their profit factor was 0.000 by
+construction.
+
+**The mechanism that manufactured the result:** those two arms also ranked last
+*in-sample* (PF 0.99 and 0.63, on their own merits). So two of six arms sat at
+the bottom of **both** rankings for entirely unrelated reasons — genuinely weak
+in-sample, structurally mute out-of-sample — and that alone forces a large
+positive rank correlation. Meanwhile `both-10` returned byte-identical numbers
+to `lowvol-60-10` in every fold, because its momentum half contributed nothing,
+so it was not an independent arm either.
+
+**Three of five candidate arms were not data points.** A rank correlation over
+six arms where three are degenerate measures the fold design, not the selector.
+
+**Whose error this is.** Mine, in the fold design. §31 handled the identical
+lead-in problem correctly for the credit series — *"the OOS slice keeps `period`
+bars of lead-in before the first OOS price bar, so arm sma100 is not silently
+disabled for its first 100 sessions"* — and the same reasoning was not applied
+here three hours later.
+
+**How it was caught.** Not by the pass mark, which was satisfied. By reading the
+per-arm OOS trade counts in the trials log while the run was still going. A
+profit factor of exactly 0.000 repeated across folds is not a weak arm, it is an
+arm that never traded.
+
+**The correction.** Each arm's OOS slice now carries lead-in equal to **that
+arm's own** `strategies.max_lookback_bars(cfg)` — 253 bars for the 12-1 arms,
+148 for 6-1, 100 for low-vol — so every arm's first possible signal lands exactly
+on the fold boundary. No contamination: a strategy cannot signal before it has
+its lookback, so no trade can open inside the lead-in.
+
+The runner now **raises** on any arm with zero OOS trades rather than scoring it.
+A zero silently ranks last; a raise cannot be ignored.
+
+**Nothing from Run 1 is carried forward.** Its numbers are not quoted anywhere as
+evidence, and the +0.691 Spearman in particular must never be cited: it measures
+a broken slice.
+
+### §33b RESULT — *(to be written after the corrected run, whichever way it lands)*
