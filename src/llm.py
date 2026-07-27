@@ -53,8 +53,19 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
                 "bull_case": "", "bear_case": "", "confidence": None,
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
-    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
-        return fallback
+    if not cfg["llm"]["enabled"]:
+        return fallback                      # switched off deliberately
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        # Configured ON but unusable. Marked degraded so main.py ledgers it and
+        # the record can never be mistaken for a judgement that happened — the
+        # fallback approves at FULL SIZE, the most permissive verdict the judge
+        # can return. Preflight now refuses this combination outright; this
+        # marker covers any caller that skips preflight, and makes the
+        # historical ledger honest about which entries were actually judged.
+        return {**fallback, "degraded": True,
+                "reasoning": "LLM review UNAVAILABLE — ANTHROPIC_API_KEY not "
+                             "set while llm.enabled is true. Approved unjudged "
+                             "by fallback, not by the judge."}
     try:
         import anthropic
         client = anthropic.Anthropic()
