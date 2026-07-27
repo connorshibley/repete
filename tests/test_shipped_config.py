@@ -48,7 +48,10 @@ def test_shipped_config_passes_preflight(shipped, monkeypatch):
     """The one that matters. If this fails, the bot cannot trade at all."""
     monkeypatch.setenv("ALPACA_API_KEY", "test-key")
     monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    # Shaped like a real key, because preflight now checks the shape. Was
+    # "test-anthropic" until 2026-07-27; that value is exactly the kind of
+    # thing the new check exists to reject. Not a credential — 'x' padding.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-" + "x" * 80)
     fails = preflight.run(shipped)
     assert fails == [], (
         "the shipped config.yaml cannot start a cycle:\n  "
