@@ -2807,4 +2807,81 @@ A zero silently ranks last; a raise cannot be ignored.
 evidence, and the +0.691 Spearman in particular must never be cited: it measures
 a broken slice.
 
-### §33b RESULT — *(to be written after the corrected run, whichever way it lands)*
+### §33b RESULT — **NOT VALIDATED.** In-sample selection does not predict.
+
+Corrected run, per-arm lead-in, snapshot hash-verified. Five expanding-origin
+folds, six arms, 60 simulations.
+
+| fold | IS→OOS Spearman | selection lift | selected arm's OOS rank | |
+|---|---|---|---|---|
+| 1 | −0.943 | −0.163 | 4/5 | MISS |
+| 2 | −0.657 | −0.636 | 5/5 | MISS |
+| 3 | +0.371 | **+4.900** | 1/5 | HIT |
+| 4 | +0.829 | +0.400 | 2/5 | HIT |
+| 5 | −0.486 | −1.226 | 4/5 | MISS |
+
+```
+[FAIL] (a) mean spearman > 0        [-0.177]
+[PASS] (b) mean selection lift > 0  [+0.655]
+[FAIL] (c) hit rate >= 4/5          [2/5]
+```
+
+**Clause (b) is not evidence and is not cited as such.** It clears only on fold
+3's +4.900 outlier. The **median lift is −0.163** and three of five folds are
+negative; drop fold 3 and the mean is −0.406. A criterion carried by one
+observation out of five is a criterion that has not been met in any meaningful
+sense, and it was included in the registration precisely so it could not be
+quietly leaned on now.
+
+**The procedure is NOT VALIDATED.**
+
+### What the result actually says
+
+Not "selection is backwards". The per-fold Spearman spans **−0.943 to +0.829**
+— from near-perfect inverse ranking to near-perfect correct ranking, across
+adjacent windows of the same data. The mean of −0.177 is indistinguishable from
+zero, and with that spread it is not a meaningful summary of anything.
+
+The honest statement is: **selecting the best in-sample arm carries no reliable
+information about which arm performs out of sample.** Sometimes it is right,
+sometimes it is exactly wrong, and nothing in-sample tells you which fold you
+are in.
+
+That is a more useful finding than either tidy alternative. "Anti-predictive"
+would have been exploitable — invert the selector. "Predictive" would have
+validated §14–§32. Neither is true.
+
+### Consequences for §14–§32
+
+**Every rejection stands.** A rejection is a failure to clear a numeric bar, and
+the bar was not cleared regardless of what the selector did. §31, §32 and the
+five before them are unaffected.
+
+**No pass from that procedure would have been trustworthy.** This is the load-
+bearing point. Seven EDGE claims have been rejected; had one been accepted, it
+would have rested on a selection step now shown to carry no information. §32's
+`xsmom-12-1-10` — +63.17% OOS at PF 5.061, ranked fifth of six in-sample — is
+exactly what that false positive looks like, and it is now doubly disqualified.
+
+The 0-for-7 record was never the problem. **The instrument was.**
+
+### The registered remedy, triggered
+
+Single-split selection is **RETIRED**. Its replacement, committed to before this
+run and now in force for every future EDGE claim:
+
+**Fold-majority selection** — an arm is selectable only if it ranks in the top
+half in **≥60% of folds**, and the number reported is the **pooled out-of-fold**
+result rather than one window's. Pre-registered separately as §34 and tested on
+its own terms before anything runs under it.
+
+### Honest limits of §33b itself
+
+Five folds, six arms, one snapshot, 6.5 years. This is not a proof that
+walk-forward selection can never work here — it is a demonstration that it has
+not been shown to work, on the only data available, using the exact procedure
+nineteen prior sections relied on. A method that has never been validated is not
+the same as a method proven useless, and §34 has to clear its own bar rather
+than inherit trust from this rejection.
+
+**No strategy was enabled or disabled by §33. `lowvol` and `xsmom` remain off.**
