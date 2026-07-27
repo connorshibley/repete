@@ -2152,3 +2152,123 @@ the loop. Fixed by purging `src/__pycache__` and setting
 Worth recording because the failure direction is the dangerous one: a false RED
 is noisy and self-correcting, a false GREEN is a rail you believe is tested and
 is not. Any mutation-testing harness in this repo needs the same treatment.
+
+---
+
+## §31 — CROSS-ASSET RISK GATE (pre-registered 2026-07-27, before any run)
+
+**Claim type: EDGE.** Not capacity, not leverage. The claim is that entries
+taken while credit is deteriorating are *worse trades*, and that skipping them
+raises per-trade expectancy. If it only shifts exposure it has failed.
+
+### Why this idea, and why now
+
+Prompted by comparing this repo against `TauricResearch/TradingAgents`
+(94.7k stars, Apache-2.0). That project has no broker, no backtest engine and no
+statistical gating — but it does have something this one does not: **information
+breadth.** It reads fundamentals, macro, sentiment and prediction markets.
+
+Every strategy here — `ma_crossover`, `tsmom`, `meanrev`, `xsmom`, `donchian` —
+is a price-only rule over 38 of the most heavily arbitraged instruments in
+existence. `:611` reports no OOS per-trade edge distinguishable from zero across
+all five after Bonferroni correction. **That is the expected result for
+price-only rules on SPY/QQQ/AAPL/NVDA, not a surprise.** News exists in the
+system but only widens the universe through nominations (`main.py:592`); it has
+never entered a signal.
+
+So the one change worth testing is an input the price series does not already
+contain.
+
+### Why cross-asset prices rather than FRED
+
+The obvious borrow is FRED macro. It carries a trap: FRED serves **current**
+values and most macro series are revised. Backtesting against revised data is
+lookahead, and it would quietly invalidate this gate rather than fail it loudly.
+ALFRED vintages are the correct fix and are a separate project.
+
+Cross-asset **prices** have no revision problem. They are point-in-time by
+construction, they arrive through the same yfinance path as everything else, and
+they carry the same orthogonality argument: information not contained in the
+traded symbol's own price history.
+
+Channel: **HYG:LQD** — high-yield credit against investment grade. When credit
+risk appetite deteriorates, that ratio falls before equity indices do, often
+enough to be worth one honest test. `UUP` (dollar) is fetched into the snapshot
+for a later question and is **not** part of this gate.
+
+### Data
+
+Separate snapshot `credit_2020-01-01_2026-07-10.json.gz`,
+sha256 `9b8ac92c77137a819e62339f50e35b34f1b85e9e2be4f126c7dedd7ccb457621`,
+3 symbols (HYG, LQD, UUP), 4914 bars, yfinance `auto_adjust=True`.
+
+Verified before registering: HYG/LQD/UUP each have **1638 bars**, identical to
+SPY's 1638 in the price snapshot, and **zero** SPY session dates lack a HYG bar.
+No alignment gap to paper over.
+
+**The price snapshot is NOT rebuilt.** `bars_2020-01-01_2026-07-10.json.gz`
+(sha256 `6abb20b5…`) stays byte-identical, so §31's arms are measured on exactly
+the price data §27 and §29 were. Adding three tickers to it would have changed
+its hash and silently orphaned every earlier verdict anchored to it.
+
+### The rule under test
+
+A filter over existing entry signals, in the shape of §23's `rvol_blocked`:
+one implementation shared by live and both simulators, **fails open** on missing
+data, and is **never applied to exits** — a position must always be able to
+leave. Not a sixth strategy; the strategies are unchanged.
+
+### Arms (3 — K deliberately small, it inflates the Bonferroni correction)
+
+| arm | rule |
+|---|---|
+| **baseline** | no gate (incumbent) |
+| **sma50** | block new entries while HYG:LQD < its own 50-bar SMA |
+| **sma100** | block new entries while HYG:LQD < its own 100-bar SMA |
+
+### Pass mark — fixed now, before any numbers exist
+
+Selection on **IS only**; OOS reported once. Split 70/30 as in §27.
+
+An arm is ADOPTED only if **all** hold:
+
+- **(a)** clears `enablement_gate()` on OOS in full — return > 0, ≥15 trades,
+  PF ≥ 1.3, and beats B&H *or* the risk-adjusted bar *or* the exposure-matched
+  benchmark (`backtest.py:969`)
+- **(b)** OOS profit factor **strictly greater** than baseline's. An EDGE claim
+  that does not raise PF is not an edge claim
+- **(c)** OOS max drawdown ≤ baseline's + 1.0pp absolute
+- **(d)** ≥ 15 OOS trades **and** ≥ 60% of baseline's trade count. A filter that
+  reaches the PF bar by taking 6 trades has not found an edge, it has found a
+  smaller sample
+- **(e)** Bonferroni-corrected block bootstrap (`significance.compare`, K=3)
+  returns better-than-baseline, not INCONCLUSIVE
+
+**(b), (d) and (e) are the ones that matter.** A gate that merely sits out bad
+weather will pass (a) and (c) by lowering exposure — that is the capacity
+result, and this is not a capacity claim.
+
+### Prior — stated before the run, honestly
+
+**EDGE claims in this repo are 0 for 5.** §23 (relative volume) was the closest
+structural analogue and was REJECTED. The base rate for what follows is a
+rejection, and the registration exists so that outcome cannot be renegotiated
+afterwards.
+
+Two specific ways this fails that are worth naming now:
+
+1. HYG:LQD < SMA is a *slow* signal. It will likely be below its average through
+   most of the drawdowns the drawdown breaker already handles, so it may be
+   measuring the same thing twice.
+2. Credit stress and equity weakness are contemporaneous more often than credit
+   leads. If so this removes trades roughly at random with respect to outcome —
+   which shows up as flat PF and lower trade count, i.e. (b) and (d) fail
+   together.
+
+**Running trial count entering §31:** ~41 registered comparisons plus grid arms
+(38 entering §27, plus §27's 5 arms scored as one comparison, plus §29).
+
+**Runner:** `scripts/gate_cross_asset.py` — committed, not a heredoc, so this
+gate can be re-executed exactly.
+
+### §31 RESULT — *(to be written after the run, whichever way it lands)*
