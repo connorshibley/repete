@@ -3154,4 +3154,91 @@ alpha is demonstrated, or that the go-live gate (30 closed trades / 60 days,
 
 **Runner:** `scripts/gate_s35_momentum.py` — committed.
 
-### §35 RESULT — *(to be written after the run, whichever way it lands)*
+### §35 RESULT — **REJECTED**, and it kills the most tempting number in this file.
+
+Snapshot `bars_wide_2014-01-01_2019-12-31.json.gz` (sha256 `dca8dc85…`),
+hash-verified before scoring. 500 symbols, whole period, no split, no selection.
+
+| | return | PF | maxDD | trades | symbols | deploy |
+|---|---|---|---|---|---|---|
+| **baseline** | **+64.36%** | **1.431** | 11.12% | 4,524 | 500 | 69.6% |
+| **xsmom-12-1** | **−4.04%** | **0.758** | 18.49% | 248 | 141 | 21.1% |
+| buy-and-hold | +90.41% | — | 21.1% | — | — | — |
+
+```
+[FAIL] (a) clears enablement_gate() in full
+[FAIL] (b) PF strictly > baseline
+[FAIL] (c) maxDD <= baseline + 1.0pp
+[PASS] (d) trades >= 30
+       INCONCLUSIVE: -$16.28/trade vs +$14.23/trade, diff -$30.51,
+       99.38% CI [-$91.39, +$104.13]  (Bonferroni K=8)
+[FAIL] (e) significantly better
+```
+
+**The hypothesis lost money.** −4.04% over six years, in a period where
+buy-and-hold returned **+90.41%** and the incumbent ensemble returned +64.36%.
+Profit factor 0.758 — it lost more on its losers than it made on its winners.
+Every clause fails except the trade count.
+
+**EDGE claims are now 0 for 8.**
+
+### Why this rejection is worth more than the seven before it
+
+It is the first claim in this repository whose verdict **cannot** be an artifact
+of selection, because there was no selection. One hypothesis, its parameters
+published by Jegadeesh & Titman in 1993, fixed in a commit before the runner
+existed, tested once on a period with **zero date overlap** with anything this
+repo had touched, corrected at K=8 for the whole research programme.
+
+Every earlier rejection was measured with an instrument §33b later showed to be
+uninformative. This one was not.
+
+### What it does to §32's `xsmom-12-1-10`
+
+§32 produced the single most seductive row in this file: **+63.17%
+out-of-sample at profit factor 5.061**, better than double buy-and-hold. It was
+flagged there as untrustworthy on procedural grounds — it ranked fifth of six
+in-sample, and §33b showed the ranking carried no information. That was an
+argument about method, not about the strategy.
+
+§35 settles it with evidence. **The identical parameters — 231-bar lookback,
+21-bar skip, top decile — lost 4% on a clean, untouched six-year period while
+the market rose 90%.**
+
+A rule that returns +63% in one window and −4% in another is not an edge that
+comes and goes. It is noise, and §32's number was a draw from it. The temptation
+is now closed by measurement rather than by caution, which is a much stronger
+place to leave it.
+
+### The prior said this was momentum's best case
+
+Registered before the run: 2014–2019 contains no COVID crash and no 2022 bear,
+and cross-sectional momentum is documented to fail hardest at sharp reversals,
+so a calm sample is where it should look **best**.
+
+It lost money anyway, on a universe carrying **twelve years of survivorship
+bias running in its favour**. That combination — the friendliest period, the
+friendliest universe, the literature's own parameters — is why this rejection
+should be read as strong.
+
+### What is NOT concluded
+
+That cross-sectional momentum does not exist. It is one of the most replicated
+anomalies in finance and this is one implementation, on one universe, inside one
+bot's risk rails, at 5bps costs, holding a top decile with a median exit. Any of
+those choices could be what failed.
+
+What **is** concluded: **this bot, as built, does not extract it** — and after
+eight pre-registered attempts, the base rate for the next idea should be set
+accordingly.
+
+### Where that leaves the search
+
+Eight EDGE claims, eight rejections, one of them now clean. Three of the four
+most-cited retail anomaly families have been tested here and none survived:
+time-series momentum (§14–§21), cross-sectional momentum (§32, §35), low
+volatility (§32), plus relative volume (§23) and cross-asset credit (§31).
+
+**No strategy is enabled. `lowvol` and `xsmom` remain off.** The live record
+stands at 1 closed trade against a 30-trade gate, and nothing in this section
+moves it.
