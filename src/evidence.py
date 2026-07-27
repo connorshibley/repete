@@ -146,13 +146,20 @@ def invariants_check(cfg: dict, records: list[dict], root: str = ".") -> dict:
     # generated) — reconciled broker-side closes legitimately lack one.
     executed_buys = [r for r in records if r.get("type") == "decision"
                      and r.get("executed") and r.get("action") == "buy"]
+    # A `degraded` review is the FALLBACK verdict, not a judgement: the judge
+    # was unreachable or unconfigured, and the trade was approved at full size
+    # regardless. Testing only for the PRESENCE of an llm_review block let this
+    # report "0 missing" on entries no judge ever saw — an evidence pack
+    # asserting something untrue, which is worse than having no pack at all.
     no_judge = [r["trade_id"] for r in executed_buys
-                if not r.get("llm_review") and "reconcile" not in
-                (r.get("reason") or "")]
+                if (not r.get("llm_review")
+                    or (r.get("llm_review") or {}).get("degraded"))
+                and "reconcile" not in (r.get("reason") or "")]
     checks["every_entry_judged"] = {
         "pass": not no_judge,
         "detail": (f"{len(executed_buys)} executed entries, "
-                   f"{len(no_judge)} missing an llm_review block")}
+                   f"{len(no_judge)} without a real judge verdict "
+                   f"(absent, or a degraded fallback)")}
 
     # Disclaimer on every rendered public page that exists.
     pages = {}

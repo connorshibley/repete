@@ -54,9 +54,17 @@ def test_corrupt_ledger_tail_fails(cfg, tmp_path):
 
 
 def test_cycle_aborts_on_preflight_failure(tmp_path, monkeypatch, cfg):
+    """A misconfigured system must not trade.
+
+    This used `max_trades_per_day: 0` as its invalid value. Since §29 that is a
+    VALID value meaning "no cap" — risk.py has always read it that way, and
+    preflight now agrees. It previously did not, which silently stopped the bot
+    trading for a day. Switched to a value that genuinely disables a safety
+    rail: min_holding_days: 0 would turn off the swing guard (invariant #3).
+    """
     monkeypatch.chdir(tmp_path)
     cfg["risk"]["brackets"]["atr_period"] = 3
-    cfg["risk"]["max_trades_per_day"] = 0  # invalid: must be positive
+    cfg["risk"]["min_holding_days"] = 0  # invalid: disables the swing guard
     with open("config.yaml", "w") as f:
         yaml.safe_dump(cfg, f)
     broker = FakeCycleBroker(make_bars(BUY_CLOSES))

@@ -8,10 +8,29 @@ or a corrupted ledger tail must not trade at all. Pure checks, no network.
 import json
 import os
 
+# Rails where zero is meaningless or dangerous, so the value must be positive.
+# min_holding_days at 0 switches off the swing guard (invariant #3);
+# daily_loss_limit_pct at 0 switches off the kill switch; either sizing
+# percentage at 0 sizes every order to nothing.
 REQUIRED_POSITIVE_RISK = (
-    "risk_per_trade_pct", "max_position_pct", "max_order_value_usd",
-    "max_trades_per_day", "daily_loss_limit_pct", "min_holding_days",
+    "risk_per_trade_pct", "max_position_pct",
+    "daily_loss_limit_pct", "min_holding_days",
 )
+
+# Rails where 0 legitimately means "disabled" — matching how risk.py itself
+# reads them:
+#     risk.py:248   if r.get("max_order_value_usd"):        # 0 disables
+#     risk.py:693   cfg["risk"].get("max_trades_per_day") or 0
+# Still required to be PRESENT and non-negative: a missing key or a negative
+# number is a config error; 0 is a deliberate choice.
+#
+# §29 (2026-07-26) set max_order_value_usd to 0 and taught risk.py and
+# backtest.py to read it that way. Nobody told preflight, which still demanded
+# a positive number — so from that commit onward every cycle aborted at
+# main.py:500 and refused to trade. 861 tests stayed green because not one of
+# them ran the SHIPPED config through preflight. That test exists now.
+DISABLEABLE_RISK = ("max_order_value_usd", "max_trades_per_day")
+
 REQUIRED_ENV = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
 
 
@@ -27,6 +46,11 @@ def run(cfg: dict) -> list[str]:
         v = r.get(key)
         if not isinstance(v, (int, float)) or v <= 0:
             fails.append(f"risk.{key} missing or not a positive number ({v!r})")
+    for key in DISABLEABLE_RISK:
+        v = r.get(key)
+        if not isinstance(v, (int, float)) or v < 0:
+            fails.append(f"risk.{key} missing or negative ({v!r}) — "
+                         f"use 0 to disable it, not a negative number")
 
     if cfg.get("mode", "paper") not in ("paper", "live"):
         fails.append(f"mode must be paper|live, got {cfg.get('mode')!r}")
@@ -39,6 +63,19 @@ def run(cfg: dict) -> list[str]:
 
     if cfg.get("strategy", {}).get("timeframe") != "1Day":
         fails.append("strategy.timeframe must stay 1Day (swing-only invariant)")
+
+    # The judge is optional, but claiming to have one and not having one is a
+    # misconfiguration — and a quiet one. llm.review_signal() returns a clean
+    # `approve` at full size when the key is absent, so trades run UNJUDGED at
+    # the size the rules asked for, and evidence.py reports every entry as
+    # judged because an llm_review block is present either way. Set
+    # llm.enabled: false to trade on rules alone; that is a decision, not a
+    # silent hole.
+    if cfg.get("llm", {}).get("enabled") and not os.environ.get(
+            "ANTHROPIC_API_KEY"):
+        fails.append("llm.enabled: true but ANTHROPIC_API_KEY is not set — "
+                     "every trade would be approved unjudged at full size; "
+                     "set the key or set llm.enabled: false")
 
     for key in REQUIRED_ENV:
         if not os.environ.get(key):
