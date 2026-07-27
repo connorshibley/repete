@@ -2639,3 +2639,249 @@ unresolved rather than answered.
 `lowvol` stays in the registry, **disabled**. `xsmom` stays **disabled**. A
 rejected arm keeps its implementation so the next registration need not rebuild
 it; it does not get enabled to see what happens.
+
+---
+
+## §33 — DOES WALK-FORWARD SELECTION PREDICT? (pre-registered 2026-07-27, before the runner existed)
+
+**Claim type: METHOD.** A new type. §14–§32 tested *strategies* using a fixed
+procedure; §33 tests *the procedure*. Nothing in this section can enable or
+disable a strategy.
+
+### Why this comes before any further factor hunting
+
+§32 measured a Spearman rank correlation of **−0.543** between in-sample and
+out-of-sample profit factor across six arms. The in-sample best finished fourth;
+the in-sample worst finished second. At n=6 that is not significant in either
+direction — which is exactly the problem. **The procedure has never been shown
+to rank at all.**
+
+Every gate from §14 onward selects on one in-sample window and reports one
+out-of-sample number. If that selection step carries no information, then:
+
+- every REJECTION remains sound (the bar was not cleared, whatever the selector
+  did), but
+- any PASS would rest on a coin flip dressed as a method, and
+- continuing to hunt arms is simply buying more chances for a false positive.
+
+Running another EDGE claim before answering this would be negligent. §32's own
+`xsmom-12-1-10` row — +63.17% OOS at PF 5.061, ranked fifth of six in-sample —
+is what that false positive would look like when it arrives.
+
+### The hypothesis under test
+
+> Selecting the in-sample best arm produces better out-of-sample performance
+> than picking an arm at random from the same family.
+
+That is the assumption every previous section has relied on without checking.
+
+### Design — expanding-origin folds
+
+The same six §32 arms (the family is already fixed and already burned, so no new
+multiple-comparison budget is spent on *strategies* here; the trials counted are
+folds, not arms).
+
+Five expanding-origin folds on the wide snapshot. Expanding rather than rolling
+because it matches deployment: the bot always has all history up to today.
+
+| fold | IS bars | OOS bars |
+|---|---|---|
+| 1 | 0–600 | 600–800 |
+| 2 | 0–800 | 800–1000 |
+| 3 | 0–1000 | 1000–1200 |
+| 4 | 0–1200 | 1200–1400 |
+| 5 | 0–1400 | 1400–1638 |
+
+Every fold runs all six arms IS and OOS: 60 simulations.
+
+### Metrics — fixed now
+
+1. **Per-fold Spearman** between IS and OOS profit-factor rank across the six
+   arms, and the mean across folds.
+2. **Selection lift**: OOS profit factor of the IS-selected arm minus the *mean*
+   OOS profit factor of all candidate arms in that fold. Positive means
+   selecting beat picking at random.
+3. **Hit rate**: folds in which the IS-selected arm placed in the top half OOS.
+
+### Pass mark — the procedure is VALIDATED only if all hold
+
+- **(a)** mean per-fold Spearman **> 0**
+- **(b)** mean selection lift **> 0**
+- **(c)** hit rate **≥ 4 of 5** folds
+
+Deliberately a low bar. This is not asking the procedure to be good; it is
+asking it to be better than a coin, which is the minimum for any of the last
+nineteen sections to mean what they say.
+
+### Prior — before the run
+
+**Expected to FAIL.** §32's point estimate was negative, the incumbent ensemble
+does not generalise across universes, and the folds span violently different
+regimes (COVID crash, 2021 melt-up, 2022 bear, 2023–26 recovery). A procedure
+that ranks strategies across regime boundaries would be a genuinely surprising
+result.
+
+### The remedy, committed BEFORE seeing the outcome
+
+So it cannot be invented to fit whatever comes back:
+
+**If §33 FAILS**, single-split selection is retired. Its replacement — to be
+pre-registered as §34 and tested on its own terms — is **fold-majority
+selection**: an arm is selectable only if it ranks in the top half in **≥60% of
+folds**, and the number reported is the pooled out-of-fold result rather than
+one window's. Any future EDGE claim runs under that method.
+
+**If §33 PASSES**, the existing verdicts stand as they are, and §14–§32's
+rejections keep exactly the weight they already have.
+
+Either way **no strategy is enabled by this section.**
+
+**Running trial count entering §33:** ~50 registered comparisons plus grid arms.
+§33 adds 5 folds as one METHOD comparison.
+
+**Runner:** `scripts/gate_fold_stability.py` — committed.
+
+### §33 RUN 1 — **INVALID.** The verdict was VALIDATED and it was an artifact.
+
+Recorded in full rather than deleted. A discarded run is an unrecorded degree of
+freedom, and this one printed the most convenient possible answer.
+
+**What it reported:**
+
+```
+[PASS] (a) mean spearman > 0        [+0.691]
+[PASS] (b) mean selection lift > 0  [+0.474]
+[PASS] (c) hit rate >= 4/5          [5/5]
+VERDICT: the walk-forward selection procedure is VALIDATED on this data.
+```
+
+All three clauses, 5/5 folds. It would have licensed continuing to hunt
+strategies with the existing method.
+
+**Why it is invalid.** The OOS windows were 200 bars, sliced as `[is_end, stop)`
+with no history. `xsmom-12-1` requires **253 bars** of lookback:
+
+| fold | xsmom-12-1-10 | xsmom-12-1-20 | xsmom-6-1-10 | lowvol-60-10 | both-10 |
+|---|---|---|---|---|---|
+| 1 | **0** | **0** | 148 | 237 | 237 |
+| 2 | **0** | **0** | 103 | 202 | 202 |
+| 3 | **0** | **0** | 156 | 194 | 194 |
+| 4 | **0** | **0** | 108 | 155 | 155 |
+
+*OOS trade counts.* Both 12-1 momentum arms placed **zero trades in every
+fold** — they could not signal at all. Their profit factor was 0.000 by
+construction.
+
+**The mechanism that manufactured the result:** those two arms also ranked last
+*in-sample* (PF 0.99 and 0.63, on their own merits). So two of six arms sat at
+the bottom of **both** rankings for entirely unrelated reasons — genuinely weak
+in-sample, structurally mute out-of-sample — and that alone forces a large
+positive rank correlation. Meanwhile `both-10` returned byte-identical numbers
+to `lowvol-60-10` in every fold, because its momentum half contributed nothing,
+so it was not an independent arm either.
+
+**Three of five candidate arms were not data points.** A rank correlation over
+six arms where three are degenerate measures the fold design, not the selector.
+
+**Whose error this is.** Mine, in the fold design. §31 handled the identical
+lead-in problem correctly for the credit series — *"the OOS slice keeps `period`
+bars of lead-in before the first OOS price bar, so arm sma100 is not silently
+disabled for its first 100 sessions"* — and the same reasoning was not applied
+here three hours later.
+
+**How it was caught.** Not by the pass mark, which was satisfied. By reading the
+per-arm OOS trade counts in the trials log while the run was still going. A
+profit factor of exactly 0.000 repeated across folds is not a weak arm, it is an
+arm that never traded.
+
+**The correction.** Each arm's OOS slice now carries lead-in equal to **that
+arm's own** `strategies.max_lookback_bars(cfg)` — 253 bars for the 12-1 arms,
+148 for 6-1, 100 for low-vol — so every arm's first possible signal lands exactly
+on the fold boundary. No contamination: a strategy cannot signal before it has
+its lookback, so no trade can open inside the lead-in.
+
+The runner now **raises** on any arm with zero OOS trades rather than scoring it.
+A zero silently ranks last; a raise cannot be ignored.
+
+**Nothing from Run 1 is carried forward.** Its numbers are not quoted anywhere as
+evidence, and the +0.691 Spearman in particular must never be cited: it measures
+a broken slice.
+
+### §33b RESULT — **NOT VALIDATED.** In-sample selection does not predict.
+
+Corrected run, per-arm lead-in, snapshot hash-verified. Five expanding-origin
+folds, six arms, 60 simulations.
+
+| fold | IS→OOS Spearman | selection lift | selected arm's OOS rank | |
+|---|---|---|---|---|
+| 1 | −0.943 | −0.163 | 4/5 | MISS |
+| 2 | −0.657 | −0.636 | 5/5 | MISS |
+| 3 | +0.371 | **+4.900** | 1/5 | HIT |
+| 4 | +0.829 | +0.400 | 2/5 | HIT |
+| 5 | −0.486 | −1.226 | 4/5 | MISS |
+
+```
+[FAIL] (a) mean spearman > 0        [-0.177]
+[PASS] (b) mean selection lift > 0  [+0.655]
+[FAIL] (c) hit rate >= 4/5          [2/5]
+```
+
+**Clause (b) is not evidence and is not cited as such.** It clears only on fold
+3's +4.900 outlier. The **median lift is −0.163** and three of five folds are
+negative; drop fold 3 and the mean is −0.406. A criterion carried by one
+observation out of five is a criterion that has not been met in any meaningful
+sense, and it was included in the registration precisely so it could not be
+quietly leaned on now.
+
+**The procedure is NOT VALIDATED.**
+
+### What the result actually says
+
+Not "selection is backwards". The per-fold Spearman spans **−0.943 to +0.829**
+— from near-perfect inverse ranking to near-perfect correct ranking, across
+adjacent windows of the same data. The mean of −0.177 is indistinguishable from
+zero, and with that spread it is not a meaningful summary of anything.
+
+The honest statement is: **selecting the best in-sample arm carries no reliable
+information about which arm performs out of sample.** Sometimes it is right,
+sometimes it is exactly wrong, and nothing in-sample tells you which fold you
+are in.
+
+That is a more useful finding than either tidy alternative. "Anti-predictive"
+would have been exploitable — invert the selector. "Predictive" would have
+validated §14–§32. Neither is true.
+
+### Consequences for §14–§32
+
+**Every rejection stands.** A rejection is a failure to clear a numeric bar, and
+the bar was not cleared regardless of what the selector did. §31, §32 and the
+five before them are unaffected.
+
+**No pass from that procedure would have been trustworthy.** This is the load-
+bearing point. Seven EDGE claims have been rejected; had one been accepted, it
+would have rested on a selection step now shown to carry no information. §32's
+`xsmom-12-1-10` — +63.17% OOS at PF 5.061, ranked fifth of six in-sample — is
+exactly what that false positive looks like, and it is now doubly disqualified.
+
+The 0-for-7 record was never the problem. **The instrument was.**
+
+### The registered remedy, triggered
+
+Single-split selection is **RETIRED**. Its replacement, committed to before this
+run and now in force for every future EDGE claim:
+
+**Fold-majority selection** — an arm is selectable only if it ranks in the top
+half in **≥60% of folds**, and the number reported is the **pooled out-of-fold**
+result rather than one window's. Pre-registered separately as §34 and tested on
+its own terms before anything runs under it.
+
+### Honest limits of §33b itself
+
+Five folds, six arms, one snapshot, 6.5 years. This is not a proof that
+walk-forward selection can never work here — it is a demonstration that it has
+not been shown to work, on the only data available, using the exact procedure
+nineteen prior sections relied on. A method that has never been validated is not
+the same as a method proven useless, and §34 has to clear its own bar rather
+than inherit trust from this rejection.
+
+**No strategy was enabled or disabled by §33. `lowvol` and `xsmom` remain off.**
