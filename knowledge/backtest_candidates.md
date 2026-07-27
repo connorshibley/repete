@@ -2959,4 +2959,83 @@ No new simulations — §34 re-reads the trials log §33b already wrote.
 
 **Runner:** `scripts/gate_selector_compare.py` — committed.
 
-### §34 RESULT — *(to be written after the run, whichever way it lands)*
+### §34 RESULT — **DOES NOT REPLACE.** No selector here beats chance.
+
+Four held-out folds (fold 1 unscorable — no history). No simulations; computed
+from the trials log §33b wrote.
+
+| selector | mean held-out OOS PF | hit rate |
+|---|---|---|
+| **S3 random** (the bar) | **2.590** | — |
+| S1 single-split *(retired)* | 3.449 | 2/4 |
+| **S2 fold-majority (causal)** | **2.604** | **2/4** |
+| *oracle variant — diagnostic only* | *2.819* | *3/4* |
+
+```
+[PASS] (a) fold-majority mean PF > random
+[FAIL] (b) fold-majority hit rate >= 3/4
+[FAIL] (c) beats single-split on BOTH
+```
+
+**Fold-majority does not replace single-split.** Clause (a) clears by 0.014 —
+2.604 against 2.590 — which is a rounding artefact, not an improvement.
+
+### The diagnostic that settles the interpretation
+
+The **oracle** variant selects using every fold except the held-out one,
+including folds in the future. It cheats, deliberately, to establish an upper
+bound on what any amount of cross-fold history could buy.
+
+It scored **2.819** — barely above random's 2.590, and *below* the retired
+single-split method's 3.449.
+
+**Even with lookahead, aggregating across folds cannot pick a winner.** That
+rules out the comfortable explanation. Fold-majority is not underperforming
+because it lacks history; it underperforms because **arm quality is not stable
+across folds at all.** The instability is in the data, not in the estimator, and
+no smarter estimator over these measurements will fix it.
+
+### Single-split's higher mean is not a reprieve
+
+S1 scored 3.449, the best of the three — and it stays retired. Its hit rate is
+**2/4**, identical to fold-majority and to a coin. The mean is carried entirely
+by fold 3, where `lowvol-60-10` returned PF 9.121; strip that fold and the
+ordering collapses. §33b rejected it on five folds of evidence and one outlier
+in four does not overturn that.
+
+### The honest state of this repository
+
+**There is no validated way to choose between strategies here.** Not
+single-split, not fold-majority, not an oracle with the future in hand. Three
+selectors, all indistinguishable from picking at random on this data.
+
+That is the most important sentence written in this file today, and it is
+harder than either alternative would have been.
+
+### What follows from it — the constructive part
+
+If selection cannot be trusted, then **stop selecting.** Every future EDGE claim
+must be built so its verdict does not depend on a selector:
+
+1. **Pre-specify a single arm** before the run. No family, no choosing, no
+   multiple-comparison budget spent on selection. One hypothesis, one number.
+   This is weaker per run and honest per run.
+2. **Or require the whole family to move.** If an effect is real it should lift
+   every arm in the family, not one. A result that appears in one arm and not
+   its neighbours is what selection noise looks like.
+3. **Or require an effect large enough to survive any selection** — a margin so
+   wide that which arm you picked cannot change the verdict.
+
+Every EDGE claim from here carries the stated limitation: *selection in this
+repository is unvalidated, so this result rests on a pre-specified hypothesis
+rather than a chosen one.*
+
+### Limits of §34 itself
+
+Four evaluations, six arms, one snapshot, and the same measurements that
+produced §33b. It cannot prove fold-majority is useless in general — only that
+it showed no advantage here, on the data available, against the method it was
+registered to replace. As pre-registered: a pass would have been a licence to
+test on fresh data. A failure is not proof of the negative either.
+
+**Nothing enabled. `lowvol` and `xsmom` remain off. EDGE claims stand at 0 for 7.**
