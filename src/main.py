@@ -78,6 +78,9 @@ def configure_logging() -> None:
     )
     import log as structlog
     structlog.attach_json_handler()  # JSON mirror w/ secret redaction (Phase D)
+    # ...and put the same redaction in front of the console + agent.log
+    # handlers, which are the two a human actually opens in an incident.
+    structlog.redact_existing_handlers()
 
 
 def handle_close(trade_id: str, open_rec: dict, exit_price: float,

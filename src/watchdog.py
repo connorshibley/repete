@@ -36,6 +36,8 @@ def configure_logging() -> None:
                   logging.FileHandler("logs/agent.log", mode="a")],
         force=True,
     )
+    import log as structlog
+    structlog.redact_existing_handlers()
 
 HEARTBEAT_FILE = "memory/heartbeat"
 HALT_FILE = "HALT"
