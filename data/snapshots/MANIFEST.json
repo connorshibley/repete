@@ -30,6 +30,16 @@
       "sha256": "2ee392ae494c555c7f22de59682c2159582ab89651963904dfe63faafd738541",
       "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
       "start": "2020-01-01"
+    },
+    "credit_2020-01-01_2026-07-10.json.gz": {
+      "built_at": "2026-07-27T17:37:00.696848+00:00",
+      "end": "2026-07-10",
+      "n_bars": 4914,
+      "n_symbols": 3,
+      "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price snapshot used by \u00a71\u2013\u00a713; re-baseline inside this file.",
+      "sha256": "9b8ac92c77137a819e62339f50e35b34f1b85e9e2be4f126c7dedd7ccb457621",
+      "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
+      "start": "2020-01-01"
     }
   }
 }
