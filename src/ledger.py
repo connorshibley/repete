@@ -71,13 +71,25 @@ class Ledger:
         return trade_id
 
     def close_trade(self, trade_id: str, exit_price: float, pnl: float, pnl_pct: float,
-                    exit_reason: str = ""):
+                    exit_reason: str = "", benchmark_pnl_pct: float | None = None):
         """Record the outcome of a closed trade as a separate event (append-only).
 
         exit_reason: strategy_sell | stop_loss | take_profit | closed_order |
         last_price_estimate | entry_unfilled ("" in pre-bracket records).
+
+        benchmark_pnl_pct: the benchmark's % move over the SAME holding window,
+        or None when it could not be computed. `alpha_pct` is derived from it.
+
+        `result` stays keyed to absolute P&L — it is what the broker did, and
+        rewriting its meaning would silently reinterpret 564 existing records.
+        Alpha is added ALONGSIDE it (2026-07-27) because a +3% trade in a +5%
+        week is a win by that field and a miss by this one, and until now only
+        the flattering half reached lessons.py.
+
+        Absent benchmark => both new fields absent, never 0.0: "unknown" and
+        "matched the market" must not collapse into the same number.
         """
-        self._append({
+        rec = {
             "type": "outcome",
             "trade_id": trade_id,
             "exit_price": exit_price,
@@ -85,7 +97,11 @@ class Ledger:
             "pnl_pct": round(pnl_pct, 3),
             "result": "win" if pnl > 0 else "loss",
             "exit_reason": exit_reason,
-        })
+        }
+        if benchmark_pnl_pct is not None:
+            rec["benchmark_pnl_pct"] = round(benchmark_pnl_pct, 3)
+            rec["alpha_pct"] = round(pnl_pct - benchmark_pnl_pct, 3)
+        self._append(rec)
 
     def log_event(self, event: str, detail: str = ""):
         self._append({"type": "event", "event": event, "detail": detail})

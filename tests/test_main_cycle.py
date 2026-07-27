@@ -435,15 +435,19 @@ def test_llm_outage_is_ledgered_as_degradation(cycle_env, monkeypatch):
                                          "cited_lessons": [], "bull_case": "",
                                          "bear_case": "", "confidence": None,
                                          "reasoning": "unavailable",
-                                         "degraded": "anthropic 503"})
+                                         "degraded": "anthropic 503",
+                                         "degraded_reason": "api"})
     main.run_cycle()
 
     led = Ledger(cfg["memory"]["ledger_path"])
     degs = [r for r in led.all_records()
             if r.get("type") == "event" and r.get("event") == "degradation"
-            and (r.get("detail") or "").startswith("llm_judge:")]
+            and (r.get("detail") or "").startswith("llm_judge")]
     assert degs, "LLM outage must be ledgered as a degradation"
     assert "anthropic 503" in degs[0]["detail"]
+    # 2026-07-27: the record must also name WHICH failure. An outage and a
+    # model replying with prose used to be byte-identical here.
+    assert "llm_judge[api]" in degs[0]["detail"], degs[0]["detail"]
 
 
 def test_llm_disabled_is_not_a_degradation(cycle_env):

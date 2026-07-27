@@ -72,11 +72,24 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # can return. Preflight now refuses this combination outright; this
         # marker covers any caller that skips preflight, and makes the
         # historical ledger honest about which entries were actually judged.
-        return {**fallback, "degraded": True,
+        return {**fallback, "degraded": True, "degraded_reason": "absent_key",
                 "reasoning": f"LLM review UNAVAILABLE — "
                              f"{llm_client.key_env_var(cfg)} not set while "
                              f"llm.enabled is true. Approved unjudged by "
                              f"fallback, not by the judge."}
+
+    # The CALL and the PARSE sit in separate try blocks on purpose.
+    #
+    # Until 2026-07-27 both ran under one `except Exception`, so "the vendor was
+    # unreachable" and "the model replied with prose instead of JSON" wrote
+    # byte-identical ledger records. Those two want opposite responses — the
+    # first is waited out, the second means the prompt or the model changed
+    # under you — and the first time the difference mattered would have been the
+    # first time anyone looked.
+    #
+    # For honesty about scale: this has never fired. 0 degradations across 564
+    # decisions. The split costs nothing and makes the eventual first one
+    # diagnosable; it is not evidence that parsing is fragile.
     try:
         text = llm_client.complete(
             cfg, _SYSTEM,
@@ -85,6 +98,11 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
             f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
             f"{memory_context}\n\nReply with JSON only.",
             max_tokens=cfg["llm"]["max_tokens"])
+    except Exception as e:  # noqa: BLE001 — vendor or network failure
+        log.warning("LLM review call failed (%s) — proceeding rule-based", e)
+        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "api"}
+
+    try:
         start, end = text.find("{"), text.rfind("}") + 1
         verdict = json.loads(text[start:end])
         # Clamp: the LLM can only reduce, never enlarge.
@@ -108,13 +126,13 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         except (TypeError, ValueError):
             verdict["confidence"] = None
         return verdict
-    except Exception as e:  # noqa: BLE001 — any LLM failure degrades to rules
-        log.warning("LLM review failed (%s) — proceeding rule-based", e)
-        # Mark the OUTAGE case so the caller can tell it apart from a judge that
-        # genuinely approved (and from the judge being intentionally disabled).
-        # Without this an outage records as a real "approve" and the calibration
-        # scoreboard credits the judge for decisions it never made.
-        return {**fallback, "degraded": str(e)[:200]}
+    except Exception as e:  # noqa: BLE001 — a reply arrived, but not a verdict
+        log.warning("LLM review reply unusable (%s) — proceeding rule-based", e)
+        # Marked degraded so the caller can tell this apart from a judge that
+        # genuinely approved (and from one intentionally disabled). Without the
+        # marker an unusable reply records as a real "approve" and the
+        # calibration scoreboard credits the judge for a decision it never made.
+        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "parse"}
 
 
 def write_x_post(trade: dict, cfg: dict) -> str | None:

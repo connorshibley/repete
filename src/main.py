@@ -85,19 +85,49 @@ def configure_logging() -> None:
 
 def handle_close(trade_id: str, open_rec: dict, exit_price: float,
                  ledger: Ledger, memory: Memory, cfg: dict,
-                 exit_reason: str = "strategy_sell"):
-    """A position was exited: record outcome, learn, post."""
+                 exit_reason: str = "strategy_sell",
+                 bench_bars: list[dict] | None = None):
+    """A position was exited: record outcome, learn, post.
+
+    `bench_bars` are daily benchmark (SPY) bars covering the holding window.
+    Optional: callers that have them pass them, callers that don't get an
+    outcome record without alpha rather than a crash or a fabricated zero.
+    """
     entry = open_rec.get("entry_price") or exit_price
     qty = open_rec.get("qty") or 0
     pnl = (exit_price - entry) * qty
     pnl_pct = (exit_price - entry) / entry * 100 if entry else 0.0
-    ledger.close_trade(trade_id, exit_price, pnl, pnl_pct, exit_reason=exit_reason)
-    log.info("Closed trade %s (%s): P&L $%.2f (%.2f%%)",
-             trade_id, exit_reason, pnl, pnl_pct)
+
+    # Alpha over the identical window. Best-effort by design: a benchmark
+    # problem must never block recording the trade that actually happened.
+    bench_pct = None
+    try:
+        import scorecard
+        bench_pct = scorecard.benchmark_return_pct(
+            bench_bars,
+            open_rec.get("entry_ts") or open_rec.get("ts") or "",
+            datetime.now(timezone.utc).isoformat())
+    except Exception as e:  # noqa: BLE001
+        log.warning("benchmark return for %s failed: %s", trade_id, e)
+
+    ledger.close_trade(trade_id, exit_price, pnl, pnl_pct,
+                       exit_reason=exit_reason, benchmark_pnl_pct=bench_pct)
+    if bench_pct is None:
+        log.info("Closed trade %s (%s): P&L $%.2f (%.2f%%)",
+                 trade_id, exit_reason, pnl, pnl_pct)
+    else:
+        log.info("Closed trade %s (%s): P&L $%.2f (%.2f%%) | benchmark %+.2f%% "
+                 "=> alpha %+.2f%%", trade_id, exit_reason, pnl, pnl_pct,
+                 bench_pct, pnl_pct - bench_pct)
 
     closed = {**open_rec, "exit_price": exit_price, "pnl": round(pnl, 2),
               "pnl_pct": round(pnl_pct, 2), "result": "win" if pnl > 0 else "loss",
               "exit_reason": exit_reason}
+    if bench_pct is not None:
+        # Surfaced to the lesson generator: without it the judge learns that
+        # riding a rising market was skill.
+        closed["benchmark_pnl_pct"] = round(bench_pct, 2)
+        closed["alpha_pct"] = round(pnl_pct - bench_pct, 2)
     lesson = llm.generate_lesson_structured(closed, memory.context_for_llm(), cfg)
     if lesson:
         lid = memory.lessons.add_lesson(lesson["hypothesis"], lesson["scope"],
@@ -168,10 +198,23 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
     were exited broker-side (bracket leg fill, kill-switch flatten, or a manual
     close in the dashboard). Write their outcomes so open_buys() never desyncs.
     Every path writes a ledger record; errors never crash the cycle."""
-    for tid, rec in ledger.open_buys().items():
+    stale = {tid: rec for tid, rec in ledger.open_buys().items()
+             if rec["symbol"] not in positions}
+
+    # Benchmark bars for alpha attribution, fetched ONCE and only when there is
+    # actually something to close. This runs before the cycle's bar fetch, so
+    # without it every reconcile-path close — which is how most closes happen —
+    # would record no alpha at all. A failure here costs the alpha field, never
+    # the outcome record.
+    bench_bars = None
+    if stale:
+        try:
+            bench_bars = broker.bars("SPY", "1Day", 260)
+        except Exception as e:  # noqa: BLE001
+            log.warning("benchmark bars unavailable for reconcile: %s", e)
+
+    for tid, rec in stale.items():
         symbol = rec["symbol"]
-        if symbol in positions:
-            continue
         try:
             entry_order = rec.get("order") or {}
             if entry_order.get("id"):
@@ -192,7 +235,8 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
                 continue
             log.info("Reconciling %s trade %s: closed broker-side (%s @ $%.2f)",
                      symbol, tid, reason, price)
-            handle_close(tid, rec, price, ledger, memory, cfg, exit_reason=reason)
+            handle_close(tid, rec, price, ledger, memory, cfg,
+                         exit_reason=reason, bench_bars=bench_bars)
         except Exception as e:  # noqa: BLE001 — reconciliation must never kill the cycle
             log.error("Reconcile failed for %s trade %s: %s", symbol, tid, e)
             ledger.log_event("reconcile_error", f"{symbol} trade {tid}: {e}")
@@ -647,9 +691,16 @@ def _run_cycle(completed_bars_only: bool = False):
             # The judge was UNREACHABLE, not permissive. Ledger it as a
             # degradation so the SLO counts it and review.py can distinguish
             # "approved" from "approved because the judge was down".
-            ledger.log_event("degradation",
-                             f"llm_judge: review unavailable for {symbol}, "
-                             f"proceeding rule-based ({review['degraded']})")
+            #
+            # `degraded_reason` (2026-07-27) names WHICH failure — absent_key,
+            # api or parse. They call for opposite responses, and the old
+            # record could not tell them apart: for an absent key it printed
+            # the bare `True`.
+            ledger.log_event(
+                "degradation",
+                f"llm_judge[{review.get('degraded_reason', 'unknown')}]: review "
+                f"unavailable for {symbol}, proceeding rule-based "
+                f"({review['degraded']})")
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False, detail="LLM veto",
@@ -888,7 +939,11 @@ def _run_cycle(completed_bars_only: bool = False):
             # find the open buy this sell closes
             for tid, rec in list(open_trades.items()):
                 if rec["symbol"] == symbol:
-                    handle_close(tid, rec, price, ledger, memory, cfg)
+                    # all_bars is populated in Phase 1, before this closure is
+                    # ever called; SPY is the benchmark the scorecard already
+                    # uses, so alpha here needs no extra fetch.
+                    handle_close(tid, rec, price, ledger, memory, cfg,
+                                 bench_bars=all_bars.get("SPY"))
                     open_trades.pop(tid)
                     break
         return "executed"

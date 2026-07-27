@@ -36,6 +36,47 @@ def equity_by_month(records: list[dict]) -> "OrderedDict[str, dict]":
     return out
 
 
+def _close_on_or_before(bars: list[dict], ts: str) -> float | None:
+    """Last close at or before `ts`. None when the window predates the bars.
+
+    Strictly on-or-BEFORE: a trade that closed at 15:45 must be compared with
+    the benchmark as of the same moment, never a later bar it could not have
+    seen. Bars are assumed ascending by ts, which is how the broker returns
+    them and how the snapshots are stored.
+    """
+    out = None
+    for b in bars or []:
+        if b.get("ts", "") <= ts:
+            out = b.get("close")
+        else:
+            break
+    return out
+
+
+def benchmark_return_pct(bench_bars: list[dict], entry_ts: str,
+                         exit_ts: str) -> float | None:
+    """Benchmark % return over exactly this trade's holding window.
+
+    None — not 0.0 — when it cannot be computed. A missing benchmark and a flat
+    benchmark are different facts, and recording the second when you mean the
+    first turns "unknown" into "the bot matched the market", which is the more
+    flattering of the two.
+
+    Why this exists (2026-07-27): the outcome record held only absolute pnl_pct,
+    so a +3% trade in a +5% week was stored as a `win` and lessons.py taught the
+    judge it was a good call. Same shape as the comparison this repo already
+    applies to the strategy as a whole (buy-and-hold in backtest.py, monthly SPY
+    below) — it was just never applied per trade.
+    """
+    if not bench_bars or not entry_ts or not exit_ts or exit_ts < entry_ts:
+        return None
+    start = _close_on_or_before(bench_bars, entry_ts)
+    end = _close_on_or_before(bench_bars, exit_ts)
+    if not start or end is None or start <= 0:
+        return None
+    return (end - start) / start * 100
+
+
 def spy_by_month(spy_bars: list[dict]) -> dict:
     """month -> {first, last} closes from daily SPY bars."""
     out: dict = {}
