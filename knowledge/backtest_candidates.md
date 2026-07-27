@@ -3039,3 +3039,119 @@ registered to replace. As pre-registered: a pass would have been a licence to
 test on fresh data. A failure is not proof of the negative either.
 
 **Nothing enabled. `lowvol` and `xsmom` remain off. EDGE claims stand at 0 for 7.**
+
+---
+
+## §35 — ONE HYPOTHESIS, NO SELECTION (pre-registered 2026-07-27, before the runner existed)
+
+**Claim type: EDGE.** The first claim in this repository built under the rule
+§34 imposed: **the verdict must not depend on a selector.**
+
+### Why this is shaped differently from §14–§32
+
+Every prior EDGE claim ran a family of arms, picked the in-sample winner, and
+reported its out-of-sample number. §33b and §34 showed that picking step carries
+no information — single-split, fold-majority and even an oracle holding the
+future are all indistinguishable from random on this data.
+
+So §35 does not choose. **One hypothesis, fixed now, tested once.** If it fails
+there is no second arm to fall back on, and that is the point: a result that
+cannot be produced by choosing cannot be an artifact of choosing.
+
+### The hypothesis, and where it comes from
+
+> Cross-sectional 12-1 momentum earns a positive per-trade edge on a wide,
+> liquid US equity universe, after costs, relative to the incumbent ensemble.
+
+Buy the top decile by trailing 12-month return skipping the most recent month;
+exit when a holding falls below the median. Parameters are the **literature
+convention** — Jegadeesh & Titman (1993), 231-bar lookback with a 21-bar skip —
+**not** values tuned on any data in this repository.
+
+That provenance matters. I have seen §32's numbers, so I cannot claim a
+hypothesis chosen today is untainted by them. What I can claim, and what is
+checkable, is that these parameters were published in 1993 and are the standard
+specification, so they were not reverse-engineered from this repo's results.
+`xsmom-12-1-10` in §32 used the identical parameters for the same reason.
+
+### Data — a period this repository has never touched
+
+`bars_wide_2014-01-01_2019-12-31.json.gz`, sha256
+`dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd`,
+**500 symbols, 754,888 bars**, liquidity-screened on **2014** only.
+
+Verified before registering: **zero date overlap** with
+`bars_wide_2020-01-01_2026-07-10.json.gz`. 385 of 500 symbols are shared; the
+dates are disjoint, which is what matters. SPY force-included for the regime
+rail.
+
+**No IS/OOS split.** There is nothing to select, so there is nothing to split
+for. The entire 2014–2019 period is out-of-sample with respect to every number
+this repository has ever produced.
+
+#### Survivorship bias is WORSE here — stated plainly
+
+The universe is today's S&P 1500 membership. Over 2014–2019 that is **twelve
+years** of survivorship, against six for the 2020 snapshot. Every company that
+existed in 2014 and failed before 2026 is absent, and momentum exploits that
+absence more than buy-and-hold does.
+
+Consequence, fixed before the numbers exist: **a REJECTION here is trustworthy,
+because the bias runs in the candidate's favour. A PASS is provisional and
+cannot be adopted on this evidence alone** — it would require a
+survivorship-free universe to confirm, which this repository does not have and
+cannot build from free data.
+
+### Arms — two, and neither is chosen
+
+| | |
+|---|---|
+| **baseline** | shipped ensemble (ma_crossover, tsmom, meanrev), same universe, same risk block |
+| **xsmom-12-1** | xsmom only; `rank_lookback_bars 231`, `skip_bars 21`, `buy_top_fraction 0.10`, `exit_below_fraction 0.5` |
+
+Shared risk block identical to §32's (`risk_per_trade_pct 2.0`,
+`max_position_pct 2.5`, `max_portfolio_heat_pct 20.0`, `max_trades_per_day 50`),
+so this measures signal, not sizing. `min_holding_days 2` and `1Day` unchanged.
+
+### Pass mark — fixed now
+
+The hypothesis is ADOPTED only if **all** hold:
+
+- **(a)** clears `enablement_gate()` in full (`backtest.py:969`)
+- **(b)** profit factor **strictly greater** than baseline's
+- **(c)** max drawdown ≤ baseline + 1.0pp
+- **(d)** ≥ 30 trades
+- **(e)** block bootstrap `significance.compare` returns **significantly
+  better** at **K = 8**
+
+**On K = 8.** Only one comparison is made here, so K = 1 would be the
+conventional choice. It is set to 8 deliberately: this is the **eighth** EDGE
+claim this repository has run, and family-wise error accumulates across a
+research programme even when the hypotheses differ. After seven failures, an
+eighth result at conventional significance is weak evidence, and the correction
+should say so rather than the prose having to.
+
+### Prior — before the run
+
+**EDGE claims are 0 for 7.** Momentum specifically has been tested twice on the
+2020–2026 universe and rejected both times.
+
+The one honest reason to expect anything different: 2014–2019 contains no
+COVID crash and no 2022 bear, and cross-sectional momentum is documented to fail
+hardest at sharp reversals. A calmer sample is where it should look best. **That
+is also the reason to distrust a pass** — "it works in the easy period" is not
+an edge, and clause (a)'s buy-and-hold and exposure-matched comparisons are what
+stop that argument.
+
+### What a pass would and would not mean
+
+It would mean one pre-specified hypothesis survived one clean period at a
+conservative correction. It would **not** mean the strategy is enabled, that
+alpha is demonstrated, or that the go-live gate (30 closed trades / 60 days,
+`review.py:24`) is closer. Those need live evidence that no backtest produces.
+
+**Running trial count entering §35:** ~52 registered comparisons plus grid arms.
+
+**Runner:** `scripts/gate_s35_momentum.py` — committed.
+
+### §35 RESULT — *(to be written after the run, whichever way it lands)*

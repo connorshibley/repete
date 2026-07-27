@@ -31,6 +31,16 @@
       "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
       "start": "2020-01-01"
     },
+    "bars_wide_2014-01-01_2019-12-31.json.gz": {
+      "built_at": "2026-07-27T22:59:34.279658+00:00",
+      "end": "2019-12-31",
+      "n_bars": 754888,
+      "n_symbols": 500,
+      "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price snapshot used by \u00a71\u2013\u00a713; re-baseline inside this file.",
+      "sha256": "dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd",
+      "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
+      "start": "2014-01-01"
+    },
     "bars_wide_2020-01-01_2026-07-10.json.gz": {
       "built_at": "2026-07-27T20:42:51.484023+00:00",
       "end": "2026-07-10",
