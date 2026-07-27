@@ -2367,3 +2367,147 @@ past the decision bar and fails open on every missing-data shape). A rejected
 arm keeps its implementation so the next registration does not have to rebuild
 and re-verify it — but it stays at 0, and a strategy change is never adopted by
 enabling it and seeing what happens.
+
+---
+
+## §32 — WIDE-UNIVERSE CROSS-SECTIONAL FACTORS (pre-registered 2026-07-27, before the runner existed)
+
+**Claim type: EDGE.** Per-trade expectancy, not exposure, not reach.
+
+### Why, and why this is different from §14–§31
+
+Every gate before this one moved a *rule* over the same 38 mega-caps. All five
+strategies are price-only, and `:611` reports no OOS per-trade edge
+distinguishable from zero across all of them. **That is the expected result for
+those instruments, not bad luck** — SPY, AAPL and NVDA are the most heavily
+arbitraged prices in existence.
+
+`src/strategies/xsmom.py` has been a correct Jegadeesh–Titman 12-1
+implementation since it was written, and has never been enabled. It could not
+have worked: ranking needs dispersion, and the top 25% of 38 mega-caps is nine
+names that move together. §21b's 38→68 expansion failed on trade count because
+68 is still tiny.
+
+§32 changes the **universe**, not the rules. That is the one variable no
+previous section has moved.
+
+### Data
+
+`bars_wide_2020-01-01_2026-07-10.json.gz`, sha256
+`825116a6d66e4d991a1928c3a5b9aed653966f52547e91b6b4afec78e24413a7`,
+**500 symbols, 818,787 bars.** Built from current S&P 1500 membership
+(1,504 fetched → 1,388 with a real 2020 → top 500 by median 2020 dollar volume).
+Window matches the existing snapshot, so §32 stays comparable with §14–§31.
+
+Dispersion this buys, measured before the run: trailing-1y returns run
+p10 **−27.1%**, median **+10.1%**, p90 **+65.0%**. A 92-point spread to rank
+across, where 38 mega-caps had almost none.
+
+**SPY is force-included.** `simulate_ensemble` reads it for the regime label and
+vol bucket (`backtest.py:640`) and `risk.regime_exposure` is enabled — a
+universe without SPY silently stops that rail binding. The first build omitted
+it; caught before it scored anything. It is rankable like any other symbol
+(1 of 500).
+
+#### Survivorship bias — named now, with its direction
+
+Today's index membership backtested from 2020 omits everything that delisted or
+was removed. This **inflates** results, and momentum exploits the deletion more
+than buy-and-hold does.
+
+Two things reduce it, neither eliminates it:
+
+1. **S&P 1500, not S&P 500.** Names that fell from large-cap into mid/small are
+   still present, recovering part of the loser distribution a large-cap-only
+   list would silently delete.
+2. **The comparison largely cancels it.** `backtest.py` computes
+   `buy_hold_return_pct` from the *same* `sym_bars`, so both sides of the gate
+   see the same survivor set.
+
+Consequence, stated before the numbers exist: **a REJECTION here is trustworthy;
+a PASS is provisional** and must be confirmed on a split this run never touched
+before anything is enabled.
+
+### Shared risk block — identical across ALL arms
+
+Only the STRATEGY differs between arms. If the baseline kept `risk_per_trade_pct:
+8.0` while candidates ran at 2.0, this would measure a sizing change wearing a
+factor's clothes.
+
+| key | §32 value | shipped | why |
+|---|---|---|---|
+| `risk_per_trade_pct` | **2.0** | 8.0 | 50 names × 8% is 400% of equity; cash runs out at ~12 positions |
+| `max_position_pct` | **2.5** | 10.0 | equal-weight ceiling for a ~50-name book |
+| `max_portfolio_heat_pct` | **20.0** | 4.0 | at 4.0 every arm is capped by heat rather than by its signal, and all six return the same answer |
+| `max_trades_per_day` | **50** | 15 | at 15 the book takes four days to build, unequally across arms |
+| `min_holding_days` | 2 | 2 | **unchanged — invariant 3** |
+| `max_drawdown_pct` | 10.0 | 10.0 | unchanged |
+
+**This means §32 measures SIGNAL QUALITY, not deployability at the shipped
+rails.** An arm that passes here has not been shown to work at the current risk
+posture, and Phase 4 must re-run any winner at shippable settings. Recorded now
+so a pass cannot later be read as "ready to enable".
+
+### Arms — the family is fixed HERE, K = 6
+
+Fixing all six now is what stops this becoming "run momentum, fail, quietly try
+low-vol", which is sequential testing with no correction.
+
+| arm | strategy config |
+|---|---|
+| **baseline** | shipped ensemble (ma_crossover, tsmom, meanrev) on the wide universe |
+| **xsmom-12-1-10** | xsmom only; `rank_lookback_bars 231`, `skip_bars 21`, `buy_top_fraction 0.10`, `exit_below_fraction 0.5` |
+| **xsmom-12-1-20** | as above, `buy_top_fraction 0.20` |
+| **xsmom-6-1-10** | xsmom only; `rank_lookback_bars 126`, `skip_bars 21`, `buy_top_fraction 0.10` |
+| **lowvol-60-10** | lowvol only; `vol_period 60`, `buy_bottom_fraction 0.10`, `exit_above_fraction 0.5` |
+| **both-10** | xsmom-12-1-10 **and** lowvol-60-10 enabled together, priority xsmom→lowvol |
+
+`both-10` is an ensemble arm rather than a new blended-rank module on purpose: it
+needs no new code, and it is how the live bot would actually run two
+cross-sectional strategies.
+
+### Pass mark — fixed before any number exists
+
+Selection on **IS profit factor** (the EDGE measure). Selecting on total return
+would let an arm win by holding more, which is a capacity result and not the
+claim. OOS reported **once**. Split 70/30, as §27 and §31.
+
+An arm is ADOPTED only if **all** hold:
+
+- **(a)** clears `enablement_gate()` on OOS in full (`backtest.py:969`)
+- **(b)** OOS profit factor **strictly greater** than baseline's
+- **(c)** OOS max drawdown ≤ baseline's + 1.0pp absolute
+- **(d)** ≥ **30** OOS trades (raised from §31's 15 — a 500-name universe has no
+  excuse for a thin sample, and 30 is the same bar `review.py:24` sets for going
+  live)
+- **(e)** Bonferroni-corrected block bootstrap (`significance.compare`, **K=6**)
+  returns **significantly better**, not INCONCLUSIVE
+
+**(b) and (e) are the ones that matter.** A wide universe alone will raise
+absolute return simply by having more to buy; that is capacity, and it is not
+what is being claimed.
+
+### Prior — before the run
+
+**EDGE claims in this repo are 0 for 6.** Nothing about a wider universe changes
+that base rate on its own.
+
+Three ways this fails, named now so a near miss cannot be talked into a pass:
+
+1. **Survivorship carries it.** Momentum looks strong precisely because the
+   universe is the set of names that survived to 2026. Shows up as a large
+   IS/OOS gap.
+2. **Costs eat it.** Cross-sectional rebalancing turns over far more than the
+   incumbent. At 5bps slippage a 300-trade OOS arm pays real money; PF falls
+   toward 1.0 while gross return looks fine.
+3. **It is beta, not alpha.** Buying the top decile of a 500-name universe in a
+   bull sample is a leveraged long. Caught by `enablement_gate()`'s B&H and
+   exposure-matched clauses, which is why (a) is non-negotiable.
+
+**Running trial count entering §32:** ~44 registered comparisons plus grid arms
+(41 entering §31, plus §31's three arms scored as one comparison).
+
+**Runner:** `scripts/gate_wide_universe.py` — committed, hash-verifies the
+snapshot before scoring, refuses to run on drift.
+
+### §32 RESULT — *(to be written after the run, whichever way it lands)*
