@@ -90,8 +90,12 @@ def test_a_truncated_value_is_rejected_but_a_full_one_is_not():
 
 
 def test_the_length_band_binds_on_both_sides():
-    lo = "sk-ant-" + "x" * (preflight._ANTHROPIC_MIN_LEN - 7)
-    hi = "sk-ant-" + "x" * (preflight._ANTHROPIC_MAX_LEN - 7)
+    """The band moved to llm_client.PROVIDERS on 2026-07-27 so preflight and the
+    call path share one definition; the property under test is unchanged."""
+    import llm_client
+    lo_len, hi_len = llm_client.PROVIDERS["anthropic"]["key_len"]
+    lo = "sk-ant-" + "x" * (lo_len - 7)
+    hi = "sk-ant-" + "x" * (hi_len - 7)
     assert preflight.anthropic_key_shape_fail(lo) is None
     assert preflight.anthropic_key_shape_fail(hi) is None
     assert preflight.anthropic_key_shape_fail(lo[:-1]) is not None

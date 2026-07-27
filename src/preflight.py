@@ -33,47 +33,30 @@ DISABLEABLE_RISK = ("max_order_value_usd", "max_trades_per_day")
 
 REQUIRED_ENV = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
 
-# Shape of a usable Anthropic key. A real one is ~108 chars, one prefix.
-# The band is deliberately generous — the point is to catch a paste accident,
-# not to pin a vendor format that may change.
-_ANTHROPIC_PREFIX = "sk-ant-"
-_ANTHROPIC_MIN_LEN = 40
-_ANTHROPIC_MAX_LEN = 200
-
-
 def anthropic_key_shape_fail(value: str) -> str | None:
-    """Why this string cannot be an API key, or None if it plausibly is.
+    """Why this string cannot be an Anthropic API key, or None if it plausibly is.
 
-    SHAPE ONLY — never a validity check. A revoked, rotated or simply wrong
-    key passes this function; only the network can tell those apart, and
-    preflight is pure by design (see the module docstring). Read a pass here
-    as "nothing was obviously mangled in transit", not "authenticated".
+    The rule itself lives in `llm_client.key_shape_fail`, so preflight and the
+    call path cannot disagree about what a key looks like. That is the §29
+    lesson: preflight and risk.py read `max_order_value_usd: 0` differently and
+    every cycle silently aborted for a day. One definition, two readers.
 
-    2026-07-27: setting the key by hand produced FIVE `ANTHROPIC_API_KEY`
-    lines in .env — empty, 16 chars, 148, 324 holding three prefixes, and a
-    final 216 holding two. python-dotenv takes the last, so the agent held two
-    keys concatenated. Preflight said CLEAR TO TRADE, because it asked only
-    whether the variable was set. llm.py:112 would have caught the auth error
-    and marked every entry `degraded` — correct, but only AFTER the 15:45
-    cycle placed unjudged entries at full size.
+    Kept as a named function because it is the documented entry point and the
+    tests written for it name it. `run()` does the provider-aware check.
 
-    The returned text describes the value and never quotes it; log.py redacts
-    on the way out, but a diagnosis that needs redacting is the wrong
-    diagnosis.
+    SHAPE ONLY — never a validity check. A revoked, rotated or simply wrong key
+    passes; only the network can tell those apart, and preflight is pure by
+    design (see the module docstring). Read a pass as "nothing was obviously
+    mangled in transit", not "authenticated".
+
+    2026-07-27: setting the key by hand produced FIVE `ANTHROPIC_API_KEY` lines
+    in .env — empty, 16 chars, 148, 324 holding three prefixes, and a final 216
+    holding two. python-dotenv takes the last, so the agent held two keys
+    concatenated. Preflight said CLEAR TO TRADE, because it asked only whether
+    the variable was set.
     """
-    n = value.count(_ANTHROPIC_PREFIX)
-    if n > 1:
-        return (f'contains {n} "{_ANTHROPIC_PREFIX}" prefixes (length '
-                f'{len(value)}) — looks like several keys pasted end to end; '
-                f'keep exactly one')
-    if not value.startswith(_ANTHROPIC_PREFIX):
-        return (f'does not start with "{_ANTHROPIC_PREFIX}" (length '
-                f'{len(value)}) — wrong value pasted into the variable?')
-    if not _ANTHROPIC_MIN_LEN <= len(value) <= _ANTHROPIC_MAX_LEN:
-        return (f"is {len(value)} characters, outside the plausible "
-                f"{_ANTHROPIC_MIN_LEN}-{_ANTHROPIC_MAX_LEN} range — "
-                f"truncated or doubled paste?")
-    return None
+    import llm_client
+    return llm_client.key_shape_fail(value, llm_client.PROVIDERS["anthropic"])
 
 
 def run(cfg: dict) -> list[str]:
@@ -114,18 +97,26 @@ def run(cfg: dict) -> list[str]:
     # llm.enabled: false to trade on rules alone; that is a decision, not a
     # silent hole.
     if cfg.get("llm", {}).get("enabled"):
-        key = os.environ.get("ANTHROPIC_API_KEY")
+        import llm_client
+        provider = llm_client.provider_name(cfg)
+        if provider not in llm_client.PROVIDERS:
+            fails.append(f"llm.provider is {provider!r}, which llm_client does "
+                         f"not implement — supported: "
+                         f"{', '.join(sorted(llm_client.PROVIDERS))}")
+        spec = llm_client.provider_spec(cfg)
+        env_name = spec["key_env"]
+        key = os.environ.get(env_name)
         if not key:
-            fails.append("llm.enabled: true but ANTHROPIC_API_KEY is not set — "
-                         "every trade would be approved unjudged at full size; "
-                         "set the key or set llm.enabled: false")
+            fails.append(f"llm.enabled: true but {env_name} is not set — "
+                         f"every trade would be approved unjudged at full size; "
+                         f"set the key or set llm.enabled: false")
         else:
             # Present is not the same as usable. A mangled key fails at the
             # first API call, by which point the cycle has already traded.
-            shape = anthropic_key_shape_fail(key)
+            shape = llm_client.key_shape_fail(key, spec)
             if shape:
-                fails.append(f"ANTHROPIC_API_KEY {shape}. The judge would fail "
-                             f"on every call and each entry would be approved "
+                fails.append(f"{env_name} {shape}. The judge would fail on "
+                             f"every call and each entry would be approved "
                              f"unjudged at full size. Fix the value in .env "
                              f"(one line, one key) or set llm.enabled: false")
 
