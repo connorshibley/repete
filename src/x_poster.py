@@ -29,6 +29,50 @@ def _archive(text: str, link: str | None, status: str, cfg: dict):
         log.warning("post archive failed: %s", e)
 
 
+def _ledger_degradation(detail: str, cfg: dict):
+    """Make a posting failure VISIBLE, not merely logged.
+
+    Until 2026-07-27 a failed post wrote a `log.warning` and an archive row
+    reading `"failed"` — and nothing else. No ledger event, so the watchdog
+    could not see it, `evidence.py` did not count it, and the degradation SLO
+    was blind to it.
+
+    The cost was measured, not imagined: the four `X_*` values in `.env` were
+    emptied some time after Friday 2026-07-24, and on 2026-07-27 the bot failed
+    to post **ten** times — a recap of every trade it made that day — while
+    reporting a clean cycle. The owner found out by asking. That is not a
+    monitoring strategy.
+
+    Best-effort by design, the same shape as `watchdog.main()`'s ledger write:
+    an outbound-post problem must never become a trading problem, so a failure
+    to RECORD the failure is logged and swallowed.
+    """
+    try:
+        from ledger import Ledger
+        path = (cfg.get("memory") or {}).get("ledger_path",
+                                             "memory/ledger.jsonl")
+        Ledger(path).log_event("degradation", detail[:500])
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not ledger the X posting failure: %s", e)
+
+
+CREDENTIALS = ("X_API_KEY", "X_API_SECRET",
+               "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET")
+
+
+def missing_credentials() -> list[str]:
+    """Which X credentials are absent OR present-but-empty.
+
+    Empty is the case that actually happened. On 2026-07-27 all four names were
+    still in `.env` with nothing after the `=`, so `os.environ[...]` returned
+    `""` rather than raising, tweepy was handed blank keys, and every post
+    failed with a generic auth error. "The variable is set" and "the variable
+    has a value" are different facts — the same distinction preflight now draws
+    for the Anthropic key.
+    """
+    return [k for k in CREDENTIALS if not (os.environ.get(k) or "").strip()]
+
+
 def _client():
     import tweepy
     return tweepy.Client(
@@ -82,6 +126,19 @@ def post_text(text: str, cfg: dict, link: str | None = None):
         print(f"\n--- X post (dry run) ---\n{text}\n------------------------\n")
         _archive(text, link, "dry_run", cfg)
         return
+    absent = missing_credentials()
+    if absent:
+        # Distinct from a publish failure, and it needs a different fix. Said
+        # precisely so the ledger names the four variables rather than echoing
+        # a generic auth error 10 times.
+        log.warning("X post skipped — %s empty or unset", ", ".join(absent))
+        _archive(text, link, "no_credentials", cfg)
+        _ledger_degradation(
+            f"x_post: not published — {', '.join(absent)} empty or unset in "
+            f"the environment. Posting is configured ON (x_posting.enabled, "
+            f"dry_run: false), so this is a misconfiguration, not a choice.",
+            cfg)
+        return
     try:
         resp = _client().create_tweet(text=text)
         log.info("Posted to X: tweet id %s", resp.data["id"])
@@ -89,6 +146,8 @@ def post_text(text: str, cfg: dict, link: str | None = None):
     except Exception as e:  # noqa: BLE001
         log.warning("X post failed (%s) — continuing", e)
         _archive(text, link, "failed", cfg)
+        _ledger_degradation(f"x_post: publish failed ({type(e).__name__}: "
+                            f"{str(e)[:160]}) — the post was NOT published", cfg)
 
 
 def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None,
