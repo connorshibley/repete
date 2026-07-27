@@ -2885,3 +2885,78 @@ the same as a method proven useless, and §34 has to clear its own bar rather
 than inherit trust from this rejection.
 
 **No strategy was enabled or disabled by §33. `lowvol` and `xsmom` remain off.**
+
+---
+
+## §34 — IS FOLD-MAJORITY SELECTION ANY BETTER? (pre-registered 2026-07-27, before the runner existed)
+
+**Claim type: METHOD.** §33b retired single-split selection. This tests whether
+the registered replacement is actually an improvement, rather than assuming it
+because it sounds more careful.
+
+### The trap this registration exists to avoid
+
+Fold-majority selection picks the arm that ranks top-half in ≥60% of folds. The
+obvious way to evaluate it is leave-one-fold-out: hold out fold *k*, select using
+the other four, score on *k*.
+
+**That is lookahead.** For fold 3, "the other four" includes folds 4 and 5 — the
+future. A deployment standing at fold 3 has folds 1–2 and nothing else. An
+evaluation that quietly uses later folds measures an oracle, not a method, and
+it would flatter the replacement exactly when it matters most.
+
+So §34 scores the **causal** variant: to select for fold *k*, only folds
+**1…k−1** may be used. Fold 1 has no history and is not scored. That leaves
+**four evaluations** — which is a small number, said now rather than discovered
+later.
+
+The non-causal variant is computed too, reported as a **diagnostic upper bound**
+only. It decides nothing. If the causal and oracle numbers diverge sharply, that
+gap is itself the finding.
+
+### Three selectors, same held-out folds
+
+| | rule |
+|---|---|
+| **S1 single-split** | argmax candidate IS profit factor in fold *k*. The retired method §33b rejected. |
+| **S2 fold-majority (causal)** | among candidates, those ranking top-half in ≥60% of folds 1…k−1; tie-break on mean OOS PF over those folds. |
+| **S3 random** | expected value = mean candidate OOS PF in fold *k*. The bar any selector must clear to be worth having. |
+
+Scored on the held-out fold's realised **OOS profit factor**.
+
+### Pass mark — fixed before computing anything
+
+Fold-majority replaces single-split only if **all** hold:
+
+- **(a)** mean held-out OOS PF **> S3 random**
+- **(b)** hit rate (selected arm in the top half of candidates) **≥ 3 of 4**
+- **(c)** it beats **S1 single-split** on both (a) and (b)
+
+Clause (c) matters most. A replacement that is merely a different way to be
+wrong is not a replacement.
+
+### Prior — before the run
+
+**No strong expectation, and that is the honest position.** §33b showed
+single-split carries no information; it does not follow that fold-majority
+carries any. Aggregating across folds helps only if arm quality is stable across
+regimes, and §32/§33b are precisely the evidence that it may not be.
+
+Most likely outcome: **all three selectors indistinguishable at n=4**, which
+would mean the repository has no validated way to choose between strategies at
+all — a harder finding than either alternative, and one that would have to be
+stated plainly rather than worked around.
+
+### What §34 cannot do
+
+Four evaluations, six arms, one snapshot, and the **same measurements that
+produced §33b**. This is not a fresh sample. A pass here is a licence to test
+fold-majority on new data, **not** permission to trust it or to enable anything
+under it. Written now so a pass cannot be read as more than it is.
+
+**Running trial count entering §34:** ~51 registered comparisons plus grid arms.
+No new simulations — §34 re-reads the trials log §33b already wrote.
+
+**Runner:** `scripts/gate_selector_compare.py` — committed.
+
+### §34 RESULT — *(to be written after the run, whichever way it lands)*
