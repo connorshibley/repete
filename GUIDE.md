@@ -158,7 +158,16 @@ In rough order of value: replace the strategy with something walk-forward tested
 | Bot refuses to trade, mentions HALT | The kill switch fired. Read `HALT`, understand why, then delete the file |
 | Sell rejected with "swing guard" | Working as intended — the position is younger than `min_holding_days`; the exit will be re-evaluated on a later cycle |
 | LLM review always "disabled" | No `ANTHROPIC_API_KEY` set, or `llm.enabled: false` in config |
+| Preflight refuses on the key | The key is present but malformed — usually several pasted end to end. `.env` must hold exactly ONE `ANTHROPIC_API_KEY=` line. Edit it somewhere you can see the text; an echo-disabled shell prompt is how the 2026-07-27 five-line mess happened |
 
 ## What this bot will NOT do
 
 It will not print money. The research base rates: ~97% of persistent day traders lose; backtests barely predict live results; 4 of 6 frontier LLMs lost >30% trading real money in a public test. What this project gives you is the thing most retail bots lack — honest instrumentation. Every decision documented, every outcome measured against buy-and-hold, every lesson dated and falsifiable. If an edge exists in your strategy, this system will show it to you; if it doesn't, it will show you that too, on fake money, before it costs you anything.
+
+## Licence
+
+Apache-2.0 — see [LICENSE](LICENSE). `SPDX-License-Identifier: Apache-2.0`
+
+Added 2026-07-27. Until then the repository was public with no licence file,
+which under default copyright means nobody could legally use, copy or fork it —
+including anyone it was being shown to.

@@ -14,13 +14,23 @@ import json
 import logging
 import os
 
+import llm_client
+
 log = logging.getLogger("llm")
 
 
 def _msg_text(msg) -> str:
-    """Join text blocks; reasoning models prepend thinking blocks with no .text."""
-    return "".join(b.text for b in msg.content
-                   if getattr(b, "type", "") == "text").strip()
+    """Join text blocks; reasoning models prepend thinking blocks with no .text.
+
+    Kept as a re-export of llm_client._text so existing callers and tests that
+    reach for llm._msg_text keep working; llm_client owns the implementation."""
+    return llm_client._text(msg)
+
+
+def _key_present(cfg: dict) -> bool:
+    """Is the configured provider's key set? Provider-aware since 2026-07-27 —
+    was a hard-coded ANTHROPIC_API_KEY lookup in four places."""
+    return bool(os.environ.get(llm_client.key_env_var(cfg)))
 
 _SYSTEM = """You are the risk-review layer of an automated PAPER trading bot.
 A deterministic strategy produced a trade signal. Your ONLY job is to sanity-check it
@@ -55,7 +65,7 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
     if not cfg["llm"]["enabled"]:
         return fallback                      # switched off deliberately
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not _key_present(cfg):
         # Configured ON but unusable. Marked degraded so main.py ledgers it and
         # the record can never be mistaken for a judgement that happened — the
         # fallback approves at FULL SIZE, the most permissive verdict the judge
@@ -63,23 +73,18 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # marker covers any caller that skips preflight, and makes the
         # historical ledger honest about which entries were actually judged.
         return {**fallback, "degraded": True,
-                "reasoning": "LLM review UNAVAILABLE — ANTHROPIC_API_KEY not "
-                             "set while llm.enabled is true. Approved unjudged "
-                             "by fallback, not by the judge."}
+                "reasoning": f"LLM review UNAVAILABLE — "
+                             f"{llm_client.key_env_var(cfg)} not set while "
+                             f"llm.enabled is true. Approved unjudged by "
+                             f"fallback, not by the judge."}
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model=cfg["llm"]["model"],
-            max_tokens=cfg["llm"]["max_tokens"],
-            system=_SYSTEM,
-            messages=[{"role": "user", "content":
-                       f"SIGNAL: {signal.action.upper()} {signal.symbol}\n"
-                       f"STRATEGY REASON: {signal.reason}\n"
-                       f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
-                       f"{memory_context}\n\nReply with JSON only."}],
-        )
-        text = _msg_text(msg)
+        text = llm_client.complete(
+            cfg, _SYSTEM,
+            f"SIGNAL: {signal.action.upper()} {signal.symbol}\n"
+            f"STRATEGY REASON: {signal.reason}\n"
+            f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
+            f"{memory_context}\n\nReply with JSON only.",
+            max_tokens=cfg["llm"]["max_tokens"])
         start, end = text.find("{"), text.rfind("}") + 1
         verdict = json.loads(text[start:end])
         # Clamp: the LLM can only reduce, never enlarge.
@@ -114,20 +119,18 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
 
 def write_x_post(trade: dict, cfg: dict) -> str | None:
     """Draft a trade-recap post. Returns None if LLM unavailable (caller uses template)."""
-    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+    if not llm_client.configured(cfg):
         return None
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model=cfg["llm"]["model"],
-            max_tokens=2000,  # roomy: reasoning models spend thinking tokens from this budget
-            system=("Write a single tweet (<270 chars) recapping an automated PAPER trade. "
-                    "Plain, honest, no hype, no financial advice, no emojis. Include the "
-                    "reasoning in one clause. It MUST mention this is paper trading."),
-            messages=[{"role": "user", "content": json.dumps(trade)}],
-        )
-        return _msg_text(msg).strip('"')[:275]
+        text = llm_client.complete(
+            cfg,
+            "Write a single tweet (<270 chars) recapping an automated PAPER trade. "
+            "Plain, honest, no hype, no financial advice, no emojis. Include the "
+            "reasoning in one clause. It MUST mention this is paper trading.",
+            json.dumps(trade),
+            # roomy: reasoning models spend thinking tokens from this budget
+            max_tokens=2000)
+        return text.strip('"')[:275]
     except Exception as e:  # noqa: BLE001
         log.warning("LLM post drafting failed (%s) — using template", e)
         return None
@@ -150,17 +153,12 @@ _DAILY_SYSTEMS = {
 def write_daily_post(kind: str, facts: dict, cfg: dict) -> str | None:
     """Draft the morning-plan or evening-review post from a facts dict.
     Returns None if the LLM is unavailable (caller uses its template)."""
-    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+    if not llm_client.configured(cfg):
         return None
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model=cfg["llm"]["model"], max_tokens=2000,
-            system=_DAILY_SYSTEMS[kind],
-            messages=[{"role": "user", "content": json.dumps(facts)}],
-        )
-        return _msg_text(msg).strip('"')[:275] or None
+        text = llm_client.complete(cfg, _DAILY_SYSTEMS[kind],
+                                   json.dumps(facts), max_tokens=2000)
+        return text.strip('"')[:275] or None
     except Exception as e:  # noqa: BLE001
         log.warning("LLM daily-post drafting failed (%s) — using template", e)
         return None
@@ -185,17 +183,11 @@ that this is paper trading. Return ONLY the markdown body."""
 def write_journal_entry(trade: dict, cfg: dict) -> str | None:
     """~500-word public journal entry for one trade event, or None (caller
     falls back to a template)."""
-    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+    if not llm_client.configured(cfg):
         return None
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model=cfg["llm"]["model"], max_tokens=4000,
-            system=_JOURNAL_SYSTEM,
-            messages=[{"role": "user", "content": json.dumps(trade)}],
-        )
-        text = _msg_text(msg)
+        text = llm_client.complete(cfg, _JOURNAL_SYSTEM, json.dumps(trade),
+                                   max_tokens=4000)
         return text if len(text) > 200 else None
     except Exception as e:  # noqa: BLE001
         log.warning("LLM journal entry failed (%s) — using template", e)
@@ -205,16 +197,11 @@ def write_journal_entry(trade: dict, cfg: dict) -> str | None:
 def _json_call(cfg: dict, max_tokens: int, system: str, user: str,
                model: str | None = None):
     """Shared strict-JSON call: returns the parsed object/array or None."""
-    if not cfg["llm"]["enabled"] or not os.environ.get("ANTHROPIC_API_KEY"):
+    if not llm_client.configured(cfg):
         return None
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        msg = client.messages.create(
-            model=model or cfg["llm"]["model"], max_tokens=max_tokens,
-            system=system, messages=[{"role": "user", "content": user}],
-        )
-        text = _msg_text(msg)
+        text = llm_client.complete(cfg, system, user, max_tokens=max_tokens,
+                                   model=model)
         start = min((i for i in (text.find("{"), text.find("[")) if i >= 0),
                     default=-1)
         end = max(text.rfind("}"), text.rfind("]")) + 1

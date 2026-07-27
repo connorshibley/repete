@@ -448,6 +448,12 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
 
 llm:                   # optional judgment layer (Anthropic API)
   enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
+  provider: anthropic  # the only implemented vendor. Preflight refuses any other
+                       # name outright rather than letting a typo reach the cycle.
+  fallback_model: null # retry ONCE on this model when the primary one errors.
+                       # Unset on purpose: a quietly weaker judge is a trading
+                       # behaviour change, and it does nothing about a bad key —
+                       # which is the failure that actually happened 2026-07-27.
   model: claude-sonnet-5  # judge/posts/journal. Right-sized 2026-07-18 from
                           # claude-fable-5: contamination-controlled evals (arXiv
                           # 2510.02209, 2511.03628) find no thinking/frontier edge
