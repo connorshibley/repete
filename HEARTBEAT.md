@@ -83,8 +83,10 @@ along with the rest of `memory/`.
 
 ## If you get an alert
 
-1. `launchctl list | grep trading-agent` — all three jobs
-   (`cycle`, `learn`, `watchdog`) should be listed with status `0`.
+1. `launchctl list | grep trading-agent` — all **eight** jobs should be listed
+   with status `0`: `cycle`, `catchup`, `watchdog`, `newsbrain`, `dailypost`,
+   `learn`, `backup`, `restoredrill`. Anything missing means
+   `sh scripts/install_launchd.sh --load` has not been run since it was added.
 2. `tail -50 logs/agent.log` and `logs/launchd.err.log` — did the cycle
    start and die, or never start?
 3. If the market is still open and the miss was mechanical (asleep laptop),

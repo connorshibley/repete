@@ -23,7 +23,12 @@ nothing; watchdog notification fired.
 **Diagnose:**
 ```bash
 cat HALT                                    # reason + timestamp written at trip
-grep '"event": "halt"' memory/ledger.jsonl | tail -3
+# The trip and the skipped cycles are DIFFERENT events, and neither is named
+# "halt". Grepping for "halt" alone returns nothing, which during an incident
+# reads as "the kill switch never fired".
+grep '"event": "kill_switch"' memory/ledger.jsonl | tail -3
+grep '"event": "kill_switch_flatten_failed"' memory/ledger.jsonl | tail -3
+grep '"event": "halted_cycle_skipped"' memory/ledger.jsonl | tail -3
 ```
 
 **Fix:** This is the one guard that *should* require a human. Read the ledger
