@@ -2639,3 +2639,106 @@ unresolved rather than answered.
 `lowvol` stays in the registry, **disabled**. `xsmom` stays **disabled**. A
 rejected arm keeps its implementation so the next registration need not rebuild
 it; it does not get enabled to see what happens.
+
+---
+
+## §33 — DOES WALK-FORWARD SELECTION PREDICT? (pre-registered 2026-07-27, before the runner existed)
+
+**Claim type: METHOD.** A new type. §14–§32 tested *strategies* using a fixed
+procedure; §33 tests *the procedure*. Nothing in this section can enable or
+disable a strategy.
+
+### Why this comes before any further factor hunting
+
+§32 measured a Spearman rank correlation of **−0.543** between in-sample and
+out-of-sample profit factor across six arms. The in-sample best finished fourth;
+the in-sample worst finished second. At n=6 that is not significant in either
+direction — which is exactly the problem. **The procedure has never been shown
+to rank at all.**
+
+Every gate from §14 onward selects on one in-sample window and reports one
+out-of-sample number. If that selection step carries no information, then:
+
+- every REJECTION remains sound (the bar was not cleared, whatever the selector
+  did), but
+- any PASS would rest on a coin flip dressed as a method, and
+- continuing to hunt arms is simply buying more chances for a false positive.
+
+Running another EDGE claim before answering this would be negligent. §32's own
+`xsmom-12-1-10` row — +63.17% OOS at PF 5.061, ranked fifth of six in-sample —
+is what that false positive would look like when it arrives.
+
+### The hypothesis under test
+
+> Selecting the in-sample best arm produces better out-of-sample performance
+> than picking an arm at random from the same family.
+
+That is the assumption every previous section has relied on without checking.
+
+### Design — expanding-origin folds
+
+The same six §32 arms (the family is already fixed and already burned, so no new
+multiple-comparison budget is spent on *strategies* here; the trials counted are
+folds, not arms).
+
+Five expanding-origin folds on the wide snapshot. Expanding rather than rolling
+because it matches deployment: the bot always has all history up to today.
+
+| fold | IS bars | OOS bars |
+|---|---|---|
+| 1 | 0–600 | 600–800 |
+| 2 | 0–800 | 800–1000 |
+| 3 | 0–1000 | 1000–1200 |
+| 4 | 0–1200 | 1200–1400 |
+| 5 | 0–1400 | 1400–1638 |
+
+Every fold runs all six arms IS and OOS: 60 simulations.
+
+### Metrics — fixed now
+
+1. **Per-fold Spearman** between IS and OOS profit-factor rank across the six
+   arms, and the mean across folds.
+2. **Selection lift**: OOS profit factor of the IS-selected arm minus the *mean*
+   OOS profit factor of all candidate arms in that fold. Positive means
+   selecting beat picking at random.
+3. **Hit rate**: folds in which the IS-selected arm placed in the top half OOS.
+
+### Pass mark — the procedure is VALIDATED only if all hold
+
+- **(a)** mean per-fold Spearman **> 0**
+- **(b)** mean selection lift **> 0**
+- **(c)** hit rate **≥ 4 of 5** folds
+
+Deliberately a low bar. This is not asking the procedure to be good; it is
+asking it to be better than a coin, which is the minimum for any of the last
+nineteen sections to mean what they say.
+
+### Prior — before the run
+
+**Expected to FAIL.** §32's point estimate was negative, the incumbent ensemble
+does not generalise across universes, and the folds span violently different
+regimes (COVID crash, 2021 melt-up, 2022 bear, 2023–26 recovery). A procedure
+that ranks strategies across regime boundaries would be a genuinely surprising
+result.
+
+### The remedy, committed BEFORE seeing the outcome
+
+So it cannot be invented to fit whatever comes back:
+
+**If §33 FAILS**, single-split selection is retired. Its replacement — to be
+pre-registered as §34 and tested on its own terms — is **fold-majority
+selection**: an arm is selectable only if it ranks in the top half in **≥60% of
+folds**, and the number reported is the pooled out-of-fold result rather than
+one window's. Any future EDGE claim runs under that method.
+
+**If §33 PASSES**, the existing verdicts stand as they are, and §14–§32's
+rejections keep exactly the weight they already have.
+
+Either way **no strategy is enabled by this section.**
+
+**Running trial count entering §33:** ~50 registered comparisons plus grid arms.
+§33 adds 5 folds as one METHOD comparison.
+
+**Runner:** `scripts/gate_fold_stability.py` — committed.
+
+### §33 RESULT — *(to be written after the run, whichever way it lands)*
