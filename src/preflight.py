@@ -33,6 +33,48 @@ DISABLEABLE_RISK = ("max_order_value_usd", "max_trades_per_day")
 
 REQUIRED_ENV = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
 
+# Shape of a usable Anthropic key. A real one is ~108 chars, one prefix.
+# The band is deliberately generous — the point is to catch a paste accident,
+# not to pin a vendor format that may change.
+_ANTHROPIC_PREFIX = "sk-ant-"
+_ANTHROPIC_MIN_LEN = 40
+_ANTHROPIC_MAX_LEN = 200
+
+
+def anthropic_key_shape_fail(value: str) -> str | None:
+    """Why this string cannot be an API key, or None if it plausibly is.
+
+    SHAPE ONLY — never a validity check. A revoked, rotated or simply wrong
+    key passes this function; only the network can tell those apart, and
+    preflight is pure by design (see the module docstring). Read a pass here
+    as "nothing was obviously mangled in transit", not "authenticated".
+
+    2026-07-27: setting the key by hand produced FIVE `ANTHROPIC_API_KEY`
+    lines in .env — empty, 16 chars, 148, 324 holding three prefixes, and a
+    final 216 holding two. python-dotenv takes the last, so the agent held two
+    keys concatenated. Preflight said CLEAR TO TRADE, because it asked only
+    whether the variable was set. llm.py:112 would have caught the auth error
+    and marked every entry `degraded` — correct, but only AFTER the 15:45
+    cycle placed unjudged entries at full size.
+
+    The returned text describes the value and never quotes it; log.py redacts
+    on the way out, but a diagnosis that needs redacting is the wrong
+    diagnosis.
+    """
+    n = value.count(_ANTHROPIC_PREFIX)
+    if n > 1:
+        return (f'contains {n} "{_ANTHROPIC_PREFIX}" prefixes (length '
+                f'{len(value)}) — looks like several keys pasted end to end; '
+                f'keep exactly one')
+    if not value.startswith(_ANTHROPIC_PREFIX):
+        return (f'does not start with "{_ANTHROPIC_PREFIX}" (length '
+                f'{len(value)}) — wrong value pasted into the variable?')
+    if not _ANTHROPIC_MIN_LEN <= len(value) <= _ANTHROPIC_MAX_LEN:
+        return (f"is {len(value)} characters, outside the plausible "
+                f"{_ANTHROPIC_MIN_LEN}-{_ANTHROPIC_MAX_LEN} range — "
+                f"truncated or doubled paste?")
+    return None
+
 
 def run(cfg: dict) -> list[str]:
     """All failures found (empty list = clear to trade)."""
@@ -71,11 +113,21 @@ def run(cfg: dict) -> list[str]:
     # judged because an llm_review block is present either way. Set
     # llm.enabled: false to trade on rules alone; that is a decision, not a
     # silent hole.
-    if cfg.get("llm", {}).get("enabled") and not os.environ.get(
-            "ANTHROPIC_API_KEY"):
-        fails.append("llm.enabled: true but ANTHROPIC_API_KEY is not set — "
-                     "every trade would be approved unjudged at full size; "
-                     "set the key or set llm.enabled: false")
+    if cfg.get("llm", {}).get("enabled"):
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            fails.append("llm.enabled: true but ANTHROPIC_API_KEY is not set — "
+                         "every trade would be approved unjudged at full size; "
+                         "set the key or set llm.enabled: false")
+        else:
+            # Present is not the same as usable. A mangled key fails at the
+            # first API call, by which point the cycle has already traded.
+            shape = anthropic_key_shape_fail(key)
+            if shape:
+                fails.append(f"ANTHROPIC_API_KEY {shape}. The judge would fail "
+                             f"on every call and each entry would be approved "
+                             f"unjudged at full size. Fix the value in .env "
+                             f"(one line, one key) or set llm.enabled: false")
 
     for key in REQUIRED_ENV:
         if not os.environ.get(key):
