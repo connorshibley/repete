@@ -6,11 +6,14 @@ exits always route to the position's owning strategy regardless of enabled
 section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
-from strategies import ma_crossover, tsmom, xsmom, meanrev, donchian
+from strategies import ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
+# Registered != enabled. `lowvol` (§32, 2026-07-27) ships DISABLED and stays
+# that way unless its pre-registered gate passes; being in this dict only means
+# a config MAY name it.
 REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
-                                donchian)}
+                                donchian, lowvol)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
