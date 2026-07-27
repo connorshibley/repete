@@ -330,6 +330,46 @@ def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
     return value < float(threshold)
 
 
+def unprotectable_entry(entry_price: float, atr_value: float | None,
+                        cfg: dict) -> bool:
+    """True when brackets are ON but this entry's stop would be non-positive.
+
+    `brackets()` below returns None in that case and the caller degrades to a
+    plain market order — a position with **no stop at all**. That inverts the
+    safety property: it happens on the most volatile names in the universe,
+    which are exactly the ones that most need a stop.
+
+    Measured before this was written, so the cost is known rather than guessed:
+
+        shipped 38-symbol universe    0 of  61,104 bars   (0.0000%)
+        wide 500-symbol universe     25 of 803,787 bars   (0.0031%)
+                                     APA, CAR, CZR, NCLH, PENN
+
+    All five are real market data — the March 2020 crash, and a 2026 squeeze in
+    CAR — at ATR/price ratios of 0.36–0.62, not corruption. A daily range half
+    the size of the share price is not a swing setup.
+
+    So this is a **provable no-op for the bot as shipped**: it cannot change one
+    live decision on the current universe, and it closes the hole for any wider
+    one. That measurement is why it ships without a gate.
+
+    ENTRIES ONLY — a position must always be able to leave, the same rule
+    `rvol_blocked` and `credit_blocked` follow. Fails OPEN when brackets are
+    disabled or ATR is unavailable: there is then no stop to be missing, and the
+    bracket path was never going to protect the trade anyway.
+    """
+    b = (cfg.get("risk") or {}).get("brackets") or {}
+    if not b.get("enabled") or not atr_value or atr_value <= 0:
+        return False
+    # The WIDEST configured multiplier. If any vol regime could push the stop
+    # below zero the name is unprotectable in that regime, and whether it is
+    # blocked must not depend on which bucket happens to be current.
+    mult = max(b.get("stop_atr_mult") or 0, b.get("stop_atr_mult_high_vol") or 0)
+    if mult <= 0:
+        return False
+    return round(entry_price - mult * atr_value, 2) <= 0
+
+
 def _credit_ratios(hy: list, ig: list, ts: str, period: int):
     """(latest ratio, SMA of the last `period` ratios) at or before `ts`.
 
