@@ -74,3 +74,78 @@ def test_attach_is_idempotent(tmp_path):
     finally:
         logging.getLogger().removeHandler(h1)
         h1.close()
+
+
+# ---- the two gaps found by the 2026-07-27 audit ----
+
+def test_a_capability_url_is_treated_as_a_secret(monkeypatch):
+    """HEARTBEAT_PING_URL and ALERT_WEBHOOK_URL ARE credentials.
+
+    Anyone holding https://hc-ping.com/<uuid> can forge this bot's
+    proof-of-life; anyone holding the alert webhook can forge its alerts.
+    Neither name contains KEY/SECRET/TOKEN/PASSWORD, so both sat outside the
+    redaction set — while src/alerting.py carefully refused to log one of them
+    by hand. A rule enforced at one call site is a habit, not a control.
+    """
+    import log as structlog
+    monkeypatch.setenv("HEARTBEAT_PING_URL", "https://hc-ping.com/deadbeef-uuid")
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.example.com/T0/B0/xyz")
+    out = structlog.redact(
+        "ping failed for https://hc-ping.com/deadbeef-uuid via "
+        "https://hooks.example.com/T0/B0/xyz")
+    assert "deadbeef-uuid" not in out
+    assert "T0/B0/xyz" not in out
+    assert out.count("[REDACTED]") == 2
+
+
+def test_redaction_reaches_the_human_readable_handlers(tmp_path, monkeypatch):
+    """The real gap: only the JSON mirror redacted.
+
+    `logs/agent.log` and stdout — captured by launchd into
+    `logs/launchd.err.log`, and the two logs a human actually opens during an
+    incident — were written raw. A key echoed back inside a broker or model
+    SDK traceback would have landed in both in the clear.
+    """
+    import logging
+    import log as structlog
+
+    monkeypatch.setenv("ALPACA_SECRET_KEY", "SUPERSECRETVALUE123")
+    path = tmp_path / "human.log"
+    root = logging.getLogger("redaction_probe")
+    root.handlers.clear()
+    h = logging.FileHandler(path)
+    h.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(h)
+    root.propagate = False
+
+    wrapped = structlog.redact_existing_handlers(root)
+    assert wrapped == 1
+
+    root.error("alpaca rejected the key SUPERSECRETVALUE123")
+    h.flush()
+    body = path.read_text()
+    assert "SUPERSECRETVALUE123" not in body, "secret reached a plain log file"
+    assert "[REDACTED]" in body
+    root.handlers.clear()
+
+
+def test_wrapping_is_idempotent_and_skips_the_json_handler(tmp_path):
+    """Re-running configure_logging must not nest formatters, and the JSON
+    handler already redacts — double-wrapping it would be wasted work."""
+    import logging
+    import log as structlog
+
+    root = logging.getLogger("redaction_probe2")
+    root.handlers.clear()
+    h = logging.FileHandler(tmp_path / "a.log")
+    root.addHandler(h)
+    j = logging.FileHandler(tmp_path / "b.jsonl")
+    j.setFormatter(structlog.JsonFormatter())
+    j._repete_json = True
+    root.addHandler(j)
+
+    assert structlog.redact_existing_handlers(root) == 1   # json one skipped
+    assert structlog.redact_existing_handlers(root) == 0   # already wrapped
+    assert isinstance(h.formatter, structlog.RedactingFormatter)
+    assert isinstance(j.formatter, structlog.JsonFormatter)
+    root.handlers.clear()

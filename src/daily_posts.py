@@ -47,6 +47,8 @@ def configure_logging() -> None:
                   logging.FileHandler("logs/agent.log", mode="a")],
         force=True,
     )
+    import log as structlog
+    structlog.redact_existing_handlers()
 
 ET = ZoneInfo("America/New_York")
 PLAN_MARKER = "memory/last_plan_post"   # bare YYYY-MM-DD of the last attempt
