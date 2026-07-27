@@ -565,7 +565,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                       earnings: dict | None = None,
                       strategy_overrides: dict | None = None,
                       hour_index: dict | None = None,
-                      fill_hour: int | None = None) -> Result:
+                      fill_hour: int | None = None,
+                      credit: dict | None = None) -> Result:
     """Replay bars through ALL enabled strategies at once, sharing the rails.
 
     Why this exists (2026-07-23)
@@ -879,6 +880,14 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # claim it — only an accepted buy consumes the symbol.
                 if risk.rvol_blocked(hist, cfg, name):
                     continue
+                # §31 cross-asset credit gate (entries only; fails open).
+                # `break`, not `continue`: unlike rvol this is a MARKET-WIDE
+                # condition with no per-strategy component, so no other
+                # strategy could claim this symbol today either. Continuing
+                # would re-evaluate an identical boolean for every remaining
+                # strategy and reach the same answer.
+                if risk.credit_blocked(credit, ts, cfg):
+                    break
                 entry_cap = sparams.get("max_entries_per_cycle", 0)
                 if entry_cap and buys_queued[name] >= entry_cap:
                     continue

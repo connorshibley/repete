@@ -330,6 +330,70 @@ def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
     return value < float(threshold)
 
 
+def _credit_ratios(hy: list, ig: list, ts: str, period: int):
+    """(latest ratio, SMA of the last `period` ratios) at or before `ts`.
+
+    None when there is not enough aligned history. Alignment is BY TIMESTAMP,
+    not by index: one missing bar in either series would otherwise shift the two
+    against each other and quietly compare different days.
+    """
+    ig_by_ts = {b.get("ts"): b.get("close") for b in ig}
+    series = []
+    for b in hy:
+        bts = b.get("ts")
+        if not bts or bts > ts:
+            break                          # never read past the decision bar
+        denom = ig_by_ts.get(bts)
+        num = b.get("close")
+        if not denom or denom <= 0 or not num or num <= 0:
+            continue
+        series.append(num / denom)
+    if len(series) < period:
+        return None
+    window = series[-period:]
+    return series[-1], sum(window) / period
+
+
+def credit_blocked(credit_bars: dict | None, ts: str, cfg: dict) -> bool:
+    """§31: block an ENTRY while credit risk appetite is deteriorating.
+
+    The claim under test is that entries taken while high-yield credit weakens
+    against investment grade are worse trades. The measure is the HYG:LQD close
+    ratio against its own moving average — an input the traded symbol's own
+    price history does not contain, which is the entire point. Every strategy
+    here is otherwise a price-only rule, and `backtest_candidates.md:611`
+    reports no OOS edge distinguishable from zero across all five of them.
+
+    ONE implementation shared by live and both simulators, following
+    `rvol_blocked` above. Five sim/live divergences have already cost real
+    rework; a filter re-implemented per call site would be the sixth.
+
+    FAILS OPEN. Missing bars, short history, a non-positive close, or the
+    feature switched off all permit the entry. A credit-data outage must never
+    silently halt trading — the freshness rails own that failure class.
+
+    NEVER applied to exits: a position must always be able to leave, the same
+    rule `rvol_blocked` follows.
+
+    Config: `risk.credit_sma_period`; 0 or absent disables it entirely.
+
+    `ts` bounds the window, so a backtest cannot read a ratio the live bot could
+    not have seen at the same moment.
+    """
+    period = int((cfg.get("risk") or {}).get("credit_sma_period", 0) or 0)
+    if period <= 0 or not credit_bars:
+        return False
+    hy = credit_bars.get("HYG") or []
+    ig = credit_bars.get("LQD") or []
+    if not hy or not ig:
+        return False
+    got = _credit_ratios(hy, ig, ts, period)
+    if got is None:
+        return False                       # fail open — see docstring
+    latest, avg = got
+    return latest < avg
+
+
 def rotate_scan_order(symbols: list, day=None) -> list:
     """Rotate a symbol list by date so first refusal circulates. §24.
 

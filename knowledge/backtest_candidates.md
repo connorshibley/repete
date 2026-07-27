@@ -2271,4 +2271,99 @@ Two specific ways this fails that are worth naming now:
 **Runner:** `scripts/gate_cross_asset.py` — committed, not a heredoc, so this
 gate can be re-executed exactly.
 
-### §31 RESULT — *(to be written after the run, whichever way it lands)*
+### §31 RESULT — REJECTED. Credit direction does not sort this bot's trades.
+
+Snapshot `bars_2020-01-01_2026-07-10.json.gz` (sha256 `6abb20b5…`) and
+`credit_2020-01-01_2026-07-10.json.gz` (sha256 `9b8ac92c…`), both **verified by
+the runner before scoring** — it refuses to run on a drifted file. Ensemble
+simulator, 38 symbols, 70/30 split, IS ends 2024-07-23, OOS starts 2024-07-24.
+The OOS credit slice carries 100 bars of lead-in so `sma100` is warm at its
+first OOS bar rather than silently disabled for 100 sessions.
+
+**In-sample** (selection here and only here, on profit factor — the EDGE measure):
+
+| arm | IS return | PF | maxDD | trades | deploy |
+|---|---|---|---|---|---|
+| baseline | +46.47% | 1.662 | 10.84% | 542 | 40.03% |
+| **sma50 [IS winner]** | **+71.39%** | **1.784** | 9.95% | 767 | 59.11% |
+| sma100 | +39.92% | 1.715 | 10.42% | 412 | 33.60% |
+
+**Out-of-sample** (reported once):
+
+| arm | OOS return | PF | maxDD | trades | deploy |
+|---|---|---|---|---|---|
+| **baseline** | **+14.42%** | **1.296** | 11.11% | 429 | 70.59% |
+| sma50 [SELECTED] | +12.42% | 1.266 | 10.19% | 330 | 60.18% |
+| sma100 [not selected] | +16.82% | 1.400 | 8.85% | 309 | 57.75% |
+
+Clause **(a) FAIL** — `enablement_gate()` refuses it twice over: OOS PF 1.266 <
+1.3, and +12.42% beats neither B&H +49.70%, nor the risk-adjusted bar, nor the
+exposure-matched benchmark +29.91% at 60.2% deployment. Clause **(b) FAIL** — PF
+1.266 vs baseline 1.296, *lower*, and an EDGE claim that lowers profit factor
+is not an edge claim. Clauses (c), (d1), (d2) pass. Clause **(e) FAIL** —
+INCONCLUSIVE: +$37.64/trade vs +$33.62/trade, diff +$4.01 with a 98.33%
+Bonferroni CI of [-$126.08, +$176.25]. The interval is thirty times wider than
+the effect.
+
+**REJECTED. The incumbent stands; `risk.credit_sma_period` ships as 0.**
+
+### The failure mode was the one named in the registration
+
+Registered beforehand: *"if the filter removes trades roughly at random with
+respect to outcome, PF stays flat while the count drops — clauses (b) and (d)
+fail together, and that pattern is a REJECT, not a near miss."*
+
+That is what happened. The filter removed **99 of 429 OOS trades (23%)** and
+profit factor moved from 1.296 to 1.266 — down, not up. Removing a quarter of
+the trades changed per-trade expectancy by less than the noise in a single
+trade. Credit direction is not sorting good entries from bad ones; it is
+sampling them.
+
+### The part worth reading twice
+
+**`sma100` — the arm that was NOT selected — has the best OOS row in the table.**
+Higher return than baseline, PF 1.400 against 1.296, and the lowest drawdown of
+the three.
+
+Selection happened in-sample, where `sma100` placed *third of three* on profit
+factor (1.715 vs `sma50`'s 1.784). So the pre-registered procedure picked
+`sma50`, and `sma50` lost out of sample.
+
+This is precisely the situation pre-registration exists for. With the OOS table
+in front of me I can construct a completely convincing story for `sma100`: a
+slower credit average is less twitchy, it avoids whipsaw around the moving
+average, of course 100 beats 50. That story would be written *after* seeing the
+number it explains, which makes it worth nothing. Two candidate arms and a coin
+flip produce a winner half the time.
+
+**`sma100` is not adopted, and this result may not be used as evidence for it.**
+Its OOS number is now burned: it has been looked at, so it can never again serve
+as an out-of-sample test of that arm. Testing `sma100` honestly requires a fresh
+pre-registration on a split this run did not touch — the same treatment §30 is
+waiting on. Recorded here so that a later session cannot find the number,
+reasonably conclude it looks promising, and quietly enable it.
+
+**EDGE claims are now 0 for 6.**
+
+### What this does and does not rule out
+
+It does **not** show that cross-asset information is useless. It shows that
+*this* measure (HYG:LQD versus its own SMA), used *this* way (a binary
+all-symbols entry block), does not improve *these* strategies on *this*
+snapshot. The registration named the likely reason in advance: credit stress and
+equity weakness are largely contemporaneous, so a slow credit average mostly
+re-detects drawdowns the circuit breaker already handles.
+
+What is genuinely learned: a market-wide on/off switch is a blunt instrument.
+Every strategy sees the same boolean on the same day, so the filter can only
+move exposure in time — it cannot rank one symbol against another. The
+cross-sectional version of this idea (rank symbols by sensitivity to credit,
+rather than gate the whole book) is a different claim, needs its own
+registration, and is not tested here.
+
+The rail itself stays in the codebase, switched off, with its tests
+(`tests/test_credit_gate.py`, 10 boundary-paired cases proving it cannot read
+past the decision bar and fails open on every missing-data shape). A rejected
+arm keeps its implementation so the next registration does not have to rebuild
+and re-verify it — but it stays at 0, and a strategy change is never adopted by
+enabling it and seeing what happens.
