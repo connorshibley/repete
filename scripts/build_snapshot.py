@@ -55,6 +55,82 @@ def _config_symbols() -> list:
         return list(yaml.safe_load(f)["symbols"])
 
 
+# ---------------------------------------------------------------- §32 universe
+
+# S&P 1500 = 500 large + 400 mid + 600 small. The MID and SMALL lists are the
+# point: a large-cap-only universe silently deletes every name that fell out of
+# the index, and momentum strategies exploit that deletion far more than
+# buy-and-hold does. Including mid/small recovers part of the loser
+# distribution. It does NOT fix survivorship — see the §32 registration, which
+# states the bias and its direction rather than pretending it away.
+_INDEX_PAGES = {
+    "sp500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    "sp400": "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+    "sp600": "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies",
+}
+_UA = {"User-Agent": "trading-agent-research/1.0 "
+                     "(github.com/connorshibley/trading-agent)"}
+
+
+def index_constituents(which: str = "sp1500") -> list:
+    """Current index membership, sorted. Network, and deliberately not cached:
+    the caller freezes the RESULT into a hashed snapshot, which is the artifact
+    that has to be reproducible — not this lookup."""
+    import io
+    import urllib.request
+
+    import pandas as pd
+
+    names = (["sp500", "sp400", "sp600"] if which == "sp1500" else [which])
+    out: set = set()
+    for name in names:
+        req = urllib.request.Request(_INDEX_PAGES[name], headers=_UA)
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            html = resp.read().decode("utf-8", "replace")
+        picked = None
+        for table in pd.read_html(io.StringIO(html)):
+            cols = [str(c) for c in table.columns]
+            hit = [c for c in cols if c in ("Symbol", "Ticker", "Ticker symbol")]
+            if hit and len(table) > 100:
+                picked = [str(x).strip() for x in table[hit[0]]]
+                break
+        if picked is None:
+            raise SystemExit(f"{name}: could not find a constituent table — "
+                             f"the page layout changed")
+        print(f"  {name}: {len(picked)} constituents")
+        out |= set(picked)
+    # yfinance wants BRK-B, Wikipedia writes BRK.B
+    return sorted(s.replace(".", "-") for s in out if s and s != "nan")
+
+
+def liquidity_screen(bars: dict, top_n: int, screen_year: str) -> list:
+    """Top `top_n` symbols by MEDIAN DOLLAR VOLUME during `screen_year` only.
+
+    The year matters more than the metric. Screening on liquidity measured over
+    the whole file would select using data from the out-of-sample window — a
+    subtle lookahead that would flatter every arm equally and be almost
+    invisible in the result. Restricting the screen to the first calendar year
+    means the universe is decided with information available before the test
+    period starts.
+
+    Symbols with no bars in that year are dropped: a name that was not trading
+    at the start cannot be part of a universe chosen at the start.
+    """
+    scored = []
+    for sym, rows in bars.items():
+        vals = [r["close"] * r["volume"] for r in rows
+                if r["ts"][:4] == screen_year and r.get("volume")]
+        if len(vals) < 100:            # <~40% of a trading year: not established
+            continue
+        vals.sort()
+        scored.append((vals[len(vals) // 2], sym))
+    scored.sort(reverse=True)
+    kept = sorted(s for _, s in scored[:top_n])
+    print(f"  liquidity screen ({screen_year} median $ volume): "
+          f"{len(bars)} fetched -> {len(scored)} established -> {len(kept)} kept")
+    return kept
+
+
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -63,8 +139,29 @@ def sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
-def fetch(symbols: list, start: str, end: str) -> dict:
-    """{symbol: [{ts, open, high, low, close, volume}, ...]} in broker.bars shape."""
+def fetch(symbols: list, start: str, end: str, chunk: int = 100) -> dict:
+    """{symbol: [{ts, open, high, low, close, volume}, ...]} in broker.bars shape.
+
+    Chunked since 2026-07-27: one `yf.download` of 1,500 tickers returns a
+    partial frame or times out, and the failure is silent — missing symbols just
+    don't appear. A chunk that fails wholesale is reported and skipped rather
+    than aborting a 15-minute download, and `sanity_check` refuses to write a
+    snapshot that lost symbols it was asked for.
+    """
+    out: dict = {}
+    for i in range(0, len(symbols), chunk):
+        batch = symbols[i:i + chunk]
+        print(f"  batch {i // chunk + 1}/{-(-len(symbols) // chunk)} "
+              f"({len(batch)} symbols)…", flush=True)
+        try:
+            out.update(_fetch_batch(batch, start, end))
+        except Exception as e:  # noqa: BLE001 — reported, then the rest continues
+            print(f"  !! batch starting {batch[0]} FAILED ({e}) — skipped",
+                  file=sys.stderr)
+    return out
+
+
+def _fetch_batch(symbols: list, start: str, end: str) -> dict:
     import yfinance as yf
 
     # end is inclusive for us, exclusive for yfinance.
@@ -105,14 +202,24 @@ def fetch(symbols: list, start: str, end: str) -> dict:
     return out
 
 
-def sanity_check(bars: dict, symbols: list, start: str, end: str) -> list:
+def sanity_check(bars: dict, symbols: list, start: str, end: str,
+                 require_all: bool = True) -> list:
     """Return a list of problems. A snapshot that silently lost half its
     universe would quietly change every gate verdict downstream, so these are
-    reported and — for the fatal ones — refuse to write."""
+    reported and — for the fatal ones — refuse to write.
+
+    `require_all=False` for the §32 wide build: asking yfinance for 1,500
+    current index members and getting 1,470 back is expected (renames, recent
+    additions with no 2020 history), and the liquidity screen then picks the top
+    N from whatever arrived. A missing name there is attrition, not corruption.
+    For the 38-symbol config universe every name is load-bearing, so it stays
+    fatal."""
     problems = []
     missing = [s for s in symbols if s not in bars]
     if missing:
-        problems.append(f"FATAL: {len(missing)} symbols missing: {missing}")
+        shown = missing if len(missing) <= 20 else missing[:20] + ["…"]
+        problems.append(f"{'FATAL' if require_all else 'WARN'}: "
+                        f"{len(missing)} symbols missing: {shown}")
 
     lengths = {s: len(v) for s, v in bars.items()}
     if lengths:
@@ -178,12 +285,38 @@ def main() -> int:
     p.add_argument("--out", default=None, help="default: bars_<start>_<end>.json.gz")
     p.add_argument("--verify", action="store_true",
                    help="re-hash committed snapshots and exit")
+    p.add_argument("--universe", default=None,
+                   choices=sorted(_INDEX_PAGES) + ["sp1500"],
+                   help="§32: fetch current index membership instead of "
+                        "config.yaml's symbols")
+    p.add_argument("--top", type=int, default=0,
+                   help="§32: keep the top N by median dollar volume in the "
+                        "screen year (0 = keep everything fetched)")
+    p.add_argument("--screen-year", default=None,
+                   help="§32: year the liquidity screen measures "
+                        "(default: the start year — point-in-time)")
+    p.add_argument("--always-include", nargs="+", default=None,
+                   help="symbols kept regardless of the liquidity screen. SPY "
+                        "is not optional: simulate_ensemble reads it for the "
+                        "regime label and vol bucket (backtest.py:640), and "
+                        "risk.regime_exposure is ENABLED — a universe without "
+                        "SPY silently stops that rail binding, which is a "
+                        "sim/live divergence, not a smaller universe.")
     args = p.parse_args()
 
     if args.verify:
         return cmd_verify()
 
-    symbols = args.symbols or _config_symbols()
+    if args.universe:
+        print(f"resolving universe {args.universe}…")
+        symbols = index_constituents(args.universe)
+        if args.always_include:
+            extra = [s for s in args.always_include if s not in symbols]
+            symbols = sorted(symbols + extra)
+            print(f"  force-included: {extra}")
+        print(f"  union: {len(symbols)} tickers")
+    else:
+        symbols = args.symbols or _config_symbols()
     name = args.out or f"bars_{args.start}_{args.end}.json.gz"
     os.makedirs(SNAP_DIR, exist_ok=True)
     path = os.path.join(SNAP_DIR, name)
@@ -191,7 +324,14 @@ def main() -> int:
     print(f"fetching {len(symbols)} symbols {args.start} → {args.end} (yfinance)…")
     bars = fetch(symbols, args.start, args.end)
 
-    problems = sanity_check(bars, symbols, args.start, args.end)
+    if args.top:
+        keep = liquidity_screen(bars, args.top,
+                                args.screen_year or args.start[:4])
+        bars = {s: bars[s] for s in keep}
+        symbols = keep
+
+    problems = sanity_check(bars, symbols, args.start, args.end,
+                            require_all=not args.universe)
     for msg in problems:
         print("  " + msg, file=sys.stderr)
     if any(m.startswith("FATAL") for m in problems):
