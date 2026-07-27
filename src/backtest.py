@@ -516,6 +516,12 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 # §23 relative-volume confirmation (entries only; fails open)
                 if risk.rvol_blocked(hist, cfg, strategy_name):
                     continue
+                # Unprotectable entry (2026-07-27): an ATR-derived stop at or
+                # below zero means brackets() returns None and the position runs
+                # with NO stop. Same helper as live and the ensemble.
+                if risk.unprotectable_entry(
+                        hist[-1]["close"], strategies.atr(hist, 14), cfg):
+                    continue
                 # per-cycle entry cap, first-come in symbol order — the same
                 # semantics as the live loop in main.py
                 if entry_cap and buys_queued_today >= entry_cap:
@@ -888,6 +894,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # strategy and reach the same answer.
                 if risk.credit_blocked(credit, ts, cfg):
                     break
+                # Unprotectable entry (2026-07-27). `continue`, not `break`:
+                # this is a PER-SYMBOL property, so another strategy scanning a
+                # different symbol is unaffected — unlike the market-wide credit
+                # gate above.
+                if risk.unprotectable_entry(
+                        hist[-1]["close"], strategies.atr(hist, 14), cfg):
+                    continue
                 entry_cap = sparams.get("max_entries_per_cycle", 0)
                 if entry_cap and buys_queued[name] >= entry_cap:
                     continue

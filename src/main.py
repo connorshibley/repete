@@ -1129,6 +1129,18 @@ def _run_cycle(completed_bars_only: bool = False):
                                                 "volume entry threshold",
                                       **sig.indicators}
                 continue
+            # A name whose ATR-derived stop would land at or below zero cannot
+            # be bracket-protected: risk.brackets() returns None and the caller
+            # degrades to a plain market order — an UNPROTECTED position, on the
+            # most volatile name in the universe. Refuse the entry instead.
+            # Provable no-op as shipped (0 of 61,104 bars); 25 of 803,787 on the
+            # wide universe. Same helper in both simulators.
+            if risk.unprotectable_entry(price, strategies.atr(bars, 14), cfg):
+                hold_reasons[name] = {"reason": "ATR-derived stop would be "
+                                                "non-positive — this position "
+                                                "could not be protected",
+                                      **sig.indicators}
+                continue
             if _process_signal(
                     sig, symbol, bars, price, None, None,
                     extra_context=news_note,
