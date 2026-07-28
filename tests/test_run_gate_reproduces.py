@@ -224,3 +224,51 @@ def test_the_bonferroni_k_from_the_spec_reaches_the_comparison():
                                             "rule": "significantly_better"}]),
                             arms, "cand", resamples=300)
     assert "Bonferroni K=8" in out["clauses"][0]["detail"]
+
+
+# ---- family coherence (§34 shape 2) ----
+
+def test_a_family_passes_only_when_every_member_clears():
+    """§34: "require the whole family to move. A result that appears in one arm
+    and not its neighbours is what selection noise looks like."
+
+    So one failing member sinks the claim. The permissive half is below — a
+    family mode that rejected everything would satisfy this test alone.
+    """
+    spec = _spec(family=["a", "b"],
+                 arms=[{"name": "baseline"}, {"name": "a"}, {"name": "b"}],
+                 clauses=[{"id": "b", "rule": "pf_gt_baseline"}])
+    arms = {"baseline": (_summary(profit_factor=1.0), [1.0] * 60, 0.0),
+            "a": (_summary(profit_factor=2.0), [1.0] * 60, 0.0),
+            "b": (_summary(profit_factor=0.5), [1.0] * 60, 0.0)}
+    per_arm = {n: run_gate.evaluate(spec, arms, n, 50) for n in spec["family"]}
+    assert per_arm["a"]["passed"] is True
+    assert per_arm["b"]["passed"] is False
+    assert all(v["passed"] for v in per_arm.values()) is False
+
+
+def test_a_family_where_every_member_clears_passes():
+    spec = _spec(family=["a", "b"],
+                 arms=[{"name": "baseline"}, {"name": "a"}, {"name": "b"}],
+                 clauses=[{"id": "b", "rule": "pf_gt_baseline"}])
+    arms = {"baseline": (_summary(profit_factor=1.0), [1.0] * 60, 0.0),
+            "a": (_summary(profit_factor=2.0), [1.0] * 60, 0.0),
+            "b": (_summary(profit_factor=1.8), [1.0] * 60, 0.0)}
+    per_arm = {n: run_gate.evaluate(spec, arms, n, 50) for n in spec["family"]}
+    assert all(v["passed"] for v in per_arm.values()) is True
+
+
+def test_every_member_is_compared_against_baseline_not_each_other():
+    """Members are neighbours, not rivals. Comparing them to each other would
+    reintroduce a choice — exactly what §34 retired."""
+    spec = _spec(family=["a", "b"],
+                 arms=[{"name": "baseline"}, {"name": "a"}, {"name": "b"}],
+                 clauses=[{"id": "b", "rule": "pf_gt_baseline"}])
+    arms = {"baseline": (_summary(profit_factor=1.0), [1.0] * 60, 0.0),
+            "a": (_summary(profit_factor=9.0), [1.0] * 60, 0.0),
+            "b": (_summary(profit_factor=1.5), [1.0] * 60, 0.0)}
+    per_arm = {n: run_gate.evaluate(spec, arms, n, 50) for n in spec["family"]}
+    # b clears despite being far worse than a: the bar is baseline, not the
+    # best sibling.
+    assert per_arm["b"]["passed"] is True
+    assert "1.500 vs 1.000" in per_arm["b"]["clauses"][0]["detail"]

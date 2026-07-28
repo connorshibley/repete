@@ -259,13 +259,51 @@ def main() -> int:
     if bh is not None:
         print(f"\n  buy-and-hold on this universe: {bh:+.2f}%")
 
-    candidate = spec.get("candidate") or spec["arms"][1]["name"]
-    verdict = evaluate(spec, arms, candidate, args.resamples)
+    family = spec.get("family")
+    if family:
+        # §34's prescription, verbatim: "require the whole family to move. If an
+        # effect is real it should lift every arm in the family, not one. A
+        # result that appears in one arm and not its neighbours is what
+        # selection noise looks like."
+        #
+        # So every member faces the full pass mark and ONE failure sinks the
+        # claim. Nothing is chosen, which is the point — no selector can be
+        # credited or blamed for the verdict, and §34 established this repo has
+        # no selector worth trusting.
+        per_arm = {name: evaluate(spec, arms, name, args.resamples)
+                   for name in family}
+        verdict = {"family": family, "per_arm": per_arm,
+                   "passed": all(v["passed"] for v in per_arm.values()),
+                   "clauses": [], "comparison": None}
 
-    print(f"\n-- PRE-REGISTERED PASS MARK ({candidate}) --")
-    for c in verdict["clauses"]:
-        print(f"  [{'PASS' if c['pass'] else 'FAIL'}] ({c['id']}) {c['rule']}"
-              + (f"  {c['detail']}" if c["detail"] else ""))
+        print(f"\n-- PRE-REGISTERED PASS MARK "
+              f"(family of {len(family)}; ALL must clear) --")
+        for name in family:
+            v = per_arm[name]
+            print(f"\n  {name}  ->  {'CLEARS' if v['passed'] else 'FAILS'}")
+            for c in v["clauses"]:
+                print(f"    [{'PASS' if c['pass'] else 'FAIL'}] ({c['id']}) "
+                      f"{c['rule']}"
+                      + (f"  {c['detail']}" if c["detail"] else ""))
+        cleared = [n for n in family if per_arm[n]["passed"]]
+        print(f"\n  {len(cleared)}/{len(family)} members clear"
+              + (f": {', '.join(cleared)}" if cleared else ""))
+    else:
+        candidate = spec.get("candidate") or spec["arms"][1]["name"]
+        verdict = evaluate(spec, arms, candidate, args.resamples)
+        print(f"\n-- PRE-REGISTERED PASS MARK ({candidate}) --")
+        for c in verdict["clauses"]:
+            print(f"  [{'PASS' if c['pass'] else 'FAIL'}] ({c['id']}) "
+                  f"{c['rule']}"
+                  + (f"  {c['detail']}" if c["detail"] else ""))
+
+    if spec["claim"] == "DIAGNOSTIC":
+        # Say it at the point of the result, not only in the header. Someone
+        # reading a scrollback sees the verdict line; the banner has to be
+        # adjacent to it or it may as well not exist.
+        print(f"\n{'=' * 68}\nDIAGNOSTIC — this decides NOTHING. It is not a "
+              f"claim and cannot\nenable, reject or support anything. See the "
+              f"spec's `prior` for why.\n{'=' * 68}")
 
     print(f"\nVERDICT: {'PASS' if verdict['passed'] else 'REJECTED'}  "
           f"({wall:.0f}s wall)")
@@ -278,7 +316,11 @@ def main() -> int:
 
     record = {
         "id": spec["id"], "ran_at": datetime.now(timezone.utc).isoformat(),
-        "spec_sha256": reg["spec_sha256"], "candidate": candidate,
+        "spec_sha256": reg["spec_sha256"],
+        "candidate": None if family else candidate,
+        "family": family,
+        "per_arm": {n: v["clauses"] for n, v in verdict["per_arm"].items()}
+                   if family else None,
         "passed": verdict["passed"], "clauses": verdict["clauses"],
         "comparison": verdict["comparison"], "wall_seconds": round(wall, 1),
         "workers": args.workers,

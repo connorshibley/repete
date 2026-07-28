@@ -1,0 +1,116 @@
+# §37 — FAMILY COHERENCE, ON THE FINANCIAL CRISIS
+#
+# Written and frozen BEFORE the 2007-2013 snapshot finished building, and before
+# any number from it was seen.
+#
+# §34 retired selection in this repository: single-split, fold-majority and an
+# oracle holding the future all scored 2/4, indistinguishable from a coin. Its
+# constructive prescription was to stop selecting, and it named three shapes an
+# EDGE claim may take. §35 used shape 1 (one pre-specified arm). This is the
+# first use of shape 2:
+#
+#   "Require the whole family to move. If an effect is real it should lift every
+#    arm in the family, not one. A result that appears in one arm and not its
+#    neighbours is what selection noise looks like."
+#
+# So there is NO candidate here and nothing is chosen. Three momentum lookbacks
+# each face the full pass mark, and one failure sinks the claim.
+id: s37
+claim: EDGE
+title: "Cross-sectional momentum family coherence, 2007-2013 (incl. the GFC)"
+
+snapshot:
+  path: data/snapshots/bars_wide_2007-01-01_2013-12-31.json.gz
+  sha256: 2ba815e1b0d2ca5db7b1e1778a65ab4126f9526e1347299464573ea16d7591d5
+
+cash: 100000.0
+
+# K=9. Eight EDGE claims precede this one; family-wise error accumulates across
+# a research programme even when the hypotheses differ. Three arms are tested
+# but they are ONE claim — the family moves or it does not — so the count rises
+# by one, not three.
+bonferroni_k: 9
+
+# Identical across every arm, so a difference between arms can never be a
+# sizing difference. Same values as §32 and §35.
+shared:
+  set:
+    risk.risk_per_trade_pct: 2.0
+    risk.max_position_pct: 2.5
+    risk.max_portfolio_heat_pct: 20.0
+    risk.max_trades_per_day: 50
+
+# Three lookbacks spanning the published momentum literature: 6-1, 9-1 and 12-1
+# (Jegadeesh & Titman 1993 used 6- and 12-month formation with a 1-month skip).
+# 21 bars ~ 1 month. Chosen for being the standard grid, not for anything seen
+# in this data — nothing from the 2007-2013 snapshot had been read when this was
+# written.
+arms:
+  - name: baseline
+
+  - name: xsmom-6-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 126,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+  - name: xsmom-9-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 189,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+  - name: xsmom-12-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 231,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+# No `candidate`. Every member must clear every clause.
+family: [xsmom-6-1, xsmom-9-1, xsmom-12-1]
+
+clauses:
+  - {id: a, rule: enablement_gate}
+  - {id: b, rule: pf_gt_baseline}
+  - {id: c, rule: maxdd_within, pp: 1.0}
+  - {id: d, rule: min_trades, n: 30}
+  - {id: e, rule: significantly_better}
+
+prior: >-
+  This fails. EDGE claims stand at 0 for 8, and §35 already ran xsmom-12-1 on
+  2014-2019 where it lost 4.04% while the market gained 90.41%. The reason to
+  run it anyway is that 2007-2013 is the first period this repository has ever
+  scored that contains a real bear market, and §35's registration named
+  "benign period" as a failure mode that has stood unanswered since. A
+  three-arm family requirement also makes a lucky single-arm result impossible
+  to mistake for an effect. If momentum has any regime in which it earns its
+  keep, a crisis is the most-claimed one; if it fails here too, that claim is
+  answered on this repository's own data rather than by assertion.
+
+failure_modes:
+  - >-
+    SURVIVORSHIP, and it is severe here — worse than in any previous section.
+    The universe is screened from TODAY'S S&P 1500 membership, so every company
+    that went bankrupt or was delisted in the 2008 crisis is absent by
+    construction. The crash is therefore systematically softened, and long-only
+    momentum benefits most from that. Direction named in advance: this inflates
+    every arm, so a PASS here would be weak evidence while a FAIL is strong.
+  - >-
+    The screen measures liquidity on the FIRST calendar year only (2007), so
+    universe selection cannot peek at the test window. That is a guard, not a
+    guarantee: 2007 liquidity itself reflects pre-crisis conditions.
+  - >-
+    Three arms share a snapshot and a universe, so their results are strongly
+    correlated. "All three moved" is therefore much weaker evidence than three
+    independent confirmations, and must not be read as such.
+  - >-
+    Low trade count. A top-decile rule places few trades, so per-arm confidence
+    intervals will be wide and an INCONCLUSIVE significance result is not
+    support.
+  - >-
+    A PASS is not permission to enable anything. It would be one family, one
+    period, one universe construction — and it would still owe a walk-forward
+    on a period with no survivorship advantage before it meant anything.

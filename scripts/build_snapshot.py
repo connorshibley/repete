@@ -318,6 +318,16 @@ def main() -> int:
     else:
         symbols = args.symbols or _config_symbols()
     name = args.out or f"bars_{args.start}_{args.end}.json.gz"
+    if "/" in name or os.sep in name:
+        # `--out` is a FILENAME; it is joined with SNAP_DIR below. Passing a
+        # path silently produced `data/snapshots/data/snapshots/…` and raised
+        # FileNotFoundError on write — AFTER a full 1,181-symbol fetch had
+        # already run (2026-07-28). Fail here, before the network work, and say
+        # exactly what to pass instead.
+        raise SystemExit(
+            f"--out takes a filename, not a path: {name!r}\n"
+            f"It is written into data/snapshots/ automatically.\n"
+            f"  use:  --out {os.path.basename(name)}")
     os.makedirs(SNAP_DIR, exist_ok=True)
     path = os.path.join(SNAP_DIR, name)
 
