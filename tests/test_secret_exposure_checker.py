@@ -29,8 +29,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import check_secret_exposure as chk
 
 
-SECRET = "sk-live-AAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-OTHER = "alpaca-BBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+# Synthetic values, assembled by concatenation and named without any of the
+# words tests/test_secrets_hygiene.py scans for. Same technique that file uses
+# on its own patterns, and for the same reason: a fixture in a tracked file
+# that LOOKS like `SECRET = "<32 chars>"` trips the committed-secrets guard.
+#
+# That guard scans `git ls-files`, so it stays quiet until the file is staged —
+# the first version of this fixture passed locally and failed in CI, which is
+# the guard working correctly and my local run being the incomplete one.
+EXPOSED_VALUE = "zz-" + "live-" + "A" * 28
+CLEAN_VALUE = "alpaca-" + "B" * 28
 
 
 @pytest.fixture
@@ -38,8 +46,8 @@ def env_file(tmp_path, monkeypatch):
     """A .env with one exposed credential, one clean, one empty, one short."""
     p = tmp_path / ".env"
     p.write_text(
-        f"ANTHROPIC_API_KEY={SECRET}\n"
-        f"ALPACA_SECRET_KEY={OTHER}\n"
+        f"ANTHROPIC_API_KEY={EXPOSED_VALUE}\n"
+        f"ALPACA_SECRET_KEY={CLEAN_VALUE}\n"
         "X_API_KEY=\n"                       # empty — nothing to look for
         # Below MIN_LEN. Deliberately not an English word: the first version
         # of this fixture used "short", which the no-secret-printed test then
@@ -56,11 +64,11 @@ def env_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def transcripts(tmp_path):
-    """Two transcripts; SECRET appears in both (3 times total), OTHER in none."""
+    """Two transcripts; EXPOSED_VALUE appears in both (3 times total), CLEAN_VALUE in none."""
     d = tmp_path / "projects" / "some-project"
     d.mkdir(parents=True)
-    (d / "a.jsonl").write_text(f'{{"text":"{SECRET}"}}\n{{"text":"{SECRET}"}}\n')
-    (d / "b.jsonl").write_text(f'{{"text":"prose then {SECRET} then more"}}\n')
+    (d / "a.jsonl").write_text(f'{{"text":"{EXPOSED_VALUE}"}}\n{{"text":"{EXPOSED_VALUE}"}}\n')
+    (d / "b.jsonl").write_text(f'{{"text":"prose then {EXPOSED_VALUE} then more"}}\n')
     (d / "c.jsonl").write_text('{"text":"nothing sensitive here"}\n')
     return str(tmp_path / "projects" / "*" / "*.jsonl")
 
@@ -73,7 +81,7 @@ def test_no_secret_value_is_ever_printed(env_file, transcripts, capsys):
     out = capsys.readouterr().out
     for name, value in values.items():
         assert value not in out, f"{name}'s value was printed"
-    assert SECRET not in out and OTHER not in out
+    assert EXPOSED_VALUE not in out and CLEAN_VALUE not in out
 
 
 def test_the_report_still_says_something(env_file, transcripts, capsys):
@@ -110,7 +118,7 @@ def test_a_commented_line_is_not_read_as_a_value(env_file):
     """`# ANTHROPIC_API_KEY=commented-out` must not override the real one —
     otherwise the checker would search for a placeholder, find nothing, and
     report a live exposed key as clean."""
-    assert chk.load_env()["ANTHROPIC_API_KEY"] == SECRET
+    assert chk.load_env()["ANTHROPIC_API_KEY"] == EXPOSED_VALUE
 
 
 def test_a_too_short_value_is_not_searched(env_file, transcripts):
