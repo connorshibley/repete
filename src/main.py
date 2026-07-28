@@ -1198,13 +1198,20 @@ def _run_cycle(completed_bars_only: bool = False):
     # error budget is burned — escalate to a human (alert only; HALT stays
     # reserved for the daily-loss kill switch).
     check_degradation_slo(ledger, cfg)
-    try:  # dashboard/blog regeneration is cosmetic — never touches the cycle
+    try:  # page regeneration is cosmetic — never touches the cycle
         import blog
         import dashboard
         dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
         blog.render(cfg)
+        # journal.html too (2026-07-28). It used to be rendered ONLY from
+        # journal_and_link(), i.e. only when a trade fired, so a stale page had
+        # no way to repair itself on a quiet day — and one did not: the
+        # published journal showed a single entry, for a trade_id absent from
+        # every current store, while memory/journal.jsonl held 17. Rebuilding
+        # from the store every cycle makes the page self-correcting.
+        journal.render(cfg)
     except Exception as e:  # noqa: BLE001
-        log.warning("dashboard/blog render failed: %s", e)
+        log.warning("page render failed: %s", e)
     log.info("Cycle complete.")
     # Reached only when every stage above ran. Every early return in this
     # function falls out as None, which is falsy on purpose — "completed" is

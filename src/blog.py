@@ -2,10 +2,25 @@
 
 X posts are ephemeral and capped at 280 chars; this page keeps the full
 daily narrative forever: each day's market context (what the bot understood
-that morning), then every post it actually published — morning plan, trade
-recaps, evening review — with journal links preserved. Rendered from
-memory/posts.jsonl (written by x_poster's choke point, so nothing is ever
-missed) plus the ledger's market_context events.
+that morning), then every post it wrote — morning plan, trade recaps, evening
+review — with journal links preserved. Rendered from memory/posts.jsonl plus
+the ledger's market_context events.
+
+Every archived post is rendered, whatever became of it on X
+--------------------------------------------------------------
+Until 2026-07-28 this filtered to `status == "posted"`, which quietly made the
+blog a mirror of X's acceptances rather than a record of the bot's own output.
+The cost was measured: the four `X_*` values in `.env` were emptied after
+2026-07-24, ten recaps on 2026-07-27 archived as `failed`, and **the public
+blog sat frozen at 2026-07-24 while the bot traded.** The docstring at the time
+promised the archive meant "nothing is ever missed"; the filter three lines
+below contradicted it.
+
+`status` records what happened when delivery to X was attempted — `posted`,
+`failed`, `no_credentials`, `dry_run`, `x_disabled`. That is an operational
+fact about a third party, kept in the archive for audit and deliberately NOT
+shown here: a reader of a trade blog is owed the bot's reasoning, not its
+syndication receipts.
 """
 import html
 import json
@@ -66,7 +81,7 @@ def _context_by_day(cfg: dict) -> dict:
 
 
 def render(cfg: dict, out_path: str = OUT_PATH) -> str:
-    posts = [p for p in _load_posts(cfg) if p.get("status") == "posted"]
+    posts = _load_posts(cfg)   # every archived post — see the module docstring
     ctx_by_day = _context_by_day(cfg)
 
     days: dict = {}
