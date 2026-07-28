@@ -1,0 +1,106 @@
+# §38 — THE SAME FAMILY, RECENT DATA. A DIAGNOSTIC, NOT A CLAIM.
+#
+# claim: DIAGNOSTIC. This decides nothing and cannot enable, reject or support
+# anything. It runs the identical machinery to §37 and produces identical-looking
+# numbers, which is exactly why it is typed rather than merely captioned.
+#
+# The owner asked to see recent data. §32 already scored
+# bars_wide_2020-01-01_2026-07-10 — 500 symbols, the xsmom AND lowvol families —
+# and rejected them. 2022-2026 is a subset of that period, so anything measured
+# here re-reads data that has already driven ~51 registered comparisons in this
+# repository. A verdict from re-read data is not out-of-sample; it is a
+# re-description of evidence already spent.
+#
+# §34 handled this situation the same way: it computed an oracle variant that
+# could see the future, reported it, and let it decide nothing — the gap between
+# it and the causal result WAS the finding.
+#
+# Same arms and same pass mark as §37 on purpose. The only differences are the
+# snapshot and the claim type, so any divergence between §37 and §38 is
+# attributable to the period rather than to the test.
+id: s38
+claim: DIAGNOSTIC
+title: "Momentum family on 2022-2026 — DIAGNOSTIC, decides nothing (§32 already mined this period)"
+
+snapshot:
+  path: data/snapshots/bars_wide_2022-01-01_2026-07-24.json.gz
+  sha256: 081dc08727a8cd8e1dc4726625b1fab02cb3b7d8c1489849a69327950c4adc8d
+
+cash: 100000.0
+
+# K=9 to match §37's correction exactly, so the two are read on the same scale.
+# A diagnostic does not add to the family-wise count — it is not a claim, so
+# there is no claim to correct for.
+bonferroni_k: 9
+
+shared:
+  set:
+    risk.risk_per_trade_pct: 2.0
+    risk.max_position_pct: 2.5
+    risk.max_portfolio_heat_pct: 20.0
+    risk.max_trades_per_day: 50
+
+arms:
+  - name: baseline
+
+  - name: xsmom-6-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 126,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+  - name: xsmom-9-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 189,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+  - name: xsmom-12-1
+    replace:
+      strategies:
+        xsmom: {enabled: true, priority: 1, rank_lookback_bars: 231,
+                skip_bars: 21, buy_top_fraction: 0.10,
+                exit_below_fraction: 0.5}
+
+family: [xsmom-6-1, xsmom-9-1, xsmom-12-1]
+
+clauses:
+  - {id: a, rule: enablement_gate}
+  - {id: b, rule: pf_gt_baseline}
+  - {id: c, rule: maxdd_within, pp: 1.0}
+  - {id: d, rule: min_trades, n: 30}
+  - {id: e, rule: significantly_better}
+
+prior: >-
+  No expectation is recorded, because a prior is what makes a test falsifiable
+  and this is not a test. §32 already rejected these families on a period that
+  contains this one, so the answer is substantially known and stating a
+  confident prior would be dressing foreknowledge as prediction. What this
+  actually buys is comparability: identical arms and pass mark against §37, so
+  the difference between a crisis period and a recent one can be read directly.
+  If §37's monotone damage by lookback also appears here, that consistency is
+  worth knowing; if it does not, the instability across regimes is itself the
+  observation, and it is the same instability §34 found when no selector could
+  beat a coin.
+
+failure_modes:
+  - >-
+    PERIOD ALREADY MINED. §32 scored 2020-2026 with these families. This is a
+    subset. Any result is a re-description of spent evidence and must never be
+    cited as confirmation of §37 — two readings of overlapping data are not two
+    independent results.
+  - >-
+    Survivorship again, though far milder than §37's: the universe is today's
+    index membership screened on 2022 liquidity, so recent delistings are
+    absent. Over four years that matters much less than over the 2008 crisis.
+  - >-
+    A short window. 2022-2026 is ~4.5 years and contains one bear market
+    (2022) followed by a long recovery, so it is close to a single regime.
+  - >-
+    The strongest temptation this file must resist: if these arms happen to
+    look good here while failing in §37, that is the textbook shape of a
+    period-specific fluke, and §34 already established this repository cannot
+    tell such a fluke from an effect. It would be a reason to distrust the
+    number, not to enable anything.

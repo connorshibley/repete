@@ -38,7 +38,17 @@ import hashlib
 import json
 import os
 
-CLAIM_TYPES = ("EDGE", "CAPACITY", "METHOD")
+# DIAGNOSTIC is not a claim. It runs the same machinery and produces the same
+# numbers, but its verdict decides NOTHING — the shape §34 used for its oracle
+# variant, which was computed precisely so the gap between it and the causal
+# result could be read, and was never allowed to license anything.
+#
+# It exists as a first-class type rather than a note in prose because the
+# distinction has to survive being skimmed. A future session reading
+# verdicts.jsonl must be able to tell "this was measured on data already mined
+# by §32" from "this was a test", without trusting anyone to have read the
+# title.
+CLAIM_TYPES = ("EDGE", "CAPACITY", "METHOD", "DIAGNOSTIC")
 
 # Clause rules the runner can execute. The pass mark is EXECUTED, never
 # paraphrased — prose in the registration and a different threshold in the

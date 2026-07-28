@@ -3452,3 +3452,151 @@ re-reads measurements that have already driven ~51 registered comparisons.
 It is therefore reported the way §34 reported its oracle variant: **a diagnostic
 that decides nothing.** It answers "does this look like it works lately?", which
 is a fair question that cannot carry a verdict.
+
+### §37 RESULT — **REJECTED, 0/3.** And for the first time, *significantly worse*.
+
+Snapshot `bars_wide_2007-01-01_2013-12-31.json.gz` (sha256 `2ba815e1b0d2ca5d…`),
+hash-verified. 500 symbols, whole period, no split, no selection. 479s wall on
+4 workers.
+
+| | return | PF | maxDD | trades | symbols | deploy |
+|---|---|---|---|---|---|---|
+| **baseline** | **+0.78%** | 1.030 | 10.63% | 567 | 323 | 10.44% |
+| xsmom-6-1 | −14.90% | 0.356 | 26.32% | 186 | 129 | 12.04% |
+| xsmom-9-1 | −25.92% | 0.013 | 26.11% | 184 | 94 | 7.49% |
+| xsmom-12-1 | −23.35% | 0.011 | 33.43% | 138 | 69 | 8.12% |
+| buy-and-hold | **+92.48%** | — | 55.9% | — | — | — |
+
+**Every member fails every clause except trade count. 0/3 clear.**
+
+### What is new here
+
+Every prior EDGE rejection was *inconclusive* or *not better*. This is the first
+time in this file that the significance test returns **SIGNIFICANTLY WORSE**,
+and it does so for all three arms with the entire Bonferroni-corrected interval
+below zero:
+
+| arm | $/trade vs baseline | 99.44% CI (K=9) |
+|---|---|---|
+| xsmom-6-1 | −$81.51 | [−$145.32, −$17.13] |
+| xsmom-9-1 | −$142.27 | [−$180.06, −$106.14] |
+| xsmom-12-1 | −$170.56 | [−$212.54, −$127.14] |
+
+**The damage is monotone in lookback.** 6-1 → 9-1 → 12-1 gets steadily worse,
+in per-trade P&L and in profit factor (0.356 → 0.013 → 0.011). That is a
+dose-response, not noise: the longer the formation window, the worse it did.
+The family requirement was written to catch a lucky single arm; instead all
+three agreed, in an ordered way.
+
+### Why this rejection is stronger than §35's
+
+§35 tested one arm on a benign period and lost. This tested three arms on a
+period containing the worst crisis in modern market history — **the regime where
+trend-following makes its loudest claim** — and the universe is tilted in
+momentum's favour by construction, because every firm that went bankrupt in 2008
+is absent from today's index membership. Lehman, Bear Stearns and Washington
+Mutual are not in this snapshot. It holds the 2008 crash **as experienced by the
+survivors**.
+
+Momentum lost badly on data selected to flatter it, in the regime it is most
+often sold for. That was the registered asymmetry: a PASS would have been weak,
+a FAIL is strong. It failed.
+
+**EDGE claims stand at 0 for 9.**
+
+### An unregistered observation that matters more than the claim
+
+**The baseline returned +0.78% over seven years while buy-and-hold returned
++92.48%.** That is not what §37 registered to test and it is not a verdict — but
+it should not hide behind the momentum result.
+
+Part of it is exposure: the ensemble averaged **10.44% deployment**, so it was
+in cash most of the time, and `enablement_gate` reports the exposure-matched
+benchmark at +11.13%. Even against that adjusted bar the incumbent underperforms.
+
+This is a registered-in-hindsight question, so it decides nothing here. It is
+written down as the thing to pre-register next: **the incumbent ensemble's own
+edge over a matched-exposure benchmark, on a period it was never tuned on.**
+
+---
+
+## §38 — THE SAME FAMILY ON 2022-2026. **DIAGNOSTIC — decides nothing.**
+
+Spec `research/specs/s38.yaml`, frozen `43de6f9b403a82f1…`. Snapshot
+`bars_wide_2022-01-01_2026-07-24.json.gz` (sha256 `081dc08727a8cd8e…`), 500
+symbols, 571,488 bars, screened on 2022 liquidity. Identical arms, clauses and
+K to §37 so the two are readable on one scale. 116s wall.
+
+`claim: DIAGNOSTIC` is a first-class type, not a caption: §32 already scored
+2020-2026 with these families, this period is a subset, and a result from
+re-read data is a re-description of evidence already spent.
+
+### The numbers, against §37's
+
+| arm | §37 (2007-2013) | §38 (2022-2026) |
+|---|---|---|
+| baseline | +0.78% · PF 1.030 · 10.4% deploy | **−11.62%** · PF 0.453 · 8.3% deploy |
+| xsmom-6-1 | **−14.90%** · PF 0.356 | **+115.83%** · PF 2.435 |
+| xsmom-9-1 | **−25.92%** · PF 0.013 | **+96.81%** · PF 2.800 |
+| xsmom-12-1 | **−23.35%** · PF 0.011 | **+94.20%** · PF 2.716 |
+| buy-and-hold | +92.48% | +45.11% |
+
+And the significance test, same arms, same K=9, opposite signs:
+
+| arm | §37 | §38 |
+|---|---|---|
+| xsmom-6-1 | SIGNIFICANTLY **WORSE** −$81.51/trade | SIGNIFICANTLY **BETTER** +$131.71/trade |
+| xsmom-9-1 | SIGNIFICANTLY **WORSE** −$142.27 | SIGNIFICANTLY **BETTER** +$160.04 |
+| xsmom-12-1 | SIGNIFICANTLY **WORSE** −$170.56 | SIGNIFICANTLY **BETTER** +$157.24 |
+
+**A complete sign reversal, significant in both directions, on the same
+strategy with the same parameters.** This is §34's "arm quality is not stable"
+finding made vivid — not merely unstable, but confidently opposite depending on
+which seven years you point it at.
+
+§38 was REJECTED anyway, on drawdown alone: 17.7-22.1% against a 13.35% ceiling.
+All four other clauses passed for all three arms.
+
+### The mechanical explanation, and why it deflates the good number
+
+**Deployment.** xsmom averaged **7.5-12.0%** invested in §37 and **66.6-80.3%**
+in §38. `xsmom` only buys names whose momentum is positive. Through 2007-2013
+almost nothing qualified, so it sat in cash and the few trades it did place were
+bad. Through 2022-2026 nearly everything qualified, so it was near fully
+invested while the market rose 45%.
+
+So the +115% is substantially a **participation** number, not a selection edge.
+The per-trade significance test compares means over 1,260 trades at 80%
+deployment against 292 trades at 8% — very different animals, and that test does
+not adjust for exposure. `enablement_gate`'s exposure-matched benchmark did pass
+for all three, so the effect is not *purely* beta; but per-trade significance
+across such different exposure profiles is a weaker statement than it looks.
+
+### The trap this registration named in advance, and walked into
+
+> *"If these arms happen to look good here while failing in §37, that is the
+> textbook shape of a period-specific fluke, and §34 already established this
+> repository cannot tell such a fluke from an effect. It would be a reason to
+> distrust the number, not to enable anything."*
+
+Written before the run. That is exactly what happened, and the pre-registration
+is the only reason it reads as a warning rather than as a discovery.
+
+**Nothing is enabled. §37's REJECTED stands. EDGE claims remain 0 for 9.**
+
+### What both runs agree on, which nobody registered
+
+The incumbent ensemble is the weak arm in both periods:
+
+- §37: **+0.78%** over seven years while buy-and-hold made **+92.48%**
+- §38: **−11.62%** over four and a half years while buy-and-hold made **+45.11%**
+
+Two independent periods, one of them never touched before, and the live
+configuration loses to buy-and-hold in both — losing money outright in the
+recent one. Low deployment (8-10%) explains part of it, and neither figure is a
+registered claim.
+
+**This is now the most important open question in this file**, and it is about
+the incumbent rather than any candidate: *does the live ensemble have any edge
+over a matched-exposure benchmark on periods it was not tuned on?* It should be
+pre-registered and answered before another candidate strategy is tested.

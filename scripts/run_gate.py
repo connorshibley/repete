@@ -297,6 +297,14 @@ def main() -> int:
                   f"{c['rule']}"
                   + (f"  {c['detail']}" if c["detail"] else ""))
 
+    if spec["claim"] == "DIAGNOSTIC":
+        # Say it at the point of the result, not only in the header. Someone
+        # reading a scrollback sees the verdict line; the banner has to be
+        # adjacent to it or it may as well not exist.
+        print(f"\n{'=' * 68}\nDIAGNOSTIC — this decides NOTHING. It is not a "
+              f"claim and cannot\nenable, reject or support anything. See the "
+              f"spec's `prior` for why.\n{'=' * 68}")
+
     print(f"\nVERDICT: {'PASS' if verdict['passed'] else 'REJECTED'}  "
           f"({wall:.0f}s wall)")
     if not verdict["passed"]:
