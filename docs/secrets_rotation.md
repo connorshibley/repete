@@ -69,10 +69,35 @@ As of **2026-07-28**, measured (not asserted):
 | Env var | Last rotated | Exposure | Action |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | 2026-07-27 | none — 0 hits across 86 transcripts | **none. Do not ask again.** |
-| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | never | 1 transcript, 9 occurrences each | rotate once (first rotation, not a repeat) |
+| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | 2026-07-28 (twice) | 1 transcript — **accepted risk, see below** | **none. Do not ask again.** |
 | `HEARTBEAT_PING_URL` | never | 1 transcript, 6 occurrences | low severity — see below |
 | `ALERT_WEBHOOK_URL` | n/a | empty, never set | set it; nothing to rotate |
 | `X_*` | n/a | all four empty | none — X disabled 2026-07-28, keys unused |
+
+### Alpaca: the checker will say EXPOSED, and that is expected
+
+`scripts/check_secret_exposure.py` reports both Alpaca rows as `EXPOSED` and
+exits 1. **It is not wrong and it does not need fixing.** The installed pair
+really is in a local transcript — the owner pasted it there while rotating on
+2026-07-28, was told, and decided it does not matter for a paper account.
+
+That judgement is sound and is recorded here so nobody re-litigates it:
+
+- `mode: paper` + `LIVE_TRADING_CONFIRMED=NO` means these credentials cannot
+  reach real money. Both would have to change, deliberately, for that to shift.
+- The transcript is a local file on the owner's Mac.
+- The residual risk is the one named in the drill below: a hijacked paper
+  account **poisons the track record**. That matters here, because the track
+  record is the entire product — but it needs someone with access to the
+  machine first.
+
+**If `mode` ever moves to `live`, this row is void and the pair must be rotated
+before the switch.** That is the condition under which the accepted risk stops
+being acceptable.
+
+Do not ask the owner to rotate these again on the strength of the checker's
+output alone. They have been asked twice already; the second ask is what
+produced the paste.
 
 `HEARTBEAT_PING_URL` is a credential (anyone holding it can ping the check), but
 the blast radius is small and one-directional: a third party can only make a
@@ -99,3 +124,5 @@ the owner to do again.
 |---|---|---|
 | 2026-07-22 | (none yet — doc created) | — |
 | 2026-07-27 | ANTHROPIC_API_KEY | old key pasted into a chat; owner created a replacement and installed it directly. Verified clean 2026-07-28. |
+| 2026-07-28 | ALPACA_API_KEY / ALPACA_SECRET_KEY | first rotation ever. Pair was present in a session transcript; regenerated at the console. |
+| 2026-07-28 | ALPACA_API_KEY / ALPACA_SECRET_KEY | **second regeneration the same day.** The replacement pair was pasted into chat during the handoff, so it landed in a transcript too. Regenerated again, then installed on owner's instruction with the exposure knowingly accepted (paper account). Broker verified live afterwards: 15 positions, PAPER mode. |
