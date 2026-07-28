@@ -45,8 +45,57 @@ link — no passwords exist to reset, by design).
    secrets-hygiene test guards tracked files, this checks history.
 5. Ledger an `event` record describing scope + response.
 
+## Status — does this key need rotating right now?
+
+Read this table before asking the owner to do anything. It exists because on
+2026-07-28 the owner was asked to rotate the Alpaca key "again" and to replace
+an Anthropic key they had already replaced — and pushed back, correctly. Nothing
+on disk recorded what had happened, so the question was being re-derived from a
+half-remembered note every session and got it wrong in **both** directions.
+
+**Do not answer this question from memory. Run the check:**
+
+```
+python scripts/check_secret_exposure.py
+```
+
+It reads `.env`, searches `~/.claude/projects/*/*.jsonl` for each live VALUE,
+and prints names and hit counts only — never a value. A hit means that exact
+secret sits in plaintext in a local file, which is the condition rotation is
+for. Exit 0 = clean, 1 = something is exposed.
+
+As of **2026-07-28**, measured (not asserted):
+
+| Env var | Last rotated | Exposure | Action |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | 2026-07-27 | none — 0 hits across 86 transcripts | **none. Do not ask again.** |
+| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | never | 1 transcript, 9 occurrences each | rotate once (first rotation, not a repeat) |
+| `HEARTBEAT_PING_URL` | never | 1 transcript, 6 occurrences | low severity — see below |
+| `ALERT_WEBHOOK_URL` | n/a | empty, never set | set it; nothing to rotate |
+| `X_*` | n/a | all four empty | none — X disabled 2026-07-28, keys unused |
+
+`HEARTBEAT_PING_URL` is a credential (anyone holding it can ping the check), but
+the blast radius is small and one-directional: a third party can only make a
+**dead host look alive**. They cannot read state, place an order, or reach the
+broker. Worth replacing at healthchecks.io when convenient; not urgent, and not
+worth interrupting the owner for on its own.
+
+### Why a transcript hit is not a breach
+
+A session transcript is a local file. A hit is evidence that a plaintext copy
+exists on this machine — not that anything left it. **Rotating makes the copy
+worthless, which is the entire goal.**
+
+Do **not** scrub the transcript instead. Editing a session log destroys an audit
+record and still leaves the value in every backup — strictly worse than rotating
+on both counts.
+
 ## Rotation log
+
+Append a row every time. An unrecorded rotation is one the next session will ask
+the owner to do again.
 
 | Date | Key | Reason |
 |---|---|---|
 | 2026-07-22 | (none yet — doc created) | — |
+| 2026-07-27 | ANTHROPIC_API_KEY | old key pasted into a chat; owner created a replacement and installed it directly. Verified clean 2026-07-28. |
