@@ -3376,3 +3376,79 @@ That is the whole benefit, and it is worth being precise about what it is not:
 **faster gates do not make the referee more informative.** §33b and §34 stand
 unchanged. This buys throughput on a measuring instrument whose calibration is
 still the open problem.
+
+---
+
+## §37 — FAMILY COHERENCE ON THE FINANCIAL CRISIS (pre-registered 2026-07-28, before the snapshot finished building)
+
+**Claim type: EDGE.** The first use of §34's shape 2. Spec
+`research/specs/s37.yaml`, frozen at `eeb75c54dfa8f90b…` before any number from
+the 2007-2013 snapshot was read.
+
+### Why this shape
+
+§34 retired selection here: single-split, fold-majority and an oracle holding
+the future all scored 2/4, indistinguishable from a coin. Its prescription was
+to stop selecting, and it named three shapes. §35 used shape 1 (one
+pre-specified arm). This is shape 2:
+
+> *"Require the whole family to move. If an effect is real it should lift every
+> arm in the family, not one. A result that appears in one arm and not its
+> neighbours is what selection noise looks like."*
+
+So there is **no candidate and nothing is chosen.** Three momentum lookbacks —
+6-1, 9-1, 12-1 (126/189/231 bars, 21-bar skip) — each face the full five-clause
+pass mark, and **one failure sinks the claim.** No selector can be credited or
+blamed for the verdict, which is the entire point.
+
+### Data — the first bear market this repository has ever scored
+
+`bars_wide_2007-01-01_2013-12-31.json.gz`, sha256 `2ba815e1b0d2ca5d…`,
+**500 symbols, 880,384 bars**, screened on 2007 median dollar volume so the
+universe cannot peek at the test window. 1,181 fetched → 1,025 with 2007 history
+→ 500 kept.
+
+Zero date overlap with anything previously scored here. §35 named "benign
+period — no COVID crash and no 2022 bear" as a failure mode and it has stood
+unanswered since.
+
+### Pass mark — every family member, all five
+
+`(a)` enablement_gate · `(b)` PF > baseline · `(c)` maxDD ≤ baseline + 1.0pp ·
+`(d)` trades ≥ 30 · `(e)` significantly better. **K = 9** — eight EDGE claims
+precede this; three arms are tested but they are ONE claim, so the count rises
+by one.
+
+### Prior
+
+**This fails.** EDGE claims stand at 0 for 8, and §35 already ran xsmom-12-1 on
+2014-2019 where it lost 4.04% while the market gained 90.41%. The reason to run
+it anyway is that if momentum has a regime where it earns its keep, a crisis is
+the most-claimed one — and a three-arm requirement makes a lucky single-arm
+result impossible to mistake for an effect.
+
+### Failure modes — survivorship is worse here than anywhere previous
+
+**The universe comes from TODAY'S index membership, so every company that went
+bankrupt or was delisted in the 2008 crisis is absent by construction.** The
+crash is systematically softened and long-only momentum benefits most. Direction
+named in advance: this inflates every arm, so **a PASS here is weak evidence
+while a FAIL is strong.**
+
+Also registered: the 2007 liquidity screen itself reflects pre-crisis
+conditions; the three arms share a snapshot and universe so "all three moved"
+is far weaker than three independent confirmations; low trade counts make wide
+intervals likely and INCONCLUSIVE is not support; and a PASS would still owe a
+walk-forward on a period without a survivorship advantage before it meant
+anything.
+
+### The recent period is a DIAGNOSTIC, not a claim
+
+The owner asked for 2022-2026 as well. **§32 already scored
+`bars_wide_2020-01-01_2026-07-10` — 500 symbols, the xsmom and lowvol families —
+and rejected them.** 2022-2026 is a subset of that period, so a run there
+re-reads measurements that have already driven ~51 registered comparisons.
+
+It is therefore reported the way §34 reported its oracle variant: **a diagnostic
+that decides nothing.** It answers "does this look like it works lately?", which
+is a fair question that cannot carry a verdict.

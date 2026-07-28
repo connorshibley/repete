@@ -120,6 +120,24 @@ def validate(spec: dict) -> None:
     ids = [c["id"] for c in spec["clauses"]]
     _need(len(set(ids)) == len(ids), f"duplicate clause ids: {ids}")
 
+    # `candidate` (one named arm) or `family` (every listed arm must clear).
+    # Never both: a spec that names one arm AND a family is ambiguous about
+    # what passing means, and ambiguity is how a verdict gets read as stronger
+    # than it is.
+    _need(not (spec.get("candidate") and spec.get("family")),
+          "a spec has `candidate` or `family`, not both")
+    fam = spec.get("family")
+    if fam is not None:
+        names = {a["name"] for a in arms}
+        _need(isinstance(fam, list) and len(fam) >= 2,
+              "`family` needs at least two arms — a family of one is just a "
+              "candidate, and §34 prescribes family coherence precisely "
+              "because a lone arm cannot distinguish an effect from selection "
+              "noise")
+        _need("baseline" not in fam, "baseline is the comparison, not a member")
+        missing = [n for n in fam if n not in names]
+        _need(not missing, f"family names arms that do not exist: {missing}")
+
     split = spec.get("split")
     if split is not None:
         _need(isinstance(split, dict), "split must be a mapping")
