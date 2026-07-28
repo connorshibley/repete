@@ -515,15 +515,25 @@ news:                  # market awareness (Alpaca News API + LLM distill),
         TopStories: https://feeds.content.dowjones.io/public/rss/mw_topstories
         Bulletins:  https://feeds.content.dowjones.io/public/rss/mw_bulletins
 
-x_posting:
-  enabled: true
+x_posting:                # despite the name, this section is the BLOG + JOURNAL
+                          # pipeline. X is one optional sink hanging off it.
+  enabled: false       # X OFF, owner's decision 2026-07-28: "dont worry about it
+                       # posting on X as long as it posts on its own blog in the
+                       # journal." The bot still composes every post and writes it
+                       # to posts_log_path with status `x_disabled`, so blog.html
+                       # and journal.html are UNAFFECTED — that decoupling landed
+                       # in the same change (src/x_poster.py archives before it
+                       # delivers). Turning this back on needs the four X_* values
+                       # in .env; they were empty from ~2026-07-24, which is what
+                       # started all of this.
   dry_run: false       # LIVE posting (owner-authorized 2026-07-16). true = print instead.
   post_style: recap    # recap = per-trade post with reasoning
   hashtags: "#papertrading #tradingbot"
   disclose_paper: true # always disclose paper trading in posts (keep this true — honesty matters)
   journal_path: memory/journal.jsonl   # append-only 500-word trade write-ups
-  posts_log_path: memory/posts.jsonl   # append-only archive of every outbound
-                                       # post -> rendered into the public blog
+  posts_log_path: memory/posts.jsonl   # append-only archive of every post the bot
+                                       # writes -> rendered into the public blog,
+                                       # whatever became of it on X
   journal_url_base: https://connorshibley.github.io/trading-agent-dashboard/journal.html
                        # public journal page; trade tweets link to #<trade_id>
 

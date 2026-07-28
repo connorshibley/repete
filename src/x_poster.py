@@ -1,12 +1,26 @@
-"""X (Twitter) trade-recap posting via the official API v2 (tweepy).
+"""Composing the bot's public posts, and (optionally) delivering them to X.
 
-Safety defaults:
+Two jobs, deliberately kept apart (2026-07-28)
+----------------------------------------------
+**Compose and record.** Every post the bot writes is finished here — paper
+disclosure applied, length capped, journal link attached — and appended to
+memory/posts.jsonl. That archive is the source of truth for the public blog,
+and it is written on EVERY path: X off, dry run, credentials missing, delivery
+failed, delivery succeeded. `status` says which.
+
+**Deliver.** X is one optional sink for that post, nothing more.
+
+Until 2026-07-28 the two were fused: `post_text` returned on
+`if not xc["enabled"]` BEFORE archiving, so switching X off would have silently
+emptied the blog — the bot's own publication would have gone dark because a
+third-party channel was turned off. The owner turned X off that day precisely
+because the blog was what mattered, which is exactly when that coupling would
+have bitten.
+
+Safety defaults, unchanged:
   - dry_run: true in config prints the post instead of publishing.
   - Posts always disclose paper trading when disclose_paper is true.
   - Posting failures never interrupt trading — they're logged and skipped.
-
-Every outbound post is also archived to memory/posts.jsonl (append-only) —
-the source of truth for the public blog page. Archiving never breaks posting.
 """
 import json
 import logging
@@ -105,13 +119,20 @@ def _template_post(trade: dict, cfg: dict) -> str:
 
 
 def post_text(text: str, cfg: dict, link: str | None = None):
-    """Publish (or dry-run print) one post. The single choke point every
-    outbound post goes through: paper disclosure enforced, 275-char cap,
-    failures logged and swallowed — posting must never break trading.
-    `link` is appended after the cap: X wraps every URL to a fixed
-    23-character t.co link, so the raw URL length doesn't count."""
+    """Compose one post, record it, then try to deliver it to X.
+
+    The single choke point every outbound post goes through: paper disclosure
+    enforced, 275-char cap, failures logged and swallowed — posting must never
+    break trading. `link` is appended after the cap: X wraps every URL to a
+    fixed 23-character t.co link, so the raw URL length doesn't count.
+
+    Composition happens before ANY early return, so the archived text is
+    exactly what the bot meant to say — not a draft that a later stage might
+    still have altered. Only an empty post is skipped outright; there is
+    nothing to record and nothing to send.
+    """
     xc = cfg["x_posting"]
-    if not xc["enabled"] or not text:
+    if not text:
         return
     if xc.get("disclose_paper", True) and not text.startswith("[PAPER]"):
         text = "[PAPER] " + text  # the literal tag, always — prose mentions
@@ -120,6 +141,13 @@ def post_text(text: str, cfg: dict, link: str | None = None):
         text = text[:275 - 24] + "\n" + link  # 23 (t.co) + newline
     else:
         text = text[:275]
+
+    if not xc["enabled"]:
+        # X is switched off. The bot still SAID this — it goes in the archive
+        # and onto the blog. Not a degradation: a deliberate configuration is
+        # a choice, and choices are not incidents.
+        _archive(text, link, "x_disabled", cfg)
+        return
 
     if xc.get("dry_run", True):
         log.info("X DRY RUN (not posted): %s", text)
@@ -152,6 +180,7 @@ def post_text(text: str, cfg: dict, link: str | None = None):
 
 def post_recap(trade: dict, cfg: dict, llm_draft: str | None = None,
                link: str | None = None):
-    if not cfg["x_posting"]["enabled"]:
-        return
+    """No `enabled` guard here on purpose — `post_text` owns that decision, and
+    it archives before acting on it. Short-circuiting at this level is what
+    used to keep recaps out of the blog whenever X was off."""
     post_text(llm_draft or _template_post(trade, cfg), cfg, link=link)

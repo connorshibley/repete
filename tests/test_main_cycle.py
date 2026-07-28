@@ -2,6 +2,8 @@
 orchestrator path (signal -> LLM fallback -> rails -> bracket execution ->
 ledger -> reconciliation on the next cycle) exercised fully offline.
 """
+import json
+
 import yaml
 
 import pytest
@@ -518,3 +520,32 @@ def test_slow_strategy_cannot_starve_the_fast_one(cycle_env, cfg):
     # ...while meanrev, which holds none, still gets in.
     risk.pre_trade_checks("buy", "NEW", 1, 100.0, acct, positions, cfg2,
                           open_trades=tsmom_open, strategy="meanrev")
+
+
+def test_quiet_cycle_still_rebuilds_the_journal_page(cycle_env, cfg):
+    """A cycle that trades nothing must still rewrite journal.html from the
+    store.
+
+    Until 2026-07-28 `journal.render()` was reached ONLY through
+    `journal_and_link()`, i.e. only when a trade executed or closed. A page
+    that had gone stale therefore had no way to repair itself, and one did not:
+    the published journal showed a single entry, for a trade_id present in no
+    current store, while memory/journal.jsonl held 17 write-ups. Rendering in
+    the cycle's cosmetic block makes the page self-correcting.
+    """
+    cfg2, install = cycle_env
+    install(FakeCycleBroker(make_bars([10] * 10)))  # flat: no crossover, no trade
+
+    with open(cfg2["x_posting"]["journal_path"], "w") as f:
+        f.write(json.dumps({
+            "trade_id": "seeded1", "ts": "2026-07-27T22:17:00+00:00",
+            "symbol": "XLF", "kind": "buy",
+            "title": "BUY XLF — tsmom",
+            "text": "Written on a previous day; the page must still show it."})
+            + "\n")
+
+    main.run_cycle()
+
+    html = open("journal.html").read()
+    assert "seeded1" in html
+    assert "must still show it" in html

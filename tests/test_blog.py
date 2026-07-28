@@ -30,7 +30,20 @@ def test_archive_failure_never_breaks_posting(cfg, capsys):
     assert "still posts fine" in capsys.readouterr().out
 
 
-def test_render_groups_days_and_filters_status(cfg, tmp_path):
+def test_render_groups_days_and_keeps_every_status(cfg, tmp_path):
+    """Renamed and inverted on 2026-07-28.
+
+    This test used to assert that a `dry_run` and a `failed` post were FILTERED
+    OUT — i.e. it pinned the defect. The blog showed only what X had accepted,
+    so it sat frozen at 2026-07-24 while the bot traded ten times on 07-27. The
+    filter is gone: every archived post is the bot's own output and belongs on
+    the bot's own page. Delivery `status` stays in the archive for audit and
+    off the public page.
+
+    Everything else here — day grouping, newest-first ordering, the morning
+    read block, the journal anchor, the [PAPER] disclosure — is unchanged and
+    still load-bearing. See tests/test_blog_is_independent_of_x.py.
+    """
     cfg = _cfg_paths(cfg, tmp_path)
     posts = [
         {"ts": "2026-07-16T13:40:00+00:00", "text": "[PAPER] day one plan",
@@ -40,9 +53,9 @@ def test_render_groups_days_and_filters_status(cfg, tmp_path):
          "link": "https://x.io/journal.html#abc12345", "status": "posted"},
         {"ts": "2026-07-17T13:40:00+00:00", "text": "[PAPER] day two plan",
          "link": None, "status": "posted"},
-        {"ts": "2026-07-17T14:00:00+00:00", "text": "should not appear",
+        {"ts": "2026-07-17T14:00:00+00:00", "text": "rehearsed but not sent",
          "link": None, "status": "dry_run"},
-        {"ts": "2026-07-17T14:05:00+00:00", "text": "nor this",
+        {"ts": "2026-07-17T14:05:00+00:00", "text": "written while X was down",
          "link": None, "status": "failed"},
     ]
     with open(cfg["x_posting"]["posts_log_path"], "w") as f:
@@ -63,7 +76,9 @@ def test_render_groups_days_and_filters_status(cfg, tmp_path):
     assert "2026-07-17" in html and "2026-07-16" in html
     assert html.index("2026-07-17") < html.index("2026-07-16")  # newest first
     assert "day one plan" in html and "day two plan" in html
-    assert "should not appear" not in html and "nor this" not in html
+    assert "rehearsed but not sent" in html
+    assert "written while X was down" in html
+    assert "dry_run" not in html and "failed" not in html  # status stays private
     assert "Markets calm ahead of CPI" in html      # morning read block
     assert 'href="https://x.io/journal.html#abc12345"' in html
     assert "full write-up" in html
