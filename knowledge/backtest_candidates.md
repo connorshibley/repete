@@ -3242,3 +3242,137 @@ volatility (§32), plus relative volume (§23) and cross-asset credit (§31).
 **No strategy is enabled. `lowvol` and `xsmom` remain off.** The live record
 stands at 1 closed trade against a 30-trade gate, and nothing in this section
 moves it.
+
+---
+
+## §36 — THE REFEREE BECOMES A PROGRAM (2026-07-28, tooling — not a claim)
+
+This section registers no hypothesis and produces no verdict about the market.
+It records a change to **how** every future section is run, which is exactly the
+kind of change that must be written down before it is used.
+
+### Why
+
+Seven gate runners (`scripts/gate_*.py`), **1,464 lines**, each re-implementing
+the same five steps around `backtest.simulate_ensemble`,
+`backtest.enablement_gate` and `significance.compare`. Compute was never the
+constraint — §32 scored 500 symbols in 13m35s. Hand-writing a runner per
+hypothesis was.
+
+The owner asked whether the bot could continuously learn new strategies. It
+cannot, and it should not yet: §33b and §34 established that in-sample selection
+carries no information here — fold-majority scored 2/4 and an oracle holding the
+future scored 2/4, the same as a coin. **More hypotheses through an uninformative
+referee produces false positives faster, not alpha.** §35 is the worked example.
+
+So the referee was automated instead of the idea supply.
+
+### What must not be lost, and how it is kept
+
+Every rejection in this file means something only because the claim, arms, pass
+mark and honest prior were committed **before the runner existed**. Automation
+that weakens that is worse than no automation.
+
+`research/specs/<id>.yaml` states the claim as data. `register_gate.py` records
+its canonical sha256 in `research/registrations.jsonl` **with the full spec**.
+`run_gate.py` then refuses three ways:
+
+1. **not registered** — no frozen pass mark exists, so a result could not be wrong
+2. **altered since registration** — and it names the field, e.g.
+   `clauses.1.pp: 1.0 -> 3.0`, because "the spec changed" only starts a search
+3. **snapshot drift** — the data is not what the registration named
+
+Re-registration is permitted while a claim has no verdict (editing before any
+data is seen is authoring) and **refused once a verdict exists**. Every
+registration appends; nothing is rewritten.
+
+The hash is taken over the parsed structure, not the file bytes: reformatting is
+not tampering, and a freeze that cries wolf is one people learn to bypass.
+
+Two fields are mandatory and carry no machine meaning — `prior` and
+`failure_modes`. A registration that does not say what the author expected, and
+how the result could fool them, is rejected by the validator.
+
+### What this does NOT do
+
+- **It cannot enable anything.** A passing verdict is a recommendation; enabling
+  remains the owner's decision (invariant 2).
+- **It generates no hypotheses.** Deliberately. Revisit only if a selection
+  method ever clears its own gate.
+- **It does not fix §33.** Throughput is not information. The first claim run
+  under §34's fold-majority method is still the open question.
+
+### Known gaps, named rather than discovered later
+
+- **§27 cannot be reproduced through it, and not because of the runner.**
+  `gate_budget.py` already carries `SUPERSEDED_BY = "§29 (2026-07-26)"` and warns
+  that re-running it measures a phantom: §29 replaced both levers it tests
+  (`max_order_value_usd` → 0, `risk_per_trade_pct` → 8.0). Its verdict stands on
+  a bot that no longer exists.
+- **§31 needs aux lead-in slicing.** Its credit series must be sliced with a
+  lead-in equal to the longest SMA period so the first OOS bar has history. The
+  spec format passes aux snapshots whole. Until that is expressed declaratively,
+  §31 stays on its committed runner.
+
+### §36 VALIDATION — the runner reproduces §35 exactly
+
+Before being trusted with a new claim, `scripts/run_gate.py` was pointed at
+§35 via `research/specs/s35.yaml`, transcribed from the committed registration.
+A referee that cannot reproduce a verdict it has already seen is not a referee,
+it is a new source of error.
+
+| | return | PF | maxDD | trades | symbols | deploy |
+|---|---|---|---|---|---|---|
+| baseline | +64.36% | 1.431 | 11.12% | 4,524 | 500 | 69.59% |
+| xsmom-12-1 | −4.04% | 0.758 | 18.49% | 248 | 141 | 21.10% |
+| buy-and-hold | +90.41% | — | — | — | — | — |
+
+```
+[FAIL] (a) enablement_gate     [FAIL] (b) pf_gt_baseline
+[FAIL] (c) maxdd_within        [PASS] (d) min_trades
+[FAIL] (e) significantly_better
+       INCONCLUSIVE: -$16.28/trade vs +$14.23/trade, diff -$30.51,
+       99.38% CI [-$91.39, +$104.13]  (Bonferroni K=8)
+VERDICT: REJECTED   (908s wall, 1 worker)
+```
+
+Every figure matches the §35 table above — returns, profit factors, drawdowns,
+trade counts, symbol counts, all five clause outcomes, and the bootstrap CI to
+the cent. Checked arithmetically rather than by eye, since eyeballing would be
+the weakest link in a change whose entire point is mechanical checking.
+
+**This is one reproduction, not two.** The plan called for a second,
+structurally different gate; reading the code retired both candidates and the
+reasons are recorded above under "Known gaps". The second validation is
+determinism at production scale instead — the same gate re-run at `--workers 2`,
+which must produce an identical verdict.
+
+**Nothing about §35's conclusion changes.** It was REJECTED on 2026-07-27 and it
+is REJECTED now. EDGE claims remain 0 for 8. The only new fact is that the
+generic runner is faithful to the bespoke one.
+
+### §36 VALIDATION 2 — the verdict does not depend on worker count
+
+Same spec, same frozen hash, re-run at `--workers 2`:
+
+| | 1 worker | 2 workers | identical |
+|---|---|---|---|
+| every arm summary | | | ✅ |
+| all five clauses | | | ✅ |
+| bootstrap CI | | | ✅ |
+| **wall clock** | **908s** | **556s** | — |
+
+`spec_sha256`, `candidate`, `passed`, `clauses`, `comparison` and `arms` all
+compare equal. Per-arm seconds differ (748/159 vs 554/350) because the two arms
+now contend for CPU — that is timing, not result, and it is deliberately not
+part of what a verdict record claims.
+
+The wall-clock number is the one that matters for the Bizon. Run serially a gate
+costs the SUM of its arms; run in parallel it costs its SLOWEST arm. Here that
+is 908s → 556s on two cores, bounded below by the 748s baseline arm. A six-arm
+gate on 64 cores stops costing the sum and starts costing the longest one.
+
+That is the whole benefit, and it is worth being precise about what it is not:
+**faster gates do not make the referee more informative.** §33b and §34 stand
+unchanged. This buys throughput on a measuring instrument whose calibration is
+still the open problem.

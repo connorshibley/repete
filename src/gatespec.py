@@ -1,0 +1,250 @@
+"""A pre-registration expressed as data, and frozen by its own hash.
+
+Why this exists (2026-07-28)
+----------------------------
+Every gate in `scripts/` is a hand-written runner — seven of them, 1,464 lines,
+each re-implementing the same five steps around `backtest.simulate_ensemble`,
+`backtest.enablement_gate` and `significance.compare`. The compute is cheap
+(§32 scored 500 symbols in 13m35s); the *writing* is what caps how many
+hypotheses this project can test. That is the bottleneck being removed.
+
+What must NOT be lost
+---------------------
+Those rejections mean something only because the claim, the arms, the pass mark
+and the honest prior were committed to `knowledge/backtest_candidates.md`
+**before the runner existed**. §33 RUN 1 is the standing reminder of what
+happens otherwise: it printed VALIDATED and was an artifact.
+
+Today that discipline is a habit backed by a git commit. Here it becomes
+mechanical: `canonical_sha256()` hashes the parsed spec, `register_gate.py`
+records that hash before the run, and `run_gate.py` refuses to score a spec
+whose hash no longer matches. **You cannot move a goalpost after seeing the
+data** — not by editing a threshold, not by adding a clause, not by swapping a
+snapshot.
+
+The hash is taken over the PARSED structure, not the file bytes. Reformatting
+the YAML, reordering keys or rewrapping a comment must not read as tampering —
+a freeze that cries wolf is one people learn to bypass.
+
+Two fields are mandatory and carry no machine meaning at all: `prior` and
+`failure_modes`. A registration that does not state what the author expected,
+and how the result could fool them, is not a pre-registration. Validation
+rejects a spec without them for the same reason it rejects one without arms.
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import os
+
+CLAIM_TYPES = ("EDGE", "CAPACITY", "METHOD")
+
+# Clause rules the runner can execute. The pass mark is EXECUTED, never
+# paraphrased — prose in the registration and a different threshold in the
+# runner is exactly the drift this format exists to prevent.
+CLAUSE_RULES = (
+    "enablement_gate",      # candidate clears backtest.enablement_gate() in full
+    "pf_gt_baseline",       # profit factor strictly greater than the baseline arm
+    "maxdd_within",         # maxDD <= baseline maxDD + `pp` percentage points
+    "min_trades",           # n_trades >= `n`
+    "significantly_better",  # significance.compare(...).significant   [EDGE]
+    "not_worse",            # significance.compare(...).not_worse      [CAPACITY]
+)
+
+REQUIRED = ("id", "claim", "title", "snapshot", "arms", "clauses",
+            "prior", "failure_modes")
+
+
+class SpecError(ValueError):
+    """A spec that cannot be trusted to mean one thing. Always fatal."""
+
+
+def _need(cond, msg):
+    if not cond:
+        raise SpecError(msg)
+
+
+def load(path: str) -> dict:
+    """Parse and validate one spec file. Raises SpecError, never returns junk."""
+    import yaml
+    with open(path) as f:
+        spec = yaml.safe_load(f)
+    _need(isinstance(spec, dict), f"{path}: top level must be a mapping")
+    validate(spec)
+    return spec
+
+
+def validate(spec: dict) -> None:
+    for key in REQUIRED:
+        _need(spec.get(key) not in (None, "", [], {}),
+              f"spec is missing required field `{key}`")
+
+    _need(spec["claim"] in CLAIM_TYPES,
+          f"claim must be one of {CLAIM_TYPES}, got {spec['claim']!r}")
+
+    snap = spec["snapshot"]
+    _need(isinstance(snap, dict) and snap.get("path") and snap.get("sha256"),
+          "snapshot needs both `path` and `sha256` — an unpinned snapshot means "
+          "the verdict cannot be re-executed, which is the point of pinning it")
+    _need(len(str(snap["sha256"])) == 64,
+          "snapshot.sha256 must be the full 64-char digest, not a prefix")
+
+    for name, aux in (spec.get("aux") or {}).items():
+        _need(isinstance(aux, dict) and aux.get("path") and aux.get("sha256"),
+              f"aux.{name} needs both `path` and `sha256`")
+
+    arms = spec["arms"]
+    _need(isinstance(arms, list) and len(arms) >= 2,
+          "a gate needs at least two arms — a candidate with nothing to beat "
+          "is a measurement, not a claim")
+    names = [a.get("name") for a in arms]
+    _need(all(names), "every arm needs a `name`")
+    _need(len(set(names)) == len(names), f"duplicate arm names: {names}")
+    _need(names[0] == "baseline",
+          "the first arm must be named `baseline` — every clause is expressed "
+          "relative to it")
+
+    for clause in spec["clauses"]:
+        _need(isinstance(clause, dict) and clause.get("id") and clause.get("rule"),
+              f"each clause needs `id` and `rule`: {clause!r}")
+        _need(clause["rule"] in CLAUSE_RULES,
+              f"unknown clause rule {clause['rule']!r}; known: {CLAUSE_RULES}")
+        if clause["rule"] == "maxdd_within":
+            _need(isinstance(clause.get("pp"), (int, float)),
+                  "maxdd_within needs a numeric `pp` (percentage points)")
+        if clause["rule"] == "min_trades":
+            _need(isinstance(clause.get("n"), int),
+                  "min_trades needs an integer `n`")
+
+    ids = [c["id"] for c in spec["clauses"]]
+    _need(len(set(ids)) == len(ids), f"duplicate clause ids: {ids}")
+
+    split = spec.get("split")
+    if split is not None:
+        _need(isinstance(split, dict), "split must be a mapping")
+        frac = split.get("fraction")
+        _need(isinstance(frac, (int, float)) and 0 < frac < 1,
+              "split.fraction must be strictly between 0 and 1")
+        _need(split.get("use") == "oos",
+              "split.use must be `oos`. Scoring in-sample is not a gate, and "
+              "spelling it out stops a silent default from deciding which half "
+              "a verdict came from.")
+
+    k = spec.get("bonferroni_k", 1)
+    _need(isinstance(k, int) and k >= 1,
+          "bonferroni_k must be a positive integer — family-wise error "
+          "accumulates across a research programme even when hypotheses differ")
+
+    _need(isinstance(spec["failure_modes"], list) and spec["failure_modes"],
+          "`failure_modes` must name at least one way this result could fool "
+          "you. A registration that cannot fail honestly is not one.")
+    _need(isinstance(spec["prior"], str) and len(spec["prior"].strip()) >= 20,
+          "`prior` must state what you actually expect, in a sentence — "
+          "'it might work' is not a prior")
+
+
+def canonical(spec: dict) -> str:
+    """The exact bytes that get hashed.
+
+    Sorted keys and no insignificant whitespace, so the digest tracks MEANING.
+    Two specs that parse to the same structure freeze to the same hash however
+    their YAML was laid out; changing any threshold, arm, clause or snapshot
+    changes it.
+    """
+    return json.dumps(spec, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False)
+
+
+def canonical_sha256(spec: dict) -> str:
+    return hashlib.sha256(canonical(spec).encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def diff_fields(old: dict, new: dict) -> list[str]:
+    """Dotted paths whose value differs. Used to SAY WHAT CHANGED when a spec
+    fails its freeze check.
+
+    "This spec was altered" sends someone hunting; "clauses.3.pp: 1.0 -> 3.0"
+    tells them the drawdown allowance was widened after the data was seen. The
+    second one is the finding.
+    """
+    out = []
+
+    def walk(a, b, path):
+        if isinstance(a, dict) and isinstance(b, dict):
+            for k in sorted(set(a) | set(b)):
+                walk(a.get(k, "<absent>"), b.get(k, "<absent>"),
+                     f"{path}.{k}" if path else str(k))
+        elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+            for i, (x, y) in enumerate(zip(a, b)):
+                walk(x, y, f"{path}.{i}")
+        elif a != b:
+            out.append(f"{path}: {a!r} -> {b!r}")
+
+    walk(old, new, "")
+    return out
+
+
+# ---- applying an arm to a config -------------------------------------------
+
+def _assign(cfg: dict, dotted: str, value) -> None:
+    node = cfg
+    parts = dotted.split(".")
+    for p in parts[:-1]:
+        node = node.setdefault(p, {})
+    node[parts[-1]] = value
+
+
+def apply_overlay(base_cfg: dict, spec: dict, arm: dict) -> dict:
+    """Build the config one arm runs under.
+
+    Order is fixed and matters: the spec-level `shared` block first (so every
+    arm is sized identically and a difference between arms can never be a
+    sizing difference — §35's SHARED_RISK made that explicit), then the arm's
+    own `replace`, then its `set`.
+
+    `replace` swaps a whole top-level subtree (§35 replaces `strategies`
+    outright so the baseline's enabled strategies cannot leak into the
+    candidate); `set` assigns one dotted path (§31 moves a single risk knob).
+    Both are needed and conflating them hides which is happening.
+    """
+    cfg = copy.deepcopy(base_cfg)
+    for dotted, value in ((spec.get("shared") or {}).get("set") or {}).items():
+        _assign(cfg, dotted, value)
+    for key, value in (arm.get("replace") or {}).items():
+        cfg[key] = copy.deepcopy(value)
+    for dotted, value in (arm.get("set") or {}).items():
+        _assign(cfg, dotted, value)
+    return cfg
+
+
+# ---- the freeze ------------------------------------------------------------
+
+REGISTRATIONS = "research/registrations.jsonl"
+
+
+def registrations(path: str = REGISTRATIONS) -> dict:
+    """id -> the most recent registration record.
+
+    Append-only on disk; last write wins on read, so a legitimate
+    re-registration is possible and is visible in the file as an extra row
+    rather than an edit. Nothing here silently rewrites history.
+    """
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rec = json.loads(line)
+                out[rec["id"]] = rec
+    return out

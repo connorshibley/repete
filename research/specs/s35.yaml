@@ -1,0 +1,90 @@
+# §35 transcribed into spec form — a REPRODUCTION, not a new claim.
+#
+# The verdict for §35 already exists in knowledge/backtest_candidates.md, run by
+# scripts/gate_s35_momentum.py on 2026-07-27. This file exists to prove the
+# generic runner reproduces it exactly. A referee that cannot reproduce a
+# verdict it has already seen is not a referee, it is a new source of error.
+#
+# Nothing here was chosen by looking at the result. Every value is copied from
+# the committed registration and from gate_s35_momentum.py, which was itself
+# written after the registration was committed.
+#
+# Expected, from knowledge/backtest_candidates.md:
+#   baseline      ret +64.36%  PF 1.431  maxDD 11.12%  trades 4524  symbols 500
+#   xsmom-12-1    ret  -4.04%  PF 0.758  maxDD 18.49%  trades  248  symbols 141
+#   clauses       FAIL FAIL FAIL PASS FAIL   ->   REJECTED
+id: s35
+claim: EDGE
+title: "Pre-specified cross-sectional momentum (Jegadeesh & Titman 1993), no selection"
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+
+# K=8, not 1. Only one comparison is made here, but this is the eighth EDGE
+# claim in the repository and family-wise error accumulates across a research
+# programme even when the hypotheses differ.
+bonferroni_k: 8
+
+# Applied to every arm before its own overlay, so a difference between arms can
+# never be a sizing difference. Identical to §32's for the same reason.
+shared:
+  set:
+    risk.risk_per_trade_pct: 2.0
+    risk.max_position_pct: 2.5
+    risk.max_portfolio_heat_pct: 20.0
+    risk.max_trades_per_day: 50
+
+arms:
+  - name: baseline
+
+  # `replace` rather than `set`: the whole strategies block is swapped so the
+  # baseline's enabled strategies cannot leak into the candidate. Parameters
+  # published in 1993 — 12-month lookback (231 bars), 1-month skip (21 bars) —
+  # and not tuned here.
+  - name: xsmom-12-1
+    replace:
+      strategies:
+        xsmom:
+          enabled: true
+          priority: 1
+          rank_lookback_bars: 231
+          skip_bars: 21
+          buy_top_fraction: 0.10
+          exit_below_fraction: 0.5
+
+candidate: xsmom-12-1
+
+clauses:
+  - {id: a, rule: enablement_gate}
+  - {id: b, rule: pf_gt_baseline}
+  - {id: c, rule: maxdd_within, pp: 1.0}
+  - {id: d, rule: min_trades, n: 30}
+  - {id: e, rule: significantly_better}
+
+prior: >-
+  EDGE claims stand at 0 for 7 entering this test. The honest prior is that
+  this fails too: a rule published thirty-three years ago and widely known has
+  had a third of a century to be arbitraged away. What makes the result worth
+  having is not the probability of passing but that no selection step exists,
+  so the verdict cannot be an artifact of choosing.
+
+failure_modes:
+  - >-
+    Survivorship bias. The universe is screened from today's index membership,
+    so twelve years of survivorship run in the candidate's favour. Direction is
+    named in advance: it inflates momentum more than buy-and-hold, so a PASS
+    here would be suspect while a FAIL is if anything understated.
+  - >-
+    Benign period. 2014-2019 contains no COVID crash and no 2022 bear market,
+    which flatters any long-only trend rule.
+  - >-
+    Low trade count. A concentrated top-decile rule places few trades, so the
+    per-trade confidence interval will be wide and an INCONCLUSIVE significance
+    result must not be read as support.
+  - >-
+    A PASS would still not be permission to enable anything. It would be one
+    period, one parameterisation, and would need the full walk-forward and the
+    live gate before it meant anything.
