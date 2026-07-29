@@ -89,6 +89,36 @@ def run(cfg: dict) -> list[str]:
     if cfg.get("strategy", {}).get("timeframe") != "1Day":
         fails.append("strategy.timeframe must stay 1Day (swing-only invariant)")
 
+    # THE HEAT INVERSION TRAP (§41, 2026-07-28). portfolio_heat charges a
+    # position with no recorded stop `equity x risk_per_trade_pct`, and the
+    # heat check charges an entry with no candidate stop the same
+    # (src/risk.py:626,633-634 and :845-847). Shipped, that fallback is 8.0%
+    # of equity against a cap of 4.0% — double the ENTIRE budget, so any
+    # stopless entry would be blocked unconditionally and every other entry
+    # blocked behind it.
+    #
+    # Measured 2026-07-28 on 2022-2026: 0 of 244,920 entries had no stop and
+    # 0 of 465 heat evaluations saw a stopless open position, because
+    # brackets are on and unprotectable_entry (src/risk.py:355-392) refuses
+    # the rest. So the inversion is LATENT, not live, and NO risk number was
+    # changed on the strength of a diagnostic.
+    #
+    # What makes it latent is `brackets.enabled`. Turning brackets off would
+    # arm it silently — the bot would simply stop entering, exactly the §40
+    # failure shape. So the trap is closed here rather than left documented:
+    # a documented check is not a check.
+    heat_cap = r.get("max_portfolio_heat_pct") or 0
+    per_trade = r.get("risk_per_trade_pct") or 0
+    brackets_on = (r.get("brackets") or {}).get("enabled")
+    if heat_cap and per_trade > heat_cap and not brackets_on:
+        fails.append(
+            f"risk.risk_per_trade_pct ({per_trade}) exceeds "
+            f"risk.max_portfolio_heat_pct ({heat_cap}) while "
+            f"risk.brackets.enabled is off — every stopless entry would be "
+            f"blocked by the heat cap on its own fallback charge, and the bot "
+            f"would stop trading without saying why. Raise the heat cap, lower "
+            f"the per-trade risk, or leave brackets on.")
+
     # The judge is optional, but claiming to have one and not having one is a
     # misconfiguration — and a quiet one. llm.review_signal() returns a clean
     # `approve` at full size when the key is absent, so trades run UNJUDGED at

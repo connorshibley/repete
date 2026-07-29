@@ -346,6 +346,7 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     n_heat_blocked = 0      # §13: rails the sim previously ignored
     n_corr_blocked = 0
     sim_peak = 0.0          # §31: running equity high-water for the drawdown rail
+    sim_trough, sim_stable = None, 0   # §41: decay clock (bars since a new low)
     fills_by_date: dict = {}
     last_exit: dict = {}  # symbol -> exit ts (re-entry cooldown, §9)
     pending: list = []  # (symbol, action) to fill at that symbol's next open
@@ -375,6 +376,19 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                  if ts in idx[sym]}
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
+
+        # §41 / divergence #10: ratchet the peak EVERY bar, not only on bars
+        # where a buy was attempted. A high-water mark sampled only when the
+        # book happens to transact is not a high-water mark. See the identical
+        # hoist in simulate_ensemble().
+        #
+        # Clock BEFORE ratchet, in both paths: decay_clock compares equity to
+        # the peak as it stood at the START of the bar. Ratcheting first would
+        # make every new high look like "equity >= peak" one bar early and
+        # reset the clock a bar sooner than live does.
+        sim_trough, sim_stable = risk.decay_clock(
+            sim_trough, sim_stable, acct.equity(last_close), sim_peak)
+        sim_peak = max(sim_peak, acct.equity(last_close))
 
         # 1. Fill orders queued on the previous bar, at this bar's open.
         still_pending = []
@@ -415,14 +429,18 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                     # file, the sim cannot. The ARITHMETIC is shared
                     # (risk.drawdown_pct), so the two cannot disagree about
                     # what a drawdown is, only about where the peak came from.
-                    sim_peak = max(sim_peak, acct.equity(last_close))
+                    # §41: the ratchet itself moved to the top of the bar loop
+                    # (divergence #10) — it used to sit HERE, inside the buy
+                    # branch, so a bar that only sold never updated the peak.
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
                                      regime_label=regime_labels.get(ts),
                                      strategy=strategy_name,
                                      strategy_open=len(acct.positions),
-                                     peak_equity=sim_peak)
+                                     peak_equity=risk.decayed_peak(
+                                         sim_peak, acct.equity(last_close),
+                                         sim_stable, cfg))
                     # The heat + correlation caps live in pre_trade_checks,
                     # which the sim cannot call (it does HALT/trade-count file
                     # I/O). They were therefore NEVER simulated: every gate
@@ -677,6 +695,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         census["blocked"][reason] = census["blocked"].get(reason, 0) + 1
 
     sim_peak = 0.0          # §31: running equity high-water for the drawdown rail
+    sim_trough, sim_stable = None, 0   # §41: decay clock (bars since a new low)
     fills_by_date: dict = {}
     last_exit: dict = {}          # (strategy, symbol) -> exit ts; cooldown is
                                   # per-strategy, matching risk.cooldown_days_for
@@ -741,6 +760,28 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 
+        # §41: the decay clock, advanced once per bar in lockstep with the
+        # ratchet. `decay_clock` is pure and shared with the live path so the
+        # two cannot disagree about when the breaker re-closes; with
+        # risk.drawdown_decay disabled, decayed_peak() below is the identity
+        # and every §1-§40 result reproduces byte-identically.
+        sim_trough, sim_stable = risk.decay_clock(
+            sim_trough, sim_stable, acct.equity(last_close), sim_peak)
+
+        # §41 / DIVERGENCE #10. This ratchet used to live inside the buy branch
+        # below, so the peak advanced only on bars where an entry was attempted.
+        # Live ratchets inside pre_trade_checks, which runs for sells too
+        # (src/risk.py:828-834, and the comment there says exactly why: "the
+        # peak must keep tracking even while entries are blocked"). Live
+        # therefore sampled the peak on strictly more occasions than the
+        # simulator, which means the §40 latch bit HARDER in production than in
+        # any backtest that measured it.
+        #
+        # Fixed by making both correct rather than by making one match the
+        # other's artifact: a high-water mark sampled only when the book happens
+        # to transact is not a high-water mark. Every bar, unconditionally.
+        sim_peak = max(sim_peak, acct.equity(last_close))
+
         # 1. Fill orders queued on the previous bar, at this bar's open.
         still_pending = []
         for sym, action, owner in pending:
@@ -782,14 +823,17 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     # the global ceiling inside pure_checks sees all of them.
                     strategy_open = sum(1 for p in acct.positions.values()
                                         if p["owner"] == owner)
-                    sim_peak = max(sim_peak, acct.equity(last_close))   # §31
+                    # §41: ratchet hoisted to the top of the bar loop —
+                    # divergence #10. See the comment there.
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
                                      regime_label=regime_labels.get(ts),
                                      strategy=owner,
                                      strategy_open=strategy_open,
-                                     peak_equity=sim_peak)
+                                     peak_equity=risk.decayed_peak(
+                                         sim_peak, acct.equity(last_close),
+                                         sim_stable, cfg))
                     _sim_open_trades = {
                         s: {"qty": p["qty"], "entry_price": p["avg_entry"],
                             "order": {"stop_price": p.get("stop")}}

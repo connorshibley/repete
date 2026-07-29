@@ -169,6 +169,77 @@ def drawdown_pct(equity: float, peak: float) -> float:
     return max(0.0, (peak - equity) / peak * 100)
 
 
+def decay_clock(prev_trough: float | None, prev_bars: int,
+                equity: float, peak: float) -> tuple[float | None, int]:
+    """Advance the decay clock one bar. Pure. Returns (trough, bars_stable).
+
+    The clock counts bars since equity last made a NEW LOW, not bars since the
+    last high — and that distinction is the whole design.
+
+    Counting from the last high looked right and is wrong: on a book that keeps
+    falling, `bars_since_high` keeps growing, so the gap keeps decaying and the
+    rail releases *during* the decline. Measured directly while writing the
+    §41 tests: peak 100,000, equity fallen to 80,000, 40 bars after the high —
+    the decayed peak lands at 87,071 and reports an 8.12% drawdown, under the
+    10% cap. A 20% drawdown would have been reported as clear to trade.
+
+    Counting from the last low inverts that. Every new low resets the clock, so
+    a falling book stays blocked for as long as it keeps falling; only a book
+    that has stopped falling starts earning its way back in. Recovering to a
+    new high resets everything, which is the existing ratchet.
+    """
+    if equity >= peak:
+        return (peak, 0)                       # new high: no drawdown at all
+    if prev_trough is None or equity < prev_trough:
+        return (equity, 0)                     # new low: the clock restarts
+    return (prev_trough, prev_bars + 1)
+
+
+def decayed_peak(peak: float, equity: float, bars_stable: int,
+                 cfg: dict) -> float:
+    """The high-water mark, decayed toward equity after a grace period. Pure.
+
+    §40 established that the drawdown circuit breaker is a ONE-WAY LATCH:
+    equity peaks at P, falls 10%, entries block, positions exit, the book goes
+    to cash, cash equity is flat below P, the peak never decays, the drawdown
+    stays >= 10% forever, and the bot never buys again. Across 2022-2026 that
+    turned 245,213 buy signals into 29 trades, 99.43% of them stopped by this
+    one rail. A circuit breaker that cannot re-close is a kill switch.
+
+    Owner decision 2026-07-28: the peak decays toward equity. After
+    `grace_bars` of STABILITY — bars since equity last made a new low, see
+    `decay_clock` — the gap between peak and equity halves every
+    `halflife_bars`. So the rail still fires on a real drawdown, keeps firing
+    for as long as the book keeps falling, and stops firing some weeks after
+    equity stabilises instead of never.
+
+    Lives here, pure and shared, for the same reason `drawdown_pct` does: the
+    simulator and the live path must not be able to disagree about the
+    arithmetic, only about where the peak came from. A decay implemented on one
+    side only would be divergence #11.
+
+    Returns `peak` unchanged when disabled, inside the grace period, or when
+    equity is at or above the peak — so with `enabled: false` this function is
+    the identity and every prior gate result reproduces byte-identically.
+    """
+    dcfg = (cfg.get("risk") or {}).get("drawdown_decay") or {}
+    if not dcfg.get("enabled"):
+        return peak
+    if peak is _PEAK_UNKNOWN or peak == _PEAK_UNKNOWN or peak <= equity:
+        return peak
+
+    grace = dcfg.get("grace_bars", 10)
+    halflife = dcfg.get("halflife_bars", 20)
+    if halflife <= 0 or bars_stable <= grace:
+        return peak
+
+    # Geometric decay of the GAP, not of the peak: decaying the peak itself
+    # would keep shrinking it below equity on a recovering book and eventually
+    # report a drawdown of zero from a peak that never existed.
+    elapsed = bars_stable - grace
+    return equity + (peak - equity) * (0.5 ** (elapsed / halflife))
+
+
 def daily_loss_breached(account: dict, cfg: dict) -> bool:
     """True if today's P&L is below the configured loss limit."""
     limit_pct = cfg["risk"]["daily_loss_limit_pct"]

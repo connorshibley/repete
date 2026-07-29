@@ -165,7 +165,18 @@ def test_the_backtester_enforces_the_same_rail():
     assert src.count("sim_peak = max(sim_peak, acct.equity(last_close))") == 2, (
         "a simulator path does not track the equity peak — the drawdown rail "
         "would exist live and not in the backtest, which is divergence #9")
-    assert src.count("peak_equity=sim_peak") == 2
+    # §41 changed the SHAPE of this call, not its meaning: the peak now goes
+    # through risk.decayed_peak (the identity while drawdown_decay is off), so
+    # the sim and the live path share the decay arithmetic too. What the check
+    # still guarantees is that both simulate paths hand the rail a peak they
+    # actually tracked, rather than None or a constant.
+    assert src.count("peak_equity=risk.decayed_peak(") == 2, (
+        "a simulator path stopped passing its tracked peak to the rail")
+    assert src.count("sim_peak, acct.equity(last_close),") == 2, (
+        "decayed_peak is being handed something other than the tracked peak")
+    assert src.count("risk.decay_clock(") == 2, (
+        "a simulator path does not advance the §41 decay clock, so its "
+        "breaker could never re-close — divergence #9 in the other direction")
 
 
 def test_both_sides_use_the_same_drawdown_arithmetic():
