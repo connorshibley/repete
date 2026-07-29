@@ -3844,3 +3844,129 @@ the same day on reasoning that later stopped holding; loosening a risk rail
 because a diagnostic pointed at it is the same move. The latch has no reset
 path, which is a correctness question rather than a tuning one — but it is the
 owner's call, made deliberately, not at the end of a long session.
+
+---
+
+## §41 — CAN THE DRAWDOWN CIRCUIT BREAKER RE-CLOSE? (CAPACITY, K=11)
+
+**VERDICT: REJECTED.** One period of four passed. The claim was registered as a
+conjunction — s41a, s41b, s41c and s41d were written and frozen together, before
+any of them ran — so one failure sinks it. `risk.drawdown_decay` stays absent
+from `config.yaml` and the latch is still in place.
+
+| spec | period | frozen sha |
+|---|---|---|
+| s41a | 2000-2006 | `3b5314bc1729b081…` |
+| s41b | 2007-2013 | `8ffb2bc25e97a08e…` |
+| s41c | 2014-2019 | `fd0b3acd77a3262e…` |
+| s41d | 2022-2026 | `ab96d91b99890f1f…` |
+
+### Results
+
+| period | arm | return | PF | maxDD | trades | deploy |
+|---|---|---|---|---|---|---|
+| 2000-2006 | baseline | +5.26% | 1.202 | 11.51% | 101 | 8.07% |
+| | decay | +78.04% | 1.436 | **17.67%** | 1,888 | 66.61% |
+| 2007-2013 | baseline | +2.59% | 1.117 | 12.04% | 155 | 9.75% |
+| | decay | +84.92% | 1.487 | **21.15%** | 1,870 | 70.21% |
+| 2014-2019 | baseline | +69.02% | 1.486 | 11.59% | 1,732 | 68.97% |
+| | decay | +99.43% | 1.572 | 11.59% | 2,087 | 83.28% |
+| 2022-2026 | baseline | −5.26% | 0.449 | 10.78% | 29 | 4.09% |
+| | decay | +35.06% | 1.245 | **15.73%** | 1,598 | 69.52% |
+
+| clause | s41a | s41b | s41c | s41d |
+|---|---|---|---|---|
+| (a) maxdd_within pp 3.0 | **FAIL** 17.67 vs 14.51 | **FAIL** 21.15 vs 15.04 | PASS 11.59 vs 14.59 | **FAIL** 15.73 vs 13.78 |
+| (b) not_worse | PASS* | PASS* | PASS* | PASS* |
+| (c) min_trades 30 | PASS | PASS | PASS | PASS |
+| (d) deployment_at_least 25.0 | PASS | PASS | PASS† | PASS |
+
+\* every (b) is INCONCLUSIVE — see below. † non-binding by construction, declared
+in the spec before the run.
+
+### What is established
+
+**§40's diagnosis is confirmed beyond argument.** The latch was the binding
+constraint on deployment, and it was not close. Removing it moved 2022-2026 from
+**29 trades to 1,598** and deployment from 4.09% to 69.52%; 2000-2006 from 101 to
+1,888. Whatever else is true, the bot was not choosing to sit in cash — it was
+locked out.
+
+**The failure was predicted in the frozen prior**, quoted verbatim from all four
+specs: *"the honest expectation is that maxdd_within is the clause most likely to
+fail: a bot that re-enters after a drawdown is a bot that can take a second
+drawdown, and 3.0pp is not a generous allowance."* Pre-registration working as
+intended — the outcome was named before it happened rather than explained after.
+
+**The rejection reason is consistent in three periods of four.** The decay arm
+roughly doubles maximum drawdown: +6.16pp, +9.11pp, +4.95pp. Letting the bot
+trade costs about twice the drawdown, and the registered mark refuses it on
+exactly that ground.
+
+### Two things that must not be over-read
+
+**Return is not evidence here, and was deliberately not a clause.** More
+deployment means more exposure to the market's own direction; on a rising period
+the decay arm will look better for reasons that have nothing to do with the rail.
+Anyone quoting +78%, +85% or +99% from this table as a result is misreading the
+spec. Exposure-matched, the decay arm clears its bar on three periods and misses
+on 2000-2006 (+78.04% against +92.28%) — a mixed picture, and **§38 already
+established that this ensemble reverses sign between eras.** No edge claim of any
+kind may be drawn from §41.
+
+**Every (b) PASS is INCONCLUSIVE and carries no information.** The confidence
+intervals exclude nothing: `[$-276, $+172]`, `[$-198, $+187]`, `[$-48, $+64]`,
+`[$-246, $+557]`. The point estimates even move in opposite directions across
+periods — $52.11→$41.34 on 2000-2006 against $16.70→$45.41 on 2007-2013.
+"Not significantly worse" at these sample sizes is a statement about statistical
+power, not about trade quality.
+
+### An anomaly worth flagging rather than explaining away
+
+On 2014-2019 the two arms report **identical maximum drawdown to the digit —
+11.59% both** — while deployment rose 68.97% → 83.28% and trades rose 1,732 →
+2,087. That is plausible if the period's worst drawdown is a single market-wide
+drop both arms were fully exposed to, and 2014-2019 is the one period where the
+latch barely operated (drawdown was 20.65% of blocks, not 94-99%). It is
+recorded here as unexplained rather than assumed benign; anyone building on §41
+should confirm it before relying on that row.
+
+### A correction to this session's own commentary
+
+After s41a alone, the interim summary given to the owner stated that *"removing
+the lockout did not make the bot beat its own benchmark."* s41b, s41c and s41d
+each contradict it on the exposure-matched measure. The claim was generalised
+from one period — the precise error the four-spec conjunction exists to prevent,
+committed in the narration rather than in the spec. Recorded rather than edited
+away, in the same spirit as §33 Run 1.
+
+### What happens next — and what must not
+
+**`pp: 3.0` will not be widened and §41 re-scored.** The mark was frozen before
+the data existed, and re-scoring a rejected candidate against a loosened bar is
+the move this entire programme exists to prevent. `config.yaml` still carries the
+record of a heat cap raised and reverted the same day on reasoning that stopped
+holding.
+
+The legitimate follow-up is a **different claim**, not a second look at this one.
+§41 tested the decay at unchanged sizing, which confounds "the bot trades more"
+with "the bot risks more": deployment rose roughly eightfold in three periods, so
+of course drawdown grew. A §42 could pair the decay with reduced per-trade sizing
+and ask whether return improves **at matched drawdown**. That is a new
+hypothesis, requiring a fresh registration citing this rejection in its prior,
+and it is the owner's decision to make — not an automatic next step.
+
+**EDGE claims remain 0 for 10.** §41 is CAPACITY and does not touch that record.
+
+### Nothing was adopted
+
+`risk.drawdown_decay` is absent from `config.yaml`, so `risk.decayed_peak()` is
+the identity function in production. Verified after the change: 2022-2026
+reproduces §40 exactly — −5.26%, PF 0.449, 29 trades, 4.09% deployment, 243,814
+drawdown blocks, 245,213 signals. Every result from §1 to §40 stands unaltered.
+
+**The latch is still live, and still has no reset path.** §40's warning is
+unchanged: production trips at a 10% drawdown and then stops buying permanently
+until `memory/.equity_highwater.json` is deleted by hand. §41 establishes that
+the obvious fix costs more drawdown than the pre-registered allowance permits —
+it does not establish that the latch is acceptable.
