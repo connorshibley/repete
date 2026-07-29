@@ -511,7 +511,26 @@ news:                  # market awareness (Alpaca News API + LLM distill),
   enabled: true
   model: claude-haiku-4-5  # distillation-only override (hourly cadence, ~$3/mo);
                        # the trade judge and post copy stay on llm.model
-  max_headlines: 50    # raw headlines fed to the distiller (last 24h)
+  max_headlines: 50    # TOTAL raw headlines fed to the distiller (last 24h).
+                       # This is the budget, NOT the Alpaca request limit — it
+                       # was both until 2026-07-29 (W6-A0) and that was a live
+                       # bug: `(alpaca + rss)[:max_headlines]` with Alpaca
+                       # returning exactly 50 discarded EVERY RSS item. Measured
+                       # that day: alpaca 50, rss 45 fetched (WSJ 20, CNBC 15,
+                       # MarketWatch 10), rss surviving the slice ZERO, and the
+                       # distiller saw 50 headlines all from `benzinga`. The
+                       # feeds worked perfectly; nothing consumed them.
+  alpaca_max_headlines: 30   # wire request limit. 30/50 keeps Alpaca the
+                       # majority, which is what symbol_flags needs — its items
+                       # are the only ticker-TAGGED ones; RSS carries no tickers.
+  rss_reserved_slots: 20     # floor for RSS, round-robined across sources so the
+                       # source YAML happens to list first can't eat the share
+                       # (the ordering trap §24 found in the symbol scan).
+                       # RESERVED, NOT FIXED: unused slots go back to Alpaca, so
+                       # a dead-feed morning doesn't shrink the prompt — and the
+                       # reverse holds when the wire is down. Owner's split,
+                       # 2026-07-29. No gate: news inputs aren't backtestable,
+                       # so this is a documented judgement, not a validated one.
   max_nominations: 3   # watchlist symbols the news may point the scanners at.
                        # NOMINATION != TRADE: entries still require a real
                        # deterministic strategy signal + judge (extra
@@ -555,6 +574,43 @@ news:                  # market awareness (Alpaca News API + LLM distill),
       feeds:
         TopStories: https://feeds.content.dowjones.io/public/rss/mw_topstories
         Bulletins:  https://feeds.content.dowjones.io/public/rss/mw_bulletins
+    Bloomberg:           # verified live 2026-07-29 through market_context's own
+                         # parser, not just curl: 12 items, real headlines,
+                         # newest 22:01 GMT. Titles are CDATA-wrapped, which
+                         # ElementTree handles; the feeds 301 to
+                         # www.bloomberg.com/feeds/... and urllib follows it.
+      enabled: true
+      max_items: 12
+      max_per_feed: 4
+      max_age_hours: 36
+      feeds:
+        Markets:    https://feeds.bloomberg.com/markets/news.rss
+        Economics:  https://feeds.bloomberg.com/economics/news.rss
+        Technology: https://feeds.bloomberg.com/technology/news.rss
+    FT:                  # verified live 2026-07-29 the same way: 12 items,
+                         # newest 23:01 GMT. `?format=rss` is the live path;
+                         # /rss/home 301s to it.
+      enabled: true
+      max_items: 12
+      max_per_feed: 4
+      max_age_hours: 36
+      feeds:
+        Markets:   https://www.ft.com/markets?format=rss
+        Companies: https://www.ft.com/companies?format=rss
+        US:        https://www.ft.com/world/us?format=rss
+    # REQUESTED AND REJECTED, 2026-07-29 — each tested, none usable:
+    #   Reuters   401 on every path. Blocked to non-subscribers.
+    #   Barron's  404 on every Dow Jones path (RSSBarrons*, bar_topstories,
+    #             barronsonline). Paywalled; no public feed on the host WSJ and
+    #             MarketWatch share.
+    #   AP        HTTP 200 with 1.7 MB of `<!DOCTYPE html>` — a webpage, not a
+    #             feed. THIS is the cautionary one: a fetcher trusting the
+    #             status code would have called it a success and contributed
+    #             nothing, silently, forever. Our parser rejects it (`not
+    #             well-formed`) and W6-A1 now RECORDS that rejection, which is
+    #             the only reason it would ever be noticed.
+    # Do not re-add any of the three without re-testing through
+    # market_context._fetch_rss_source and pasting the item count here.
 
 x_posting:                # despite the name, this section is the BLOG + JOURNAL
                           # pipeline. X is one optional sink hanging off it.

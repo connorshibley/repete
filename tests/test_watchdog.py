@@ -15,14 +15,23 @@ def _write_heartbeat(tmp_path, when: datetime) -> str:
 
 
 def _completed(day: date):
-    """Ledger records containing one completed cycle on `day`."""
-    return [{"type": "event", "event": "cycle_complete",
+    """Ledger records for a HEALTHY `day`: the cycle finished, and it had news.
+
+    `market_context` joined the all-clear set on 2026-07-29 (W6-A3) — the
+    watchdog now also asks whether the bot knew anything while it traded. A
+    fixture carrying only `cycle_complete` describes a day with a real problem
+    now, which is asserted in tests/test_news_sources_are_accounted_for.py
+    rather than here.
+    """
+    return [{"type": "event", "event": ev,
              "ts": datetime(day.year, day.month, day.day, 19, 50,
-                            tzinfo=timezone.utc).isoformat()}]
+                            tzinfo=timezone.utc).isoformat()}
+            for ev in ("cycle_complete", "market_context")]
 
 
 def test_fresh_heartbeat_and_a_completed_cycle_is_all_clear(tmp_path):
-    """All-clear now needs BOTH signals: the process ran, and it finished.
+    """All-clear needs all three signals: the process ran, it finished, and it
+    had a market read.
 
     Two things were wrong with the version this replaces. It asserted a fresh
     heartbeat ALONE was sufficient — which is the 2026-07-24 bug stated as a

@@ -45,8 +45,11 @@ def _fresh(day: date) -> datetime:
 
 
 def _complete(day: date):
-    return [{"type": "event", "event": "cycle_complete",
-             "ts": _fresh(day).isoformat()}]
+    """A healthy `day`. `market_context` joined the all-clear set on 2026-07-29
+    (W6-A3); this file is about cycle COMPLETION, so it supplies the news event
+    to keep the two failures independent."""
+    return [{"type": "event", "event": ev, "ts": _fresh(day).isoformat()}
+            for ev in ("cycle_complete", "market_context")]
 
 
 def _args(tmp_path, day):

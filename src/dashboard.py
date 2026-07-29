@@ -1228,6 +1228,18 @@ def render(cfg: dict | None = None, out_path: str | None = None,
     exits = ", ".join(f"{k}: {v}" for k, v in
                       sorted(rep["exit_reasons"].items())) or "none yet"
 
+    # W6-A1: which news sources actually fed today's read. Published because
+    # the interesting case is a source reading ZERO — for five days every RSS
+    # feed was fetched and then discarded by the headline budget (W6-A0) and no
+    # surface anywhere could have shown that. A named zero is the whole point.
+    news_line = ""
+    for _r in reversed(records):
+        if _r.get("type") == "event" and _r.get("event") == "market_context":
+            _d = str(_r.get("detail") or "")
+            if "| sources: " in _d:
+                news_line = _d.split("| sources: ", 1)[1][:300]
+            break
+
     # Repete's voice: playful lines, real facts only (rendered per cycle).
     open_now = ledger.open_buys()
     n_symbols = len(cfg.get("symbols") or [])
@@ -1331,6 +1343,7 @@ happened — filter with the chips</summary>
 <h2>🪙 Trade scoreboard</h2><div id=rgn-bars>{regions['bars']}</div>
 <h2>🧭 Per-strategy</h2><div id=rgn-strat>{regions['strat']}</div>
 <p class=small>Exits — {_esc(exits)}</p>
+{f'<p class=small>News sources — {_esc(news_line)}</p>' if news_line else ''}
 <h2>🗓️ Monthly vs S&amp;P</h2><div id=rgn-months>{regions['months']}</div>
 <h2>🧠 Lesson book</h2>
 <details open><summary>falsifiable hypotheses the bot is testing from its
