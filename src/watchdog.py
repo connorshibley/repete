@@ -1,14 +1,29 @@
 """Dead-man watchdog — the bot must fail LOUDLY when it runs unattended.
 
 Scheduled ~30 min after the daily cycle (see scripts/
-com.trading-agent.watchdog.plist). Checks two things and alerts via a macOS
-notification + log + ledger event when either fails:
+com.trading-agent.watchdog.plist). Checks THREE things and alerts via a macOS
+notification + log + ledger event when any of them fails:
 
-  1. HEARTBEAT: memory/heartbeat (written on every run_cycle exit path) must
-     be from today (local). Missing/old on a weekday means the cycle never
-     ran — launchd broke, the venv broke, or the machine slept through it.
-  2. HALT: if the kill-switch HALT file exists, keep reminding the owner
+  1. HEARTBEAT — did the PROCESS run? memory/heartbeat (written on every
+     run_cycle exit path) must be from today (local). Missing/old on a weekday
+     means the cycle never started — launchd broke, the venv broke, or the
+     machine slept through it.
+  2. CYCLE_COMPLETE — did the cycle FINISH? A `cycle_complete` record dated
+     today must exist in the ledger.
+  3. HALT: if the kill-switch HALT file exists, keep reminding the owner
      every day until they deal with it.
+
+Check 2 exists because check 1 cannot see a cycle that started and died.
+`write_heartbeat()` runs in a `finally:`, so a crashed cycle stamps a FRESH
+heartbeat on its way out and reads as healthy. That is what happened on Friday
+2026-07-24: the 15:45 cycle died about six seconds in, this watchdog said
+nothing, `catchup` used the same test and so silenced its own recovery, and the
+EOD post read exactly like a quiet market. It cost a full trading day and went
+unnoticed for two.
+
+Added 2026-07-26. `check()`'s own docstring has described all three since; THIS
+docstring said "two things" until 2026-07-29 (W5-5) — the file contradicted
+itself, and the stale half was the one you read first.
 
 Alerts degrade gracefully (a notification failure still logs); the watchdog
 itself never raises.

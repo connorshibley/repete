@@ -1,6 +1,21 @@
-# Beginner's Guide: Building Your Enterprise-Grade Swing-Trading Agent
+# Beginner's Guide: Building a Swing-Trading Agent From Zero
 
-This guide walks you, step by step, from zero to a running paper-trading agent that documents every decision with reasoning, learns from closed trades, and posts recaps to X. Everything here is grounded in the deep-research report (`trading-bots-deep-research.md`) — where the video's advice conflicted with evidence, this project follows the evidence.
+This guide walks you, step by step, from nothing to a running **paper**-trading
+agent that documents every decision with its reasoning, learns from closed
+trades, and publishes both to its own blog and trade journal.
+
+The reasoning behind the choices is in `knowledge/backtest_candidates.md` (every
+pre-registered claim and its verdict) and `knowledge/principles.md` (the rules
+the project holds itself to). Where popular advice conflicted with what the
+gates measured, this project follows the measurement.
+
+> **Corrected 2026-07-29 (W5-4).** This heading said *"Enterprise-Grade"*, and
+> this paragraph cited a `trading-bots-deep-research.md` that **exists nowhere in
+> the repo** while claiming the bot "posts recaps to X" — X has been off since
+> ~2026-07-24. All three were false. "Enterprise-Grade" is the one worth naming:
+> §43 measured the shipped configuration against its own enablement gate on four
+> periods spanning 26 years and it failed **all four**. See
+> [README.md](README.md) for what this project has and has not shown.
 
 **This is a swing-trading bot, not a day-trading bot — by design and by code.** It decides once per day on daily bars, and a hard "swing guard" in the risk rails blocks any exit before a position is at least `min_holding_days` old (default 2), so same-day round trips are structurally impossible. That's the right call: the research base rates on day trading are dismal (~97% of persistent day traders lose money), while the only strategy class with century-scale evidence net of costs is slow, multi-week trend-following. The one exception to the swing guard is the daily-loss kill switch — if the account breaches its loss limit, safety wins and everything is flattened regardless of holding period.
 
@@ -41,7 +56,7 @@ The video's architecture puts the LLM in charge. The research says that's backwa
 ## Step 1 — Install the basics (~20 min)
 
 1. **Install Python 3.11+**: from [python.org](https://www.python.org/downloads/) (check "Add to PATH" on Windows) or `brew install python` on Mac.
-2. **Get the project onto your machine**: unzip `trading-agent.zip` somewhere like `~/trading-agent`.
+2. **Get the project onto your machine**: `git clone https://github.com/connorshibley/trading-agent.git ~/trading-agent` (this said "unzip `trading-agent.zip`" until 2026-07-29 — it was a zip once and has been a public git repo since).
 3. **Open a terminal in that folder** and create a virtual environment:
    ```bash
    python3 -m venv venv
@@ -112,13 +127,32 @@ a large move in the final 15 minutes can produce a signal the completed bar
 wouldn't have. Accepted trade-off; do not move the schedule earlier in the
 day, where the partial bar is far less representative.
 
-## Step 7 — Connect X (~20 min)
+## Step 7 — Connect X (~20 min) — OPTIONAL, AND CURRENTLY SWITCHED OFF
+
+> **X is off in the shipped config** (`x_posting.enabled: false`, owner decision
+> 2026-07-28; `dry_run: true` since 2026-07-29). **You can skip this entire step
+> and lose nothing** — the bot still composes every post and writes it to
+> `memory/posts.jsonl` with status `x_disabled`, and `blog.html` and
+> `journal.html` render from that archive. `src/x_poster.py` archives *before* it
+> attempts delivery, so the public pages are unaffected by X being unreachable,
+> unconfigured, or off. That decoupling was itself a bug fix: `blog.render` once
+> filtered on `status == "posted"`, and the public blog sat frozen for three days
+> while the bot placed ten trades.
+>
+> Until 2026-07-29 this step read as a working feature and step 5 told you to set
+> `dry_run: false`. Both were wrong to leave standing. The instructions below
+> still work — they are just not something you need.
 
 1. Apply at [developer.x.com](https://developer.x.com) (Free tier: ~500 posts/month — plenty for recaps).
 2. Create a Project + App. In app settings → **User authentication settings**: enable OAuth 1.0a, set app permissions to **Read and write**.
 3. In **Keys and tokens**: copy the API Key/Secret and generate an Access Token/Secret **after** setting read-write (regenerate them if you set permissions later).
-4. Paste all four into `.env`.
-5. Keep `dry_run: true` in `config.yaml` for a few cycles and read the printed posts. When you're happy, set `dry_run: false`.
+4. Paste all four `X_*` values into `.env`.
+5. **Two flags, both deliberate.** Set `x_posting.enabled: true` to arm the sink
+   at all, and leave `dry_run: true` while you read the printed posts for a few
+   cycles. Only set `dry_run: false` once you have read what it would have
+   published. Requiring both is the point: `enabled` also governs the blog and
+   journal pipeline, so one flag alone must never be enough to start posting
+   publicly.
 
 Two things the bot enforces on purpose: every post discloses **[PAPER]** while paper trading (keep `disclose_paper: true` — posting fake trading results as real is exactly the behavior the FTC fined Warrior Trading $3M for), and an X outage never interrupts trading.
 

@@ -81,7 +81,9 @@ JOBS = [
     # weekdays are 0=Mon..6=Sun, so 4 = Friday.
     ("weekly-learn", [4],         17,   30,
      ["sh", "-c", f"{PY} src/learn.py --meta && {PY} src/review.py"]),
-    # Phase D: state backup nightly after the cycle; restore drill weekly —
+    # Phase D: state backup on WEEKDAYS after the cycle — range(0, 5) is Mon-Fri.
+    # Said "nightly" until 2026-07-29 (W5-6); there is no weekend backup, which
+    # is deliberate because the book does not move. Restore drill weekly:
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
     ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),

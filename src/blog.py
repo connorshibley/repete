@@ -123,8 +123,7 @@ def render(cfg: dict, out_path: str | None = None) -> str:
 <p class=small>Every post this bot publishes, archived by day with the
 market context it was working from. Paper trading; nothing here is financial
 advice. <a href="index.html">dashboard</a> ·
-<a href="journal.html">trade journal</a> ·
-<a href="https://x.com/Repete2026">@Repete2026 on X ↗</a></p>
+<a href="journal.html">trade journal</a></p>
 {body}
 <p class=small>{html.escape(disclaimer.DISCLAIMER)}</p>
 </div></body></html>"""
