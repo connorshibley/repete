@@ -218,14 +218,20 @@ def fetch_bars(symbols: list, start: str, end: str) -> dict:
     """READ-ONLY market data via Alpaca (lazy import; needs .env keys)."""
     from dotenv import load_dotenv
     load_dotenv()
+    from alpaca.data.enums import Adjustment
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
     client = StockHistoricalDataClient(os.environ["ALPACA_API_KEY"],
                                        os.environ["ALPACA_SECRET_KEY"])
+    # adjustment=ALL — see divergence #12 (src/broker.py:85). Omitting it gives
+    # RAW bars, and every frozen snapshot is split/dividend adjusted. This path
+    # feeds src/revalidate.py and the --symbols CLI, so raw bars here would
+    # revalidate live decisions against a series no gate ever scored.
     resp = client.get_stock_bars(StockBarsRequest(
         symbol_or_symbols=symbols, timeframe=TimeFrame(1, TimeFrameUnit.Day),
-        start=datetime.fromisoformat(start), end=datetime.fromisoformat(end)))
+        start=datetime.fromisoformat(start), end=datetime.fromisoformat(end),
+        adjustment=Adjustment.ALL))
     return {sym: [{"ts": b.timestamp.isoformat(), "open": b.open, "high": b.high,
                    "low": b.low, "close": b.close, "volume": b.volume}
                   for b in rows]

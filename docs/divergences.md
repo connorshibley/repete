@@ -4,14 +4,16 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Eleven such differences have been found. Until 2026-07-28 they existed **only as
+Twelve such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-07-29: none.** That is a statement about the eleven found, not
-a claim that eleven is all there are. #10 and #11 were both discovered by
-reading code for an unrelated task, four days after this register was created.
+**Open as of 2026-07-29: none.** That is a statement about the twelve found, not
+a claim that twelve is all there are. #10, #11 and #12 were all discovered by
+reading code for an adjacent task, within four days of this register being
+created — and #12 had been sitting in `data/snapshots/MANIFEST.json` in plain
+English the whole time.
 
 **A divergence is CLOSED only when a test would fail if it reopened.** "Fixed in
 code" is not closed; the repo has been wrong about that before.
@@ -29,6 +31,7 @@ code" is not closed; the repo has been wrong about that before.
 | 9 | Drawdown rail existed on the live path only | **pre-empted** | `risk.drawdown_pct` shared (`src/risk.py:158-169`, `backtest.py:348,679`) |
 | 10 | **The simulator's equity peak advanced only on buy bars** | **closed 2026-07-28** | `tests/test_sim_peak_tracks_every_bar.py` |
 | 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
+| 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
 
 ---
 
@@ -134,6 +137,44 @@ return — the daily-loss kill switch and the HALT check both return before the
 order loop, so any later placement would leave the same hole. `pre_trade_checks`
 still ratchets per order; this is the floor under it, and `update_high_water` is
 max-based so running both is a no-op the second time.
+
+## #12 — live read raw bars, every snapshot is adjusted
+
+Found 2026-07-29 (W2-3).
+
+`alpaca-py`'s `StockBarsRequest.adjustment` defaults to `None`, which the API
+treats as **raw**. Neither `broker.bars()` (the live path) nor
+`backtest.fetch_bars()` passed it. Every frozen snapshot, meanwhile, is split-
+AND dividend-adjusted: `scripts/build_snapshot.py` uses yfinance
+`auto_adjust=True`, and `scripts/build_intraday_snapshot.py` already used
+`adjustment=Adjustment.ALL`.
+
+So **the live bot has been reading a different price series from the one every
+gate verdict was scored on.**
+
+**Direction of the error, and why it is not small.** A 2-for-1 split in a raw
+series is a 50% overnight gap that never happened. It collapses an SMA, spikes
+ATR, and can fire an entry signal or trip a stop on an event that did not change
+the value of a single share held. The bot cannot distinguish that gap from a
+crash. The effect is not a consistent bias in one direction — it is noise
+injected at unpredictable moments, which is worse than a bias because it cannot
+be corrected for.
+
+**This was already written down.** `data/snapshots/MANIFEST.json` records the
+first intraday build going out RAW and carrying **11 unadjusted splits** "that
+the simulator read as overnight collapses — it voided a gate run." The fix was
+applied to that one builder and never propagated to the live path. Same failure
+shape as #8: the lesson was learned, recorded, and applied in exactly one place.
+
+Closed by passing `Adjustment.ALL` in both request builders.
+`tests/test_bars_are_split_adjusted.py` asserts both, refuses `SPLIT`-only
+(which would leave a dividend mismatch), and asserts the snapshot builder still
+auto-adjusts — so the alignment cannot be re-broken from either side.
+
+**This changes live inputs.** It is a data-correctness fix, not a strategy or
+threshold change, so it is not gated — but it is the one item in W2 that alters
+what the production bot sees, and it is recorded here rather than mentioned in
+a commit message.
 
 ---
 
