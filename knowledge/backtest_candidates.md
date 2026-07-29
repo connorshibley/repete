@@ -4151,3 +4151,76 @@ is now supported by four periods spanning 26 years rather than one.
 
 **Nothing enabled. `mode: paper` unchanged. `drawdown_decay` still absent from
 `config.yaml`. EDGE 0 for 11.**
+
+---
+
+## §45 — WHY DOESN'T THE BOOK TURN OVER? (DIAGNOSTIC, 2026-07-29)
+
+**Numbering.** §44 is reserved a few sections above for the deferred
+decay-plus-sizing claim, and that reservation stands. This diagnostic takes §45
+and runs first. Reassigning a written reservation would make §44 refer to two
+different things across this file's history, which is the quiet rewrite W5 spent
+a day undoing; a gap the document explains is fine.
+
+### Why this and why now
+
+The live book barely turns over, and that is now the binding constraint on every
+revenue gate:
+
+| | measured 2026-07-29 |
+|---|---|
+| closed round-trips | **4** (+16.78, +10.67, +6.40, −8.59%) |
+| open positions | **14** |
+| paper history | **15 days** (Jul 14 → Jul 29) |
+| observed close rate | **0.27 / day** |
+
+Invariant 10 requires ≥30 closed trades. At the observed rate that is **~98 more
+days — early November**, roughly seven weeks *later* than the ≥60-day clock
+(~Sep 12). So the close rate, not the calendar, is what gates revenue, and
+nothing has ever measured why it is what it is.
+
+§40 built an ENTRY census — of every buy signal, what executed and what each rail
+blocked. There is no equivalent for exits. Every closed trade carries an
+`exit_reason` and the simulator has always known it; nothing has ever aggregated
+it.
+
+### THE PRIOR — written and committed before the census exists
+
+DIAGNOSTIC, not EDGE. Nothing is adopted, no gate is registered, no config value
+moves. But §43's forty-for-forty prediction match was recorded as *weaker
+evidence than it looks* precisely because its inputs were already known, so these
+predictions are timestamped ahead of the measurement.
+
+Shipped config, the relevant parts: `min_holding_days: 2`,
+`take_profit_atr_mult: 0` (stop-only — "every walk-forward winner chose no
+take-profit"), `trailing_atr_mult: 3.0` gated to `tsmom` only, no re-entry
+cooldown.
+
+The four exit reasons the simulator can emit are `strategy_sell`, `stop_loss`,
+`take_profit`, and `end_of_data`.
+
+1. **`take_profit` will be 0 in all four periods.** `take_profit_atr_mult: 0`
+   means `tp` is None for every position; `tsmom`'s chandelier ratchets the STOP
+   and so fires as `stop_loss`. This one is near-certain and is stated to make
+   the census falsifiable rather than to be impressive: if `take_profit` is
+   non-zero, the bracket wiring is not what the config says.
+2. **`end_of_data` will be the largest single bucket in at least three of the
+   four periods, and ≥ 40% of closed trades in each.** This is the load-bearing
+   prediction. `end_of_data` is a forced close at run end, not a decision — if it
+   dominates, the strategies essentially never sell, every backtest closed-trade
+   count is inflated by run truncation, and **live has nothing that force-closes**,
+   which would explain the whole observation.
+3. **Median holding period > 30 calendar days** in every period.
+4. **`n_guard_skipped_exits` > 0 in every period** — `min_holding_days` is
+   demonstrably biting on sells, not merely present.
+5. **Live is not anomalous.** If 2–4 hold, then 4 closes in 15 days is the design
+   working as specified rather than a defect, and the ≥30-trade gate is
+   unreachable on this configuration in any useful timeframe. That would make it
+   a *config* question — which is the owner's, and is NOT decided here.
+
+**Prediction 2 is the one that can embarrass me.** If `end_of_data` is small and
+`strategy_sell` dominates, the simulator turns the book over far faster than live
+does, and the finding flips from "slow by design" to a sim/live divergence
+(#13) — the opposite conclusion from the same measurement.
+
+*(Measured results follow below, written after the run.)*
