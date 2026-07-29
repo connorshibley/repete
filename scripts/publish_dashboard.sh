@@ -6,6 +6,23 @@
 cd "$(dirname "$0")/.." || exit 0
 [ -d .site/.git ] || exit 0
 
+# REFUSE TO PUBLISH AN ARTIFACT THAT DISAGREES WITH THE RECORD.
+# This script's only test was `cmp` — "does it differ from what's live?" — and
+# difference is not improvement. On 2026-07-28 the repo-root blog.html held 0
+# posts against 33 in memory/posts.jsonl and journal.html held 1 of 19, both
+# written by a pytest run whose CWD was the repo root. cmp said "differs", and
+# without this check the next cycle would have pushed them over an eleven-day
+# public archive. src/sitepaths.py fixed the cause; this is the independent
+# second line, because the failure is invisible to git (the artifacts are
+# gitignored, so deploycheck cannot see them either).
+# Still exits 0: a refusal must never break a trading or posting job.
+PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
+if ! "$PY" src/artifactcheck.py >/dev/null 2>>logs/cron.log; then
+  echo "site publish REFUSED $(date -u +%H:%MZ) — artifact disagrees with the record" \
+    >> logs/cron.log
+  exit 0
+fi
+
 changed=0
 if [ -f dashboard.html ] && ! cmp -s dashboard.html .site/index.html; then
   cp dashboard.html .site/index.html

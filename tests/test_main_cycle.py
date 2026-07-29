@@ -8,8 +8,10 @@ import yaml
 
 import pytest
 
+import journal
 import main
 import risk
+import sitepaths
 from ledger import Ledger
 
 from conftest import make_bars
@@ -546,6 +548,9 @@ def test_quiet_cycle_still_rebuilds_the_journal_page(cycle_env, cfg):
 
     main.run_cycle()
 
-    html = open("journal.html").read()
+    # Resolved through publish.out_dir, not the CWD. Before 2026-07-28 this
+    # read the repo-root journal.html — so the very test that proves the page
+    # self-repairs was itself overwriting the real published artifact.
+    html = open(sitepaths.resolve(cfg2, journal.OUT_PATH)).read()
     assert "seeded1" in html
     assert "must still show it" in html

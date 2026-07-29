@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import disclaimer
+import sitepaths
 
 log = logging.getLogger("blog")
 
@@ -80,7 +81,8 @@ def _context_by_day(cfg: dict) -> dict:
     return out
 
 
-def render(cfg: dict, out_path: str = OUT_PATH) -> str:
+def render(cfg: dict, out_path: str | None = None) -> str:
+    out_path = out_path or sitepaths.resolve(cfg, OUT_PATH)
     posts = _load_posts(cfg)   # every archived post — see the module docstring
     ctx_by_day = _context_by_day(cfg)
 

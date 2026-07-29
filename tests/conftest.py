@@ -22,8 +22,16 @@ def cfg(tmp_path):
     """Minimal dict config mirroring config.yaml, network layers disabled.
 
     Every writable store defaults to a pytest tmp path so no test can ever
-    touch the real memory/ files, even without an explicit override."""
+    touch the real memory/ files OR the real public artifacts, even without an
+    explicit override.
+
+    `publish.out_dir` is part of that promise and was missing until 2026-07-28.
+    Until then the claim above was true of memory/ and false of the HTML:
+    dashboard/blog/journal render defaulted to a CWD-relative constant, so
+    tests/test_backfill_posts.py overwrote the repo-root blog.html and
+    journal.html with fixtures whenever pytest ran from the repo root."""
     return {
+        "publish": {"out_dir": str(tmp_path / "site")},
         "mode": "paper",
         "symbols": ["SPY"],
         "strategy": {

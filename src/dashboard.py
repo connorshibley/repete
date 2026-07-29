@@ -26,6 +26,7 @@ from lessons import LessonStore
 from judgments import JudgmentStore, calibration_metrics, calibration_line
 import disclaimer
 import review
+import sitepaths
 
 OUT_PATH = "dashboard.html"
 DATA_PATH = "dashboard_data.json"
@@ -1071,11 +1072,12 @@ def _lessons_rows(states: dict) -> str:
             + "".join(rows) + "</table></div>")
 
 
-def render(cfg: dict | None = None, out_path: str = OUT_PATH,
+def render(cfg: dict | None = None, out_path: str | None = None,
            spy_bars: list[dict] | None = None) -> str:
     if cfg is None:
         with open("config.yaml") as f:
             cfg = yaml.safe_load(f)
+    out_path = out_path or sitepaths.resolve(cfg, OUT_PATH)
     ledger = Ledger(cfg["memory"]["ledger_path"])
     records = ledger.all_records()
     now = datetime.now(timezone.utc)
