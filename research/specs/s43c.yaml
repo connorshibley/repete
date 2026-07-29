@@ -1,0 +1,122 @@
+# §43 — THE INCUMBENT FACES ITS OWN GATE, ON A SIMULATOR THAT MATCHES LIVE.
+#
+# §39 asked this question once, on 2000-2006, and the incumbent FAILED 3 of 4
+# clauses. That verdict stands and is not being revisited. What has changed is
+# the simulator underneath it.
+#
+# Wave 2 (2026-07-29) closed three divergences between the backtester and the
+# live bot:
+#   #8  the LLM judge was modelled and never switched on — §35-§41 all scored a
+#       bot with no judge, while live it downsizes 58.1% of buys and vetoes 2.4%
+#   #11 live sampled the equity peak only when it attempted an order
+#   #12 live read RAW bars while every snapshot is split/dividend adjusted
+#
+# §42 then measured what #8 alone was worth, and the answer was large enough in
+# BOTH directions to make re-asking mandatory rather than optional: modelling
+# the judge raises executions 1.7x-7.5x (smaller positions -> shallower
+# drawdowns -> the 10% latch trips less) and LOWERS profit factor in all four
+# periods. The judge-less simulator was simultaneously overstating the lockout
+# and flattering trade quality.
+#
+# THE PASS MARK IS §39'S, UNCHANGED, CLAUSE FOR CLAUSE. That is the point. The
+# only thing that moved is the fidelity of the machine, so any difference in
+# verdict is attributable to fidelity and not to a bar that was quietly made
+# easier. Nothing here is tuned, and a failure is a finding, not a licence to
+# start fitting parameters.
+#
+# ONE ARM. There is no candidate and no challenger — every clause measures the
+# shipped configuration against benchmarks derived from its own run. No `shared`
+# overlay: the subject IS production's config.yaml.
+#
+# FOUR SPECS, FROZEN TOGETHER, CONJUNCTION. All four must pass. Running one
+# period and reporting it would be period selection, which is exactly what the
+# §41 conjunction exists to prevent.
+
+id: s43c
+claim: EDGE
+title: "Does the live ensemble clear its own enablement gate with the judge modelled? (2014-2019)"
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+
+# K=12. Ten EDGE claims and one CAPACITY claim (§41, K=11) precede this one.
+# The four specs are ONE claim, so K rises by one rather than four.
+bonferroni_k: 12
+
+# W2-1: mandatory since 2026-07-29, and the entire reason this section exists.
+judge_model: true
+
+arms:
+  - name: baseline
+
+# §39'S CLAUSES, VERBATIM. Not one threshold moved.
+clauses:
+  - {id: a, rule: enablement_gate}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: beats_buy_hold}
+  - {id: d, rule: min_trades, n: 30}
+
+prior: >-
+  This is predicted to FAIL, and the prediction is arithmetic rather than a
+  hunch. §42's census — already published, judge on, same shipped config — gives
+  return, buy-and-hold and average deployment for every period, and clause (b)'s
+  bar is computable from them before this runs. Those computed bars are:
+  2000-2006 +9.45% against +29.02%; 2007-2013 +2.42% against +10.10%;
+  2014-2019 +56.71% against +62.61%; 2022-2026 -7.71% against +2.13%. So (b) is
+  expected to fail in ALL FOUR, and (a) additionally on the profit-factor floor
+  in three (1.122, 1.082, 0.367 against the 1.3 minimum; only 2014-2019's 1.396
+  clears it). (c) beats_buy_hold is expected to fail everywhere and is the least
+  interesting of the four. (d) min_trades should pass everywhere.
+  THE CELL THAT MATTERS IS 2014-2019. It is the ONLY period in which this bot
+  has ever cleared its own gate — §35 recorded it passing the exposure-matched
+  bar, and on the judge-off census it clears by +6.66pp. With the judge modelled
+  it is predicted to FAIL by -5.90pp: return drops 69.02% -> 56.71% while
+  deployment barely moves, so the bar stays put and the bot falls under it. If
+  that flip reproduces, the single pass in this project's history was an
+  artifact of a simulator that did not model a component the live bot has been
+  running for weeks, and the honest count becomes ZERO periods in four.
+  Stating it this precisely is the point: this prior is falsifiable to within a
+  fraction of a percentage point, and if the run disagrees with these numbers
+  then something in my understanding of the machine is wrong and THAT is the
+  finding. A PASS anywhere would be genuinely surprising and would need
+  explaining before it was believed.
+
+failure_modes:
+  - >-
+    SURVIVORSHIP, severe, and it flatters the incumbent here exactly as it did
+    in §37 and §39. The universe is today's S&P 1500 screened on then-current
+    liquidity, so companies that went to zero were never fetched. A FAIL is
+    therefore strong evidence and a PASS is weak — the asymmetry runs the same
+    way in all four periods.
+  - >-
+    The judge model reproduces a DISTRIBUTION, not decisions. It cannot recover
+    which trades the real judge would have cut, and its calibration rests on 164
+    decisions over 12 live days in one regime, heavily serially correlated, so
+    the effective sample is far below 164 and the tails are unmeasured. This
+    simulator is closer to live than a judge-less one — that is the bar it has
+    to clear — not accurate in a way it has not earned.
+  - >-
+    The strategies were tuned on 38 symbols of 2020-2026 data. Running them on a
+    500-symbol universe across 26 years changes period AND breadth at once, so a
+    failure cannot be attributed to the period alone. Breadth is an uncontrolled
+    confound and is not being controlled here either.
+  - >-
+    Low deployment makes beats_exposure_matched arithmetically easy and
+    substantively hollow — a bot 90% in cash faces a bar of 10% of the market's
+    return. Clause (d) blocks the degenerate case, but a marginal PASS at low
+    deployment must be read as "it barely invested", never as "it has edge".
+  - >-
+    I computed the expected clause outcomes from §42's census BEFORE registering
+    this. That makes the prior sharp, and it also means a result matching the
+    prediction is weaker evidence than it looks: I already knew the inputs. The
+    genuinely new information in this run is the enablement_gate clause, which
+    is not computable from the census, and any cell that DISAGREES with the
+    prediction.
+  - >-
+    A PASS anywhere would NOT mean the live bot works. It would mean one
+    configuration cleared one gate on one period, and it would still owe the
+    live evidence gate — 30 closed trades and 3 months — of which the paper
+    ledger currently holds TWO closed trades.

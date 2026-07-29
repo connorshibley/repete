@@ -1,0 +1,108 @@
+################ s43a ################
+s43a — Does the live ensemble clear its own enablement gate with the judge modelled? (2000-2006)
+claim EDGE | K=12 | frozen 2026-07-29T20:51:18 | sha f3f5901e6a99cce5… | judge ON
+
+prior: This is predicted to FAIL, and the prediction is arithmetic rather than a hunch. §42's census — already published, judge on, same shipped config — gives return, buy-and-hold and average deployment for every period, and clause (b)'s bar is computable from them before this runs. Those computed bars are: 2000-2006 +9.45% against +29.02%; 2007-2013 +2.42% against +10.10%; 2014-2019 +56.71% against +62.61%; 2022-2026 -7.71% against +2.13%. So (b) is expected to fail in ALL FOUR, and (a) additionally on the profit-factor floor in three (1.122, 1.082, 0.367 against the 1.3 minimum; only 2014-2019's 1.396 clears it). (c) beats_buy_hold is expected to fail everywhere and is the least interesting of the four. (d) min_trades should pass everywhere. THE CELL THAT MATTERS IS 2014-2019. It is the ONLY period in which this bot has ever cleared its own gate — §35 recorded it passing the exposure-matched bar, and on the judge-off census it clears by +6.66pp. With the judge modelled it is predicted to FAIL by -5.90pp: return drops 69.02% -> 56.71% while deployment barely moves, so the bar stays put and the bot falls under it. If that flip reproduces, the single pass in this project's history was an artifact of a simulator that did not model a component the live bot has been running for weeks, and the honest count becomes ZERO periods in four. Stating it this precisely is the point: this prior is falsifiable to within a fraction of a percentage point, and if the run disagrees with these numbers then something in my understanding of the machine is wrong and THAT is the finding. A PASS anywhere would be genuinely surprising and would need explaining before it was believed.
+
+  verified bars_wide_2000-01-01_2006-12-31.json.gz  sha256 432cec564ccee6ab…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret   +9.45%  PF 1.122  maxDD 11.52%  trades   753  symbols 367  deploy  20.95%  (112s)
+
+  judge on baseline               sized 392081  cut 222526  vetoed  9572  truncated to 0   109
+
+  buy-and-hold on this universe: +138.54%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [FAIL] (a) enablement_gate  OOS profit factor 1.122 < 1.3; OOS return +9.45% beats neither B&H +138.54%, the risk-adjusted bar (dd 11.5% vs B&H dd 28.2%), nor the exposure-matched benchmark +29.02% (at 20.9% avg deployment)
+  [FAIL] (b) beats_exposure_matched  +9.45% vs +29.02% (B&H +138.54% x 20.9% deployment)
+  [FAIL] (c) beats_buy_hold  +9.45% vs B&H +138.54%
+  [PASS] (d) min_trades  753 vs 30
+
+VERDICT: REJECTED  (112s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+################ s43b ################
+s43b — Does the live ensemble clear its own enablement gate with the judge modelled? (2007-2013)
+claim EDGE | K=12 | frozen 2026-07-29T20:51:18 | sha 9bd8d5394c287d89… | judge ON
+
+prior: This is predicted to FAIL, and the prediction is arithmetic rather than a hunch. §42's census — already published, judge on, same shipped config — gives return, buy-and-hold and average deployment for every period, and clause (b)'s bar is computable from them before this runs. Those computed bars are: 2000-2006 +9.45% against +29.02%; 2007-2013 +2.42% against +10.10%; 2014-2019 +56.71% against +62.61%; 2022-2026 -7.71% against +2.13%. So (b) is expected to fail in ALL FOUR, and (a) additionally on the profit-factor floor in three (1.122, 1.082, 0.367 against the 1.3 minimum; only 2014-2019's 1.396 clears it). (c) beats_buy_hold is expected to fail everywhere and is the least interesting of the four. (d) min_trades should pass everywhere. THE CELL THAT MATTERS IS 2014-2019. It is the ONLY period in which this bot has ever cleared its own gate — §35 recorded it passing the exposure-matched bar, and on the judge-off census it clears by +6.66pp. With the judge modelled it is predicted to FAIL by -5.90pp: return drops 69.02% -> 56.71% while deployment barely moves, so the bar stays put and the bot falls under it. If that flip reproduces, the single pass in this project's history was an artifact of a simulator that did not model a component the live bot has been running for weeks, and the honest count becomes ZERO periods in four. Stating it this precisely is the point: this prior is falsifiable to within a fraction of a percentage point, and if the run disagrees with these numbers then something in my understanding of the machine is wrong and THAT is the finding. A PASS anywhere would be genuinely surprising and would need explaining before it was believed.
+
+  verified bars_wide_2007-01-01_2013-12-31.json.gz  sha256 2ba815e1b0d2ca5d…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret   +2.42%  PF 1.082  maxDD 11.45%  trades   269  symbols 177  deploy  10.92%  (135s)
+
+  judge on baseline               sized 419540  cut 237450  vetoed 10384  truncated to 0    55
+
+  buy-and-hold on this universe: +92.48%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [FAIL] (a) enablement_gate  OOS profit factor 1.082 < 1.3; OOS return +2.42% beats neither B&H +92.48%, the risk-adjusted bar (dd 11.5% vs B&H dd 55.9%), nor the exposure-matched benchmark +10.10% (at 10.9% avg deployment)
+  [FAIL] (b) beats_exposure_matched  +2.42% vs +10.10% (B&H +92.48% x 10.9% deployment)
+  [FAIL] (c) beats_buy_hold  +2.42% vs B&H +92.48%
+  [PASS] (d) min_trades  269 vs 30
+
+VERDICT: REJECTED  (135s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+################ s43c ################
+s43c — Does the live ensemble clear its own enablement gate with the judge modelled? (2014-2019)
+claim EDGE | K=12 | frozen 2026-07-29T20:51:18 | sha 4edd461cfcb0bb34… | judge ON
+
+prior: This is predicted to FAIL, and the prediction is arithmetic rather than a hunch. §42's census — already published, judge on, same shipped config — gives return, buy-and-hold and average deployment for every period, and clause (b)'s bar is computable from them before this runs. Those computed bars are: 2000-2006 +9.45% against +29.02%; 2007-2013 +2.42% against +10.10%; 2014-2019 +56.71% against +62.61%; 2022-2026 -7.71% against +2.13%. So (b) is expected to fail in ALL FOUR, and (a) additionally on the profit-factor floor in three (1.122, 1.082, 0.367 against the 1.3 minimum; only 2014-2019's 1.396 clears it). (c) beats_buy_hold is expected to fail everywhere and is the least interesting of the four. (d) min_trades should pass everywhere. THE CELL THAT MATTERS IS 2014-2019. It is the ONLY period in which this bot has ever cleared its own gate — §35 recorded it passing the exposure-matched bar, and on the judge-off census it clears by +6.66pp. With the judge modelled it is predicted to FAIL by -5.90pp: return drops 69.02% -> 56.71% while deployment barely moves, so the bar stays put and the bot falls under it. If that flip reproduces, the single pass in this project's history was an artifact of a simulator that did not model a component the live bot has been running for weeks, and the honest count becomes ZERO periods in four. Stating it this precisely is the point: this prior is falsifiable to within a fraction of a percentage point, and if the run disagrees with these numbers then something in my understanding of the machine is wrong and THAT is the finding. A PASS anywhere would be genuinely surprising and would need explaining before it was believed.
+
+  verified bars_wide_2014-01-01_2019-12-31.json.gz  sha256 dca8dc85b8770f74…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret  +56.71%  PF 1.396  maxDD 10.72%  trades  3057  symbols 498  deploy  69.25%  (148s)
+
+  judge on baseline               sized 129179  cut  72932  vetoed  3123  truncated to 0   980
+
+  buy-and-hold on this universe: +90.41%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [FAIL] (a) enablement_gate  OOS return +56.71% beats neither B&H +90.41%, the risk-adjusted bar (dd 10.7% vs B&H dd 21.1%), nor the exposure-matched benchmark +62.61% (at 69.2% avg deployment)
+  [FAIL] (b) beats_exposure_matched  +56.71% vs +62.61% (B&H +90.41% x 69.2% deployment)
+  [FAIL] (c) beats_buy_hold  +56.71% vs B&H +90.41%
+  [PASS] (d) min_trades  3057 vs 30
+
+VERDICT: REJECTED  (148s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+################ s43d ################
+s43d — Does the live ensemble clear its own enablement gate with the judge modelled? (2022-2026)
+claim EDGE | K=12 | frozen 2026-07-29T20:51:18 | sha bcc25284ec0c668a… | judge ON
+
+prior: This is predicted to FAIL, and the prediction is arithmetic rather than a hunch. §42's census — already published, judge on, same shipped config — gives return, buy-and-hold and average deployment for every period, and clause (b)'s bar is computable from them before this runs. Those computed bars are: 2000-2006 +9.45% against +29.02%; 2007-2013 +2.42% against +10.10%; 2014-2019 +56.71% against +62.61%; 2022-2026 -7.71% against +2.13%. So (b) is expected to fail in ALL FOUR, and (a) additionally on the profit-factor floor in three (1.122, 1.082, 0.367 against the 1.3 minimum; only 2014-2019's 1.396 clears it). (c) beats_buy_hold is expected to fail everywhere and is the least interesting of the four. (d) min_trades should pass everywhere. THE CELL THAT MATTERS IS 2014-2019. It is the ONLY period in which this bot has ever cleared its own gate — §35 recorded it passing the exposure-matched bar, and on the judge-off census it clears by +6.66pp. With the judge modelled it is predicted to FAIL by -5.90pp: return drops 69.02% -> 56.71% while deployment barely moves, so the bar stays put and the bot falls under it. If that flip reproduces, the single pass in this project's history was an artifact of a simulator that did not model a component the live bot has been running for weeks, and the honest count becomes ZERO periods in four. Stating it this precisely is the point: this prior is falsifiable to within a fraction of a percentage point, and if the run disagrees with these numbers then something in my understanding of the machine is wrong and THAT is the finding. A PASS anywhere would be genuinely surprising and would need explaining before it was believed.
+
+  verified bars_wide_2022-01-01_2026-07-24.json.gz  sha256 081dc08727a8cd8e…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret   -7.71%  PF 0.367  maxDD 10.99%  trades    54  symbols  49  deploy   4.72%  (52s)
+
+  judge on baseline               sized 244673  cut 138709  vetoed  6031  truncated to 0   247
+
+  buy-and-hold on this universe: +45.11%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [FAIL] (a) enablement_gate  OOS return -7.71% not positive; OOS profit factor 0.367 < 1.3; OOS return -7.71% beats neither B&H +45.11%, the risk-adjusted bar (dd 11.0% vs B&H dd 21.7%), nor the exposure-matched benchmark +2.13% (at 4.7% avg deployment)
+  [FAIL] (b) beats_exposure_matched  -7.71% vs +2.13% (B&H +45.11% x 4.7% deployment)
+  [FAIL] (c) beats_buy_hold  -7.71% vs B&H +45.11%
+  [PASS] (d) min_trades  54 vs 30
+
+VERDICT: REJECTED  (52s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
