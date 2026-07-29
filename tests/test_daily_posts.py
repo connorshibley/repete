@@ -1,6 +1,5 @@
 """Daily plan/review posts: read-only scans, compliant text, no orders.
 All offline — LLM disabled by fixture, X stays dry_run."""
-import json
 
 import daily_posts
 from ledger import Ledger

@@ -35,7 +35,6 @@ never runs.
 """
 import os
 
-import pytest
 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

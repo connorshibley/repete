@@ -59,7 +59,7 @@ def _open_bracket_buy(ledger, entry=450.0, qty=10):
 
 def test_stop_leg_fill_reconciled(env):
     ledger, memory, cfg = env
-    tid = _open_bracket_buy(ledger)
+    _open_bracket_buy(ledger)
     broker = FakeBroker(orders={
         "entry-1": {"id": "entry-1", "status": "OrderStatus.FILLED",
                     "filled_avg_price": 450.0, "filled_qty": 10, "legs": []},
@@ -85,7 +85,7 @@ def test_stop_leg_fill_reconciled(env):
 
 def test_take_profit_leg_fill_reconciled(env):
     ledger, memory, cfg = env
-    tid = _open_bracket_buy(ledger)
+    _open_bracket_buy(ledger)
     broker = FakeBroker(orders={
         "entry-1": {"id": "entry-1", "status": "OrderStatus.FILLED",
                     "filled_avg_price": 450.0, "filled_qty": 10, "legs": []},
@@ -185,7 +185,7 @@ def test_broker_errors_never_crash_cycle(env):
 def test_plain_market_close_without_bracket(env):
     """Kill-switch flatten / manual close: no leg_ids, closed order resolves it."""
     ledger, memory, cfg = env
-    tid = ledger.log_decision("SPY", "buy", "crossover", {}, None, executed=True,
+    ledger.log_decision("SPY", "buy", "crossover", {}, None, executed=True,
                               order={"id": "entry-2", "symbol": "SPY", "qty": 10,
                                      "side": "buy", "status": "filled"},
                               entry_price=450.0, qty=10)

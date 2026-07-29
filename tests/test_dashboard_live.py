@@ -8,7 +8,6 @@ flawless. Everything else in this file is layout; that one is honesty.
 import json
 import os
 
-import pytest
 
 import dashboard
 from ledger import Ledger

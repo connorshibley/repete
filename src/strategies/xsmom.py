@@ -42,7 +42,7 @@ def generate(symbol: str, bars: list[dict], params: dict, holding: bool,
     ranks = cross_section["ranks"]
     if symbol not in ranks:
         return Signal(symbol, "hold",
-                      f"insufficient history for ranking", strategy=NAME)
+                      "insufficient history for ranking", strategy=NAME)
 
     n = cross_section["n"]
     rank = ranks[symbol]

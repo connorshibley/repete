@@ -170,7 +170,7 @@ def _render_html(tmp_path, cfg, monkeypatch):
     from ledger import Ledger
     led = Ledger(cfg["memory"]["ledger_path"])
     led.log_event("cycle_complete", '{"equity": 100150.0}')
-    tid = led.log_decision("SPY", "buy", "x", {}, None, executed=True,
+    led.log_decision("SPY", "buy", "x", {}, None, executed=True,
                            entry_price=100.0, qty=10, strategy="tsmom",
                            regime="up/low")
     out = tmp_path / "dash.html"

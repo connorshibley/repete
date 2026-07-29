@@ -5,7 +5,6 @@ osascript-only notifier turned every alert into a log line nobody reads, so the
 watchdog looked healthy while being useless. These tests assert the channel
 actually chosen, not just that nothing raised.
 """
-import subprocess
 
 import pytest
 

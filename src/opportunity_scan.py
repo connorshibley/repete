@@ -122,7 +122,6 @@ def main() -> int:
     broker only to READ bars and positions — there is no order call anywhere in
     this module, and a test enforces that.
     """
-    import os
     from dotenv import load_dotenv
     load_dotenv()
     import yaml

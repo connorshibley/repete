@@ -50,7 +50,7 @@ def _template_entry(trade: dict) -> str:
     action = trade.get("action", "trade").upper()
     rev = trade.get("llm_review") or {}
     parts = [
-        f"**This is a paper trade** — no real money is involved.",
+        "**This is a paper trade** — no real money is involved.",
         f"\n### The setup\nThe `{trade.get('strategy', 'ma_crossover')}` "
         f"strategy signaled {action} {trade.get('symbol')} at "
         f"~${trade.get('entry_price') or trade.get('exit_price') or 0:.2f}. "

@@ -1,12 +1,27 @@
-alpaca-py>=0.30
-anthropic>=0.40
-tweepy>=4.14
-pyyaml>=6.0
-python-dotenv>=1.0
-pandas>=2.0
-yfinance>=0.2  # earnings calendar (earnings-blackout filter)
-lxml>=5  # yfinance get_earnings_dates dependency
-tzdata>=2024.1  # make scripts/scheduler.py's ZoneInfo("America/New_York") self-
+# Agent runtime — DIRECT dependencies, pinned exactly.
+#
+# PINNED 2026-07-29 (W4-1) to the versions the live .venv has been running
+# since 2026-07-14, NOT to latest. Pinning and upgrading in one step would
+# confound "we made the build reproducible" with "we changed the runtime", and
+# these are the only versions with evidence behind them.
+#
+# `requirements.lock` is the authority for a reproducible install — it carries
+# the transitive closure, including numpy and pandas, which nothing here names
+# and on which every gate verdict's arithmetic rests. This file records WHICH
+# packages the agent asks for and why. The Dockerfile installs the lock.
+#
+# BUMPING A PIN IS A GATE-AFFECTING CHANGE. Re-run a frozen gate afterwards and
+# confirm the recorded numbers reproduce; if they do not, that is a finding to
+# record, not a reason to revert the pin quietly.
+alpaca-py==0.43.5
+anthropic==0.120.0
+tweepy==4.17.0
+pyyaml==6.0.3
+python-dotenv==1.2.2
+pandas==3.0.5
+yfinance==1.5.2  # earnings calendar (earnings-blackout filter)
+lxml==6.1.1  # yfinance get_earnings_dates dependency
+tzdata==2026.3  # make scripts/scheduler.py's ZoneInfo("America/New_York") self-
                 # sufficient. The current python:3.11-slim happens to ship a
                 # system tzdata deb, but that varies by Debian release / base
                 # image; this pin guarantees zoneinfo data so scheduler startup

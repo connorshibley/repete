@@ -35,7 +35,6 @@ import argparse
 import json
 import os
 import random
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -269,7 +268,7 @@ def main() -> int:
     roles = build_subscribers(os.path.join(pub_dir, "pub.db"), rng)
 
     print(f"  wrote {led}")
-    print(f"  subscribers: " + ", ".join(f"{k}={len(v)}" for k, v in roles.items()))
+    print("  subscribers: " + ", ".join(f"{k}={len(v)}" for k, v in roles.items()))
     print(f"  all emails @{DOMAIN} (RFC 2606 — undeliverable by construction)")
     return 0
 

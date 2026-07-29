@@ -4051,6 +4051,18 @@ This DIAGNOSTIC took §42 because it ran first. Numbers are permanent; the
 earlier plan text calling that claim "§42" is superseded here rather than
 edited away.
 
+**SUPERSEDED THE SAME DAY (2026-07-29, corrected in W4-6).** The paragraph
+above reserved §43 for the deferred decay claim, and then §43 was taken by the
+incumbent re-test, which registered and ran first — on the identical
+"whichever runs first takes the number" rule this note itself states. The
+reservation was never corrected at the time, so the record contradicted itself
+for several hours.
+
+**The deferred decay-plus-sizing claim becomes §44.** Reserving a number for a
+claim nobody has registered was the mistake; numbers are assigned at
+registration, and a reservation is not a registration. Corrected in place
+rather than rewritten, for the same reason §33 Run 1 is still in this document.
+
 ---
 
 ## §43 — THE INCUMBENT FACES ITS OWN GATE ON A SIMULATOR THAT MATCHES LIVE

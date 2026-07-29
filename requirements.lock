@@ -1,0 +1,81 @@
+# LOCKFILE — every package in the environment production actually runs,
+# transitive dependencies included. Generated with `pip freeze` from the .venv
+# that has been executing live cycles since 2026-07-14.
+#
+# WHY THIS FILE EXISTS (W4-1, 2026-07-29)
+# ---------------------------------------
+# This project's entire method is hash-frozen determinism: snapshots pinned by
+# sha256, pre-registrations frozen by canonical hash, and gate re-runs REQUIRED
+# to reproduce byte-identically (tests/test_run_gate_reproduces.py). All of that
+# sat on top of three requirements files that were `>=` with ZERO `==`.
+#
+# The exposure is not hypothetical. `numpy` and `pandas` arrive here as
+# TRANSITIVE dependencies — nothing named them — and a change in the last place
+# of a float is enough to move a profit factor across the 1.3 enablement
+# threshold. A verdict that cannot be reproduced is not a verdict, and nothing
+# in the repo would have caught the drift.
+#
+# THE RULE: bumping any pin is a change that must be followed by re-running at
+# least one frozen gate and confirming the recorded numbers still reproduce. If
+# they do not, that is a FINDING for knowledge/backtest_candidates.md — not
+# something to fix by reverting the pin until the old number comes back.
+#
+# Regenerate with:  .venv/bin/python -m pip freeze > requirements.lock
+alpaca-py==0.43.5
+annotated-doc==0.0.4
+annotated-types==0.8.0
+anthropic==0.120.0
+anyio==4.14.2
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+cffi==2.1.0
+charset-normalizer==3.4.9
+click==8.4.2
+curl_cffi==0.15.0
+distro==1.9.0
+docstring_parser==0.18.0
+fastapi==0.140.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.18
+iniconfig==2.3.0
+jiter==0.16.0
+lxml==6.1.1
+markdown-it-py==4.2.0
+mdurl==0.1.2
+msgpack==1.2.1
+multitasking==0.0.13
+numpy==2.4.6
+oauthlib==3.3.1
+packaging==26.2
+pandas==3.0.5
+peewee==4.2.6
+platformdirs==4.11.0
+pluggy==1.6.0
+protobuf==7.35.1
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+Pygments==2.20.0
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+pytz==2026.3.post1
+PyYAML==6.0.3
+requests==2.34.2
+requests-oauthlib==2.0.0
+rich==15.0.0
+six==1.17.0
+sniffio==1.3.1
+soupsieve==2.9.1
+sseclient-py==1.9.0
+starlette==1.3.1
+tweepy==4.17.0
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+tzdata==2026.3
+urllib3==2.7.0
+uvicorn==0.51.0
+websockets==16.1.1
+yfinance==1.5.2

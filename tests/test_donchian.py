@@ -7,7 +7,6 @@ the research says loses money.
 """
 from datetime import date, timedelta
 
-import pytest
 
 import strategies
 from strategies import donchian

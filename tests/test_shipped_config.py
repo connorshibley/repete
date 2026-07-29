@@ -26,7 +26,6 @@ import pytest
 import yaml
 
 import preflight
-import risk
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "config.yaml")

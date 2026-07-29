@@ -7,7 +7,7 @@ lost heavily in the 2022 bear. The SMA200 filter is load-bearing.
 Exits respect the swing guard (min_holding_days), so the earliest strategy
 exit is day 2; broker-side bracket legs still protect earlier.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 
 from strategies.base import Signal, sma, rsi
 

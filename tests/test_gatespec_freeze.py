@@ -28,7 +28,6 @@ it, a `check_frozen` that raised unconditionally would pass every test above.
 import copy
 import json
 import os
-import subprocess
 import sys
 
 import pytest

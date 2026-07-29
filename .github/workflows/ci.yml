@@ -1,4 +1,5 @@
-# CI (Phase D, 2026-07-22): tests + dependency CVE scan.
+# CI (Phase D, 2026-07-22; extended W4, 2026-07-29): lint, types, tests,
+# secret scan, dependency CVEs, backup drill.
 # The suite is fully offline by design (no secrets configured here, ever).
 name: ci
 on:
@@ -22,17 +23,95 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install
+        # requirements.lock is the reproducible install (W4-1): direct pins
+        # PLUS the transitive closure, including numpy and pandas — which
+        # nothing in requirements.txt names and on which every gate verdict's
+        # arithmetic rests. Installing the loose files here would leave CI
+        # resolving differently from production on any given day.
         run: |
-          pip install -r requirements.txt -r requirements-publisher.txt
+          pip install -r requirements.lock
           pip install -r requirements-dev.txt      # the pinned pytest, not a floating one
           pip install pip-audit
-      - name: Dependency CVE scan (pip-audit)
-        # Advisory, not blocking: a new CVE in a transitive dep should show
-        # up loudly in the log without freezing trading-agent development.
+
+      # ---- lint and types -------------------------------------------------
+      - name: Lint (ruff)
+        # BLOCKING, on a deliberately narrow rule set — see pyproject.toml for
+        # the enabled families, the measured counts of every deferred family,
+        # and why. Zero findings today, so this only ever fires on a
+        # regression.
+        run: ruff check src/ scripts/ tests/
+
+      - name: Types (mypy, advisory)
+        # NOT blocking, and scoped to the four pure-logic modules where a type
+        # error would corrupt a number rather than crash a cycle. 28 findings
+        # today, reviewed: the one in the sizing path (risk.py:322) is a false
+        # positive — `_risk_sizing_active` returns False on a falsy stop_price,
+        # which mypy cannot narrow through a helper. Do not "fix" it.
         continue-on-error: true
-        run: pip-audit -r requirements.txt -r requirements-publisher.txt
+        run: mypy src/risk.py src/gatespec.py src/judge_model.py src/significance.py
+
+      # ---- security -------------------------------------------------------
+      #
+      # NO SECRET-EXPOSURE STEP HERE, DELIBERATELY (W4-5, 2026-07-29).
+      #
+      # The W4 plan called for `scripts/check_secret_exposure.py` to run here as
+      # a blocking step. Measured before shipping it: that would have been a
+      # check that CAN NEVER FAIL.
+      #
+      # The script reads `.env` and searches `~/.claude/projects/*/*.jsonl`.
+      # Neither exists on a CI runner — `.env` is gitignored and never checked
+      # out — so it prints "No credentials found in .env — nothing to check"
+      # and returns 0 unconditionally. A green step proving nothing is worse
+      # than no step, because it reads as coverage.
+      #
+      # It is a LOCAL-MACHINE hygiene tool: it answers "is a live secret sitting
+      # in plaintext on this laptop?", which is a question about this laptop.
+      # Its home is the weekly launchd job (com.trading-agent.secretcheck).
+      #
+      # A CI secret scan is a genuinely different tool — one that scans the REPO
+      # for committed credentials (gitleaks/trufflehog shape). Not in scope for
+      # W4; recorded here so the gap is visible rather than assumed covered.
+      - name: Dependency CVE scan — advisory (all severities)
+        # Every finding, visible, non-blocking. Runs against the lockfile, so
+        # it finally covers transitive packages rather than the 12 direct ones.
+        continue-on-error: true
+        run: pip-audit -r requirements.lock
+
+      - name: Dependency CVE scan — BLOCKING on HIGH/CRITICAL
+        # W4-4. The advisory pass above was the ONLY scan until now, so a HIGH
+        # CVE scrolled past in a green build. This one fails the build.
+        # Kept as a second invocation rather than replacing the first: the
+        # advisory pass still surfaces MEDIUM and LOW, which are worth seeing
+        # without freezing development.
+        run: |
+          pip-audit -r requirements.lock --format json > audit.json || true
+          python - <<'PY'
+          import json, sys
+          data = json.load(open("audit.json"))
+          deps = data.get("dependencies", data) if isinstance(data, dict) else data
+          bad = []
+          for dep in deps:
+              for v in dep.get("vulns", []) or []:
+                  sev = str(v.get("severity") or "").upper()
+                  # pip-audit does not always carry a severity; when it is
+                  # absent we do NOT guess. An unrated CVE is reported by the
+                  # advisory pass and does not block here, because inventing a
+                  # severity would make this gate unfalsifiable.
+                  if sev in ("HIGH", "CRITICAL"):
+                      bad.append(f"{dep.get('name')} {dep.get('version')}: "
+                                 f"{v.get('id')} [{sev}]")
+          if bad:
+              print("BLOCKING — HIGH/CRITICAL advisories:")
+              for b in bad:
+                  print("  " + b)
+              sys.exit(1)
+          print("no HIGH/CRITICAL advisories")
+          PY
+
+      # ---- tests ----------------------------------------------------------
       - name: Tests (offline)
         run: python -m pytest tests/ -q
+
       - name: Backup + restore drill (smoke)
         # A backup that has never been restored is a hope, not a backup — prove
         # the round trip here too, not only on the weekly scheduled job.
