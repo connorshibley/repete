@@ -99,6 +99,10 @@ class Result:
     n_corr_blocked: int = 0     # entries stopped by the correlation cap
     n_fill_fallback: int = 0    # §25: fills that had no intraday bar and
                                 # reverted to the daily open (never silent)
+    census: dict = field(default_factory=dict)   # §40: signal -> outcome census
+    deployment_zero_pct: float = 0.0   # § 40: share of bars fully in cash
+    deployment_median_pct: float = 0.0
+    deployment_max_pct: float = 0.0
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
@@ -656,6 +660,22 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     guard_skips = 0
     n_heat_blocked = 0
     n_corr_blocked = 0
+    # §40 BLOCK CENSUS. `signals` is the denominator that did not exist before:
+    # every buy a strategy actually emitted. Each one then either executes or
+    # lands in exactly one `blocked` bucket, and the two must sum back to
+    # `signals` — asserted at the end of the run, not merely tested.
+    #
+    # Without a denominator, "blocked 40 times" cannot be read against anything.
+    # Without per-rail buckets the reason was discarded at the one moment it was
+    # known: every RiskRejection funnelled into a single counter. Across four
+    # periods this bot sits ~91% in cash and nobody could say why.
+    #
+    # Only simulate_ensemble is instrumented — it is what every gate runs.
+    census = {"signals": 0, "executed": 0, "blocked": {}}
+
+    def _blocked(reason: str):
+        census["blocked"][reason] = census["blocked"].get(reason, 0) + 1
+
     sim_peak = 0.0          # §31: running equity high-water for the drawdown rail
     fills_by_date: dict = {}
     last_exit: dict = {}          # (strategy, symbol) -> exit ts; cooldown is
@@ -737,8 +757,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 _cap_day = cfg["risk"].get("max_trades_per_day") or 0
                 if _cap_day and fills_by_date.get(date, 0) >= _cap_day:
                     by_strategy[owner]["blocked"] += 1
+                    _blocked("daily_cap")
                     continue
                 if sym in acct.positions:
+                    # Counted, not silent: this was the one drop the old
+                    # counters ignored entirely, so a book full of contended
+                    # names looked identical to no signals at all.
+                    _blocked("already_held")
                     continue          # another strategy already claimed it
                 fill = _fill_open(sym, bar, ts) * (1 + slip / 1e4)
                 i = idx[sym][ts]
@@ -779,6 +804,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                         if heat + new_risk > eq * heat_pct / 100:
                             n_heat_blocked += 1
                             by_strategy[owner]["blocked"] += 1
+                            _blocked("heat")
                             continue
                     ccfg = cfg["risk"].get("correlation_cap") or {}
                     if ccfg.get("enabled") and acct.positions:
@@ -791,10 +817,17 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                         if n_corr >= int(ccfg.get("max_correlated", 2)):
                             n_corr_blocked += 1
                             by_strategy[owner]["blocked"] += 1
+                            _blocked("correlation")
                             continue
-                except risk.RiskRejection:
+                except risk.RiskRejection as e:
+                    # §40: `e.rail` names which rail fired. Until 2026-07-29 this
+                    # handler discarded it, collapsing regime, position cap,
+                    # drawdown, cash and zero-quantity into one number. The
+                    # reason existed at the moment of the block and was dropped.
                     by_strategy[owner]["blocked"] += 1
+                    _blocked(getattr(e, "rail", "unattributed"))
                     continue
+                census["executed"] += 1
                 acct.cash -= qty * fill + fee
                 acct.positions[sym] = {
                     "qty": qty, "avg_entry": fill, "entry_ts": ts,
@@ -872,19 +905,23 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                                           entry_ts=None)
                 if sig.action != "buy":
                     continue
+                census["signals"] += 1      # §40 denominator
                 cd = cooldowns.get(name, 0)
                 if cd and risk.cooldown_blocked(last_exit.get((name, sym)),
                                                 ts, cd):
+                    _blocked("cooldown")
                     continue
                 blackout_days = sparams.get("earnings_blackout_days", 0)
                 if blackout_days and earnings and earnings_mod.next_within(
                         earnings.get(sym, []), ts, blackout_days):
+                    _blocked("earnings_blackout")
                     continue
                 # §23 relative-volume confirmation (entries only; fails open).
                 # `continue` not `break`: this symbol failed volume confirmation
                 # for THIS strategy, but a lower-priority strategy may still
                 # claim it — only an accepted buy consumes the symbol.
                 if risk.rvol_blocked(hist, cfg, name):
+                    _blocked("rvol")
                     continue
                 # §31 cross-asset credit gate (entries only; fails open).
                 # `break`, not `continue`: unlike rvol this is a MARKET-WIDE
@@ -893,6 +930,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # would re-evaluate an identical boolean for every remaining
                 # strategy and reach the same answer.
                 if risk.credit_blocked(credit, ts, cfg):
+                    _blocked("credit")
                     break
                 # Unprotectable entry (2026-07-27). `continue`, not `break`:
                 # this is a PER-SYMBOL property, so another strategy scanning a
@@ -900,9 +938,11 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # gate above.
                 if risk.unprotectable_entry(
                         hist[-1]["close"], strategies.atr(hist, 14), cfg):
+                    _blocked("unprotectable_entry")
                     continue
                 entry_cap = sparams.get("max_entries_per_cycle", 0)
                 if entry_cap and buys_queued[name] >= entry_cap:
+                    _blocked("entry_cap")
                     continue
                 pending.append((sym, "buy", name))
                 buys_queued[name] += 1
@@ -915,6 +955,29 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     final_ts = all_ts[-1] if all_ts else ""
     for sym in list(acct.positions):
         _exit(sym, last_close[sym], final_ts, "end_of_data")
+
+    # §40: the census must ACCOUNT for every signal. A missing one means a drop
+    # path exists that nobody is counting — which is precisely the state this
+    # census was built to end, so it fails loudly rather than balancing quietly.
+    # A buy queued on the last bar, or one whose symbol stopped printing bars,
+    # never reaches the fill path. It is a real signal that produced no trade
+    # and no block, and it is the drop path the balance check caught on its
+    # very first run — which is the whole argument for asserting the sum rather
+    # than trusting the buckets.
+    for _sym, _action, _owner in pending:
+        if _action == "buy":
+            _blocked("expired_unfilled")
+
+    _seen = census["executed"] + sum(census["blocked"].values())
+    if _seen != census["signals"]:
+        # Never balance quietly. An unexplained gap means a drop path exists
+        # that nobody counts, which is the exact state this census ends.
+        census["blocked"]["unaccounted"] = census["signals"] - _seen
+        print(f"  !! block census does not balance: {census['signals']} "
+              f"signals, {_seen} accounted for", file=sys.stderr)
+
+    _dep = sorted(deployment)
+    _n = len(_dep)
 
     total_ret = (acct.cash - start_cash) / start_cash * 100
     wins = [t for t in closed if t.pnl > 0]
@@ -931,6 +994,11 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         start=all_ts[0] if all_ts else "", end=final_ts,
         n_trades=len(closed), n_guard_skipped_exits=guard_skips,
         n_heat_blocked=n_heat_blocked, n_corr_blocked=n_corr_blocked,
+        census=census,
+        deployment_zero_pct=round(
+            100 * sum(1 for d in _dep if d < 1e-9) / _n, 2) if _n else 0.0,
+        deployment_median_pct=round(100 * _dep[_n // 2], 2) if _n else 0.0,
+        deployment_max_pct=round(100 * _dep[-1], 2) if _n else 0.0,
         n_fill_fallback=n_fill_fallback,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),

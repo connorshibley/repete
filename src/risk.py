@@ -27,7 +27,29 @@ _TRADECOUNT_FILE = "memory/.trade_counts.json"
 
 
 class RiskRejection(Exception):
-    """Raised when a hard rail blocks an order."""
+    """Raised when a hard rail blocks an order.
+
+    `rail` names WHICH rail, as a stable key — `heat`, `regime_exposure`,
+    `zero_qty` and so on. The message already said this in prose, but
+    `simulate_ensemble` caught every rejection in one handler and incremented a
+    single undifferentiated counter, so the reason was thrown away at the exact
+    moment it was known. Across four periods the bot sits ~91% in cash and
+    nobody could say why (§40).
+
+    Parsing the message string instead would be worse than the ignorance it
+    replaces: messages carry formatted numbers and change freely, so a
+    mis-bucketed census would read as a confident diagnosis. The tag is the
+    fact; the message is the display.
+
+    Defaults to `unattributed` rather than raising, so a new raise site that
+    forgets a tag shows up as an unexplained bucket in the census instead of
+    crashing a trading cycle. `tests/test_block_census.py` enumerates the raise
+    sites so it also fails loudly in CI.
+    """
+
+    def __init__(self, message: str, rail: str = "unattributed"):
+        super().__init__(message)
+        self.rail = rail
 
 
 def check_halt() -> bool:
@@ -592,7 +614,7 @@ def swing_guard(entry_ts: str | None, cfg: dict):
     if age_days < min_days:
         raise RiskRejection(
             f"swing guard: position is {age_days}d old, minimum holding period is "
-            f"{min_days}d — this bot does not day trade")
+            f"{min_days}d — this bot does not day trade", rail="swing_guard")
 
 
 def portfolio_heat(open_trades: dict, cfg: dict, equity: float) -> float:
@@ -714,11 +736,11 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     r = cfg["risk"]
 
     if qty <= 0:
-        raise RiskRejection("computed quantity is zero (account too small for caps)")
+        raise RiskRejection("computed quantity is zero (account too small for caps)", rail="zero_qty")
 
     order_value = qty * price
     if r.get("max_order_value_usd") and order_value > r["max_order_value_usd"]:
-        raise RiskRejection(f"order value ${order_value:,.0f} exceeds cap ${r['max_order_value_usd']:,}")
+        raise RiskRejection(f"order value ${order_value:,.0f} exceeds cap ${r['max_order_value_usd']:,}", rail="order_value_cap")
 
     if action == "buy":
         # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26). Entries only — exits ALWAYS
@@ -736,7 +758,7 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                 raise RiskRejection(
                     f"drawdown circuit breaker: {dd:.2f}% from peak "
                     f"${peak_equity:,.0f} (limit {dd_cap:.1f}%) — entries "
-                    f"blocked, exits still run")
+                    f"blocked, exits still run", rail="drawdown")
 
         # §29: 0 disables the count ceiling. Owner decision 2026-07-26 — "if
         # there's more to hold onto then hold onto it". Position COUNT is not
@@ -748,7 +770,7 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
         # only START binding once the $2k order clamp is gone.
         if (r["max_open_positions"] and len(positions) >= r["max_open_positions"]
                 and symbol not in positions):
-            raise RiskRejection(f"max open positions reached ({r['max_open_positions']})")
+            raise RiskRejection(f"max open positions reached ({r['max_open_positions']})", rail="max_open_positions")
         # Per-strategy slot allocation (§13). The global cap above is still a
         # hard ceiling over the whole book; this only ever makes a strategy's
         # own limit TIGHTER. Rationale (§12 + live evidence): a single shared
@@ -760,10 +782,10 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
         if (strat_cap and strategy_open is not None
                 and strategy_open >= strat_cap and symbol not in positions):
             raise RiskRejection(
-                f"max open positions for {strategy} reached ({strat_cap})")
+                f"max open positions for {strategy} reached ({strat_cap})", rail="strategy_slots")
         existing = positions.get(symbol, {}).get("market_value", 0.0)
         if existing + order_value > account["equity"] * r["max_position_pct"] / 100:
-            raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}")
+            raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}", rail="position_cap")
 
         recfg = r.get("regime_exposure") or {}
         if (recfg.get("enabled") and regime_label
@@ -773,10 +795,10 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
             if gross + order_value > cap:
                 raise RiskRejection(
                     f"down-regime exposure cap: gross ${gross + order_value:,.0f} "
-                    f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity")
+                    f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity", rail="regime_exposure")
 
     if action == "sell" and symbol not in positions:
-        raise RiskRejection(f"no position in {symbol} to sell (state desync guard)")
+        raise RiskRejection(f"no position in {symbol} to sell (state desync guard)", rail="desync_sell")
 
 
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
@@ -789,14 +811,14 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      strategy: str | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
     if check_halt():
-        raise RiskRejection("HALT file present — trading disabled")
+        raise RiskRejection("HALT file present — trading disabled", rail="halt")
     # §29: 0 disables. This is no longer a risk rail — it is a RUNAWAY GUARD.
     # Set well above observed demand (~15 buy signals/day live) so it never
     # refuses a real opportunity, but still bounds an API loop, a bad feed, or
     # a signal bug that would otherwise place orders until buying power ran out.
     _cap_day = cfg["risk"].get("max_trades_per_day") or 0
     if _cap_day and _trades_today() >= _cap_day:
-        raise RiskRejection(f"max trades per day reached ({_cap_day})")
+        raise RiskRejection(f"max trades per day reached ({_cap_day})", rail="daily_cap")
 
     # Count THIS strategy's currently-open positions for its slot allocation.
     strategy_open = None
@@ -828,7 +850,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
             raise RiskRejection(
                 f"portfolio heat cap: open stop-risk ${heat:,.0f} + this "
                 f"trade's ${new_risk:,.0f} would exceed "
-                f"{heat_cap_pct}% of equity (${cap:,.0f})")
+                f"{heat_cap_pct}% of equity (${cap:,.0f})", rail="heat")
 
     # Correlation heat cap (entries only; needs the cycle's bars). Fail-open
     # when bars are unavailable — the per-symbol cap above still applies.
@@ -843,7 +865,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
             raise RiskRejection(
                 f"correlation cap: {n} open positions already move with "
                 f"{symbol} (corr>={ccfg.get('threshold', 0.85)}) — "
-                f"co-moving names are one bet")
+                f"co-moving names are one bet", rail="correlation")
 
     if action == "sell":
         swing_guard(entry_ts, cfg)

@@ -3729,3 +3729,118 @@ Fixed by extracting `default_candidate()` with its own tests, and confirmed by
 control that restoring the old line turns the new test RED. The re-run used the
 identical frozen spec (`bd5b2be8…`, unchanged), and the simulation is
 deterministic — 268s versus 388s is CPU contention, not a different experiment.
+
+---
+
+## §40 — WHERE DOES THE CAPITAL GO? (2026-07-29) — **DIAGNOSTIC. And it found the thing.**
+
+Not a claim. No verdict. `scripts/census.py`, SHIPPED config unmodified
+(`risk_per_trade_pct 8.0`, `max_position_pct 10.0`,
+`max_portfolio_heat_pct 4.0`, `max_open_positions 0`).
+
+### The census
+
+| period | signals | executed | rate | fully in cash |
+|---|---|---|---|---|
+| 2000-2006 | 422,592 | **101** | 0.02% | **84.3%** of bars |
+| 2007-2013 | 423,926 | **155** | 0.04% | **86.8%** |
+| 2014-2019 | 336,408 | 1,732 | 0.51% | 18.9% |
+| 2022-2026 | 245,213 | **29** | 0.01% | **92.4%** |
+
+Median deployment is **0.00%** in three of the four periods.
+
+### What blocks them
+
+| period | top blocker | share of all signals |
+|---|---|---|
+| 2000-2006 | **drawdown** | **94.58%** |
+| 2007-2013 | **drawdown** | **96.71%** |
+| 2014-2019 | zero_qty 63.36%, **drawdown 20.65%** | |
+| 2022-2026 | **drawdown** | **99.43%** |
+
+### THE DRAWDOWN CIRCUIT BREAKER IS A ONE-WAY LATCH
+
+`risk.update_high_water` ratchets the peak upward and **never down** — correct,
+and documented as such: *"a drawdown rail measured against a peak that follows
+equity downward would never fire."* Entries are blocked at
+`max_drawdown_pct: 10.0`; exits keep running.
+
+Combine those two and follow it through:
+
+1. Equity peaks at **P**.
+2. A drawdown of ≥10% blocks every entry.
+3. Open positions exit normally. The book goes to cash.
+4. In cash, equity is **flat** — permanently ~0.9P.
+5. The peak stays **P**, so the drawdown stays ≥10%.
+6. **The bot never buys again. For the rest of the run.**
+
+There is no reset, no decay, no recovery path. A circuit breaker that cannot
+re-close is a kill switch. That is why 2000-2006 executed 101 trades out of
+422,592 signals, and why 2022-2026 executed **twenty-nine**.
+
+It also explains the 2014-2019 outlier exactly: a smooth bull market rarely
+draws down 10%, so the latch mostly never tripped — the only period the bot
+participated is the one where the rail never fired.
+
+### This is a LIVE defect, not a backtest artifact
+
+`pre_trade_checks` reads the same persisted high-water mark
+(`memory/.equity_highwater.json`) through the same `update_high_water`. The live
+bot has the identical latch. Measured tonight:
+
+```
+peak $99,933.29   equity $99,783.49   drawdown 0.15%   cap 10.0%
+entries blocked: NO   headroom: 9.85pp (trips at $89,939.96)
+```
+
+Production has not tripped. **It will on the first 10% drawdown, and will then
+stop buying permanently** until someone deletes that file by hand.
+
+### What it does to the ten rejections
+
+§29 adopted this rail on 2026-07-26. **§31, §32, §33, §33b, §34, §35, §37, §38
+and §39 all ran after that date.** Every one of them measured a bot that locks
+itself out of the market after its first 10% drawdown.
+
+That does not make those verdicts wrong, and none of them is being withdrawn.
+It does mean the question they answered was narrower than the question they
+appeared to answer: **"no edge found" and "no edge expressible" have been
+indistinguishable**, and §40 is the first evidence that the second was in play.
+
+The specific mistake to avoid: treating this as *"so the strategies are fine
+after all."* Nothing here shows that. §38 already demonstrated the same arms
+flipping sign across periods, and §34 showed no selector beats a coin. A bot
+that can trade is a precondition for measuring edge, not evidence of it.
+
+### Second finding: 63% of 2014-2019's signals died at zero quantity
+
+`zero_qty` — the computed position rounds below one share — blocked **213,155**
+signals in the one period the bot was actually invested. That is `min_one_share`
+(§28), registered as a candidate and never gated.
+
+### The correction I owe: three of four rows were not the incumbent
+
+§35, §37 and §38 each applied a shared overlay (`risk_per_trade_pct 2.0`,
+`max_position_pct 2.5`) so their arms differed only by strategy. Production
+ships **8.0** and **10.0**. Only §39 measured the real thing, yet the
+ALREADY-SEEN OBSERVATION above presented all four rows as "the incumbent". At
+shipped config, measured here:
+
+| period | incumbent | exposure-matched bar | |
+|---|---|---|---|
+| 2000-2006 | +5.26% | +11.18% | fails |
+| 2007-2013 | **+2.59%** | +9.02% | fails |
+| 2014-2019 | **+69.02%** | +62.36% | **passes by 6.66pp** |
+| 2022-2026 | **−5.26%** | +1.84% | fails |
+
+Still one pass in four. The margin in the passing period is wider than the
+earlier table showed (6.66pp, not 1.44pp), and the failures are unchanged.
+
+### Nothing was changed
+
+No config value, no rail, no threshold. **The fix is a separate pre-registered
+decision.** `config.yaml` already records a heat cap being raised and reverted
+the same day on reasoning that later stopped holding; loosening a risk rail
+because a diagnostic pointed at it is the same move. The latch has no reset
+path, which is a correctness question rather than a tuning one — but it is the
+owner's call, made deliberately, not at the end of a long session.
