@@ -4050,3 +4050,92 @@ sizing and test at MATCHED drawdown — becomes **§43** when it is registered.
 This DIAGNOSTIC took §42 because it ran first. Numbers are permanent; the
 earlier plan text calling that claim "§42" is superseded here rather than
 edited away.
+
+---
+
+## §43 — THE INCUMBENT FACES ITS OWN GATE ON A SIMULATOR THAT MATCHES LIVE
+
+**REJECTED, 0 of 4.** Specs `s43a`–`s43d`, frozen together 2026-07-29 as one
+claim (`f3f5901e6a99cce5…`, `9bd8d5394c287d89…`, `4edd461cfcb0bb34…`,
+`bcc25284ec0c668a…`), K=12, conjunction — all four must pass. Raw output:
+`research/s43_run_2026-07-29.txt`.
+
+**§39's pass mark, verbatim, clause for clause.** Same four clauses, same
+`n: 30`, same single arm, same shipped `config.yaml` with no risk overlay. The
+only thing that moved is the fidelity of the simulator: Wave 2 closed
+divergences #8 (the judge), #11 (live peak sampling) and #12 (raw bars). That
+is the design — any change in verdict is attributable to fidelity, not to a bar
+someone quietly made easier.
+
+`judge_model: true` on all four, and the runner's refusal check confirms it
+fired rather than merely being declared: 129,179–419,540 entries sized per
+period, 72,932–237,450 cut, 3,123–10,384 vetoed.
+
+### Result
+
+| period | return | exposure-matched bar | margin | PF | deploy | trades |
+|---|---|---|---|---|---|---|
+| 2000-2006 | +9.45% | +29.02% | **−19.57pp** | 1.122 | 20.95% | 753 |
+| 2007-2013 | +2.42% | +10.10% | **−7.68pp** | 1.082 | 10.92% | 269 |
+| 2014-2019 | +56.71% | +62.61% | **−5.90pp** | 1.396 | 69.25% | 3,057 |
+| 2022-2026 | −7.71% | +2.13% | **−9.84pp** | 0.367 | 4.72% | 54 |
+
+Clauses (a), (b) and (c) FAIL in all four periods. Clause (d) `min_trades`
+passes in all four. Nothing is enabled; the incumbent stands as the incumbent
+only because nothing has been proposed to replace it.
+
+### The finding: the one pass in this project's history was an artifact
+
+2014-2019 is the only period in which this bot has ever cleared its own gate.
+§35 recorded it passing the exposure-matched bar, and on the judge-off census it
+clears by **+6.66pp** (+69.02% against a +62.36% bar). With the judge modelled
+it **fails by −5.90pp** (+56.71% against +62.61%). Deployment barely moves
+(68.97% → 69.25%), so the bar stays where it was and the bot falls under it.
+
+That single flip changes the honest count from **one period in four** to
+**zero in four**. The pass was not a marginal result that survived scrutiny — it
+was produced by a simulator that omitted a component the live bot had been
+running for weeks.
+
+### The prior called every number before the run
+
+The frozen prior computed clause (b) for all four periods from §42's
+already-published census and named the expected margins. **Every cell matched
+the run exactly** — +9.45/+29.02, +2.42/+10.10, +56.71/+62.61, −7.71/+2.13, and
+profit factors 1.122 / 1.082 / 1.396 / 0.367.
+
+This is worth stating plainly in both directions. It is pre-registration working
+as intended: the prediction was specific to a fraction of a percentage point and
+could have been embarrassed by any of forty numbers. It is also **weaker
+evidence than it looks**, and the spec's own failure modes say so: the census
+inputs were already known, so (b) and (c) were arithmetic, not discovery. The
+genuinely new information is clause (a) `enablement_gate`, which is not
+computable from a census, and it failed in all four.
+
+### What §43 does NOT license
+
+- **It does not reverse anything.** Ten EDGE claims were rejections and remain
+  rejections. §43 is the eleventh EDGE rejection. **EDGE claims: 0 for 11.**
+- **It does not say the live bot loses money.** The paper ledger holds **two**
+  closed round-trips, both winners. n=2 decides nothing in either direction.
+- **It is not a licence to tune.** Fitting parameters to any of these periods
+  now would manufacture exactly the overfit §33 and §34 established this
+  repository cannot detect. No threshold is being adjusted in response.
+- **Survivorship still flatters the incumbent** in all four periods, so these
+  FAILs are strong evidence and a PASS would have been weak. The 500-symbol
+  universe against 38 tuned symbols remains an uncontrolled confound.
+
+### The honest reading
+
+§39 established that the incumbent fails its own gate on one unseen period.
+§43 establishes that it fails on all four, on the first simulator this project
+has had that models what the live bot actually does — and that the lone
+historical pass does not survive the repair.
+
+The question this programme has been asking since §14 is *"is this candidate
+better than what we run?"* §43 says the more useful question is whether what we
+run should be running at all. That is the owner's decision, not a gate's, and it
+is now supported by four periods spanning 26 years rather than one.
+
+**Nothing enabled. `mode: paper` unchanged. `drawdown_decay` still absent from
+`config.yaml`. EDGE 0 for 11.**
