@@ -198,6 +198,23 @@ def validate(spec: dict) -> None:
           "bonferroni_k must be a positive integer — family-wise error "
           "accumulates across a research programme even when hypotheses differ")
 
+    # `judge_model` — whether the simulated judge runs (W2-1, 2026-07-29).
+    #
+    # Optional HERE and mandatory in register_gate.py, which is not an
+    # inconsistency: specs frozen before this field existed (§35-§41) must still
+    # load and re-execute byte-identically, or the record they produced stops
+    # being reproducible. Making it required at REGISTRATION means no NEW claim
+    # can be frozen without declaring it, while every old hash stands.
+    #
+    # Absence therefore means "predates the field", not "false" — and
+    # run_gate.py banners that case loudly rather than defaulting quietly.
+    # Empty is not the same as absent.
+    if "judge_model" in spec:
+        _need(isinstance(spec["judge_model"], bool),
+              "judge_model must be true or false, not a string or a number — "
+              "it decides whether the run models the judge that cuts 58% of "
+              "live buys, and a truthy string would silently read as `on`")
+
     _need(isinstance(spec["failure_modes"], list) and spec["failure_modes"],
           "`failure_modes` must name at least one way this result could fool "
           "you. A registration that cannot fail honestly is not one.")

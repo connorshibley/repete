@@ -48,6 +48,10 @@ def _spec(**over):
         "id": "t1", "claim": "EDGE", "title": "a test claim",
         "snapshot": {"path": "bars.json.gz", "sha256": "a" * 64},
         "cash": 100000.0, "bonferroni_k": 8,
+        # W2-1: register_gate.py refuses a spec without this, so the fixture
+        # carries it. Every spec frozen from 2026-07-29 onward declares whether
+        # it models the judge; §35-§41 predate the field and omit it.
+        "judge_model": True,
         "arms": [{"name": "baseline"},
                  {"name": "cand", "set": {"risk.max_trades_per_day": 10}}],
         "clauses": [{"id": "a", "rule": "pf_gt_baseline"},

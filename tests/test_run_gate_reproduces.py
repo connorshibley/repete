@@ -83,7 +83,11 @@ def _fake_run_arm(job):
     _, arm, *_ = job
     seed = sum(ord(c) for c in arm["name"])
     return (arm["name"], _summary(profit_factor=1.0 + seed / 1000),
-            [float(seed % 7)] * 50, 0.0)
+            [float(seed % 7)] * 50, 0.0, _NO_JUDGE.copy())
+
+
+# What judge_model.stats() returns on a run where the model never fired.
+_NO_JUDGE = {"sized": 0, "cut": 0, "vetoed": 0, "zeroed": 0}
 
 
 # ---- clause rules do what the prose says ----
@@ -176,9 +180,9 @@ def test_results_are_rekeyed_into_spec_order():
     left all ten tests green.
     """
     arms = [{"name": "baseline"}, {"name": "a"}, {"name": "b"}]
-    done = [("b", _summary(profit_factor=3.0), [3.0], 0.0),
-            ("baseline", _summary(profit_factor=1.0), [1.0], 0.0),
-            ("a", _summary(profit_factor=2.0), [2.0], 0.0)]
+    done = [("b", _summary(profit_factor=3.0), [3.0], 0.0, _NO_JUDGE),
+            ("baseline", _summary(profit_factor=1.0), [1.0], 0.0, _NO_JUDGE),
+            ("a", _summary(profit_factor=2.0), [2.0], 0.0, _NO_JUDGE)]
     out = run_gate.in_spec_order(done, arms)
     assert list(out) == ["baseline", "a", "b"]
     assert out["baseline"][0]["profit_factor"] == 1.0
@@ -189,7 +193,7 @@ def test_a_missing_arm_is_an_error_not_a_silent_gap():
     `baseline` key is absent and letting `evaluate` raise a KeyError three
     frames later."""
     with pytest.raises(SystemExit, match="produced no result"):
-        run_gate.in_spec_order([("a", _summary(), [1.0], 0.0)],
+        run_gate.in_spec_order([("a", _summary(), [1.0], 0.0, _NO_JUDGE)],
                                [{"name": "baseline"}, {"name": "a"}])
 
 
