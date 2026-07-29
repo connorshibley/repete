@@ -1,20 +1,20 @@
 {
-  "downsize_rate": 0.534722,
-  "mean_scale": 0.752083,
+  "downsize_rate": 0.58125,
+  "mean_scale": 0.729375,
   "min_sample": 50,
-  "n_judged_buys": 146,
-  "n_sized": 144,
+  "n_judged_buys": 164,
+  "n_sized": 160,
   "observed_from": "2026-07-16",
-  "observed_span_days": 7,
-  "observed_to": "2026-07-23",
+  "observed_span_days": 12,
+  "observed_to": "2026-07-28",
   "scale_histogram": {
     "0.4": 5,
-    "0.5": 49,
-    "0.6": 15,
+    "0.5": 61,
+    "0.6": 19,
     "0.7": 6,
     "0.8": 2,
     "1.0": 67
   },
-  "source_ledger_sha256_16": "cd63a56ff048693d",
-  "veto_rate": 0.013699
+  "source_ledger_sha256_16": "f7cc2b35b81ec117",
+  "veto_rate": 0.02439
 }

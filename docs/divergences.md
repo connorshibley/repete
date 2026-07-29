@@ -4,10 +4,16 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Ten such differences have been found. Until 2026-07-28 they existed **only as
+Twelve such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
-in fact for two days without anyone noticing. This file is the list.
+in fact for three days without anyone noticing. This file is the list.
+
+**Open as of 2026-07-29: none.** That is a statement about the twelve found, not
+a claim that twelve is all there are. #10, #11 and #12 were all discovered by
+reading code for an adjacent task, within four days of this register being
+created — and #12 had been sitting in `data/snapshots/MANIFEST.json` in plain
+English the whole time.
 
 **A divergence is CLOSED only when a test would fail if it reopened.** "Fixed in
 code" is not closed; the repo has been wrong about that before.
@@ -21,31 +27,56 @@ code" is not closed; the repo has been wrong about that before.
 | 5 | Relative-volume filter re-implementation risk | **pre-empted** | Single implementation, `src/risk.py:325-327` |
 | 6 | Credit-gate re-implementation risk | **pre-empted** | Single implementation, `src/risk.py:430-431` |
 | 7 | Repository vs reality — the running checkout was 57 commits behind the reviewed code (§26) | **closed** | `src/deploycheck.py`, `tests/test_deploycheck.py` (22 tests) |
-| 8 | **The LLM judge is absent from the simulator** | **OPEN** | see below |
+| 8 | **The LLM judge is absent from the simulator** | **closed 2026-07-29** | `tests/test_judge_is_declared_not_assumed.py` |
 | 9 | Drawdown rail existed on the live path only | **pre-empted** | `risk.drawdown_pct` shared (`src/risk.py:158-169`, `backtest.py:348,679`) |
 | 10 | **The simulator's equity peak advanced only on buy bars** | **closed 2026-07-28** | `tests/test_sim_peak_tracks_every_bar.py` |
+| 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
+| 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
 
 ---
 
 ## #8 — the judge is modelled and switched off
 
 `src/judge_model.py` was built for §29 (2026-07-26) specifically to close this,
-and `config.yaml:546` ships `judge_model.enabled: false`. `judge_model` appears
+and `config.yaml` shipped `judge_model.enabled: false`. `judge_model` appeared
 in **no** file under `research/specs/` and nowhere in `scripts/run_gate.py`.
 
-So §35, §37, §38 and §39 — every gate run *after* the fix was written — measured
-a bot with no judge, while the live judge downsizes **56.7%** of buys at a mean
-scale of 0.752 (164 judged buys in `memory/ledger.jsonl`). The simulator has
-therefore been sizing entries roughly 33% larger than the live bot would on the
-majority of trades.
+So §35, §37, §38, §39, §40 and §41 — every gate run *after* the fix was
+written — measured a bot with no judge, while live the judge downsizes **58.1%**
+of buys and vetoes **2.4%** at a mean scale of **0.729** (164 judged buys in
+`memory/ledger.jsonl`). The simulator was sizing entries roughly a third larger
+than the live bot would on the majority of trades.
 
 This one is instructive: the code landed, the divergence was declared closed,
 and the switch was never flipped. That is why this register records the *test*
 that closes each entry rather than the commit that fixed it.
 
-**Closes when:** `judge_model.enabled` is true in the gate path, the calibration
-is refreshed from the current ledger, and a test asserts a gate run with the
-judge on differs from one with it off.
+### CLOSED 2026-07-29 (W2-1)
+
+Closed in two independent places, because a flag alone would repeat the
+original failure in a new costume:
+
+1. **Declared, not defaulted.** `gatespec` accepts a top-level `judge_model`
+   bool and `scripts/register_gate.py` REFUSES to freeze any spec without one.
+   The setting enters the canonical hash, so a spec registered judge-off cannot
+   be re-run judge-on and still pass the freeze check.
+2. **Proven, not claimed.** `judge_model` counts what it did
+   (`sized`/`cut`/`vetoed`/`zeroed`), and `run_gate.py` refuses to write a
+   verdict when a spec says `judge_model: true` while those counters say the
+   model never acted. A verdict labelled judge-on and measured judge-off is
+   worse than no verdict, because it looks like this entry got closed.
+
+**Absence is not `false`.** §35-§41 predate the field and keep their frozen
+hashes, so they still re-execute byte-identically — the record stays
+reproducible. `run_gate.py` banners those runs as judge-less rather than
+defaulting them quietly. A spec that says `false` made a choice; a spec with no
+field did not know there was one, and flattening the two would erase the whole
+finding.
+
+**What is NOT claimed:** the pre-W2-1 verdicts are not withdrawn or re-scored.
+They remain valid measurements of a judge-less bot, and must be read as such.
+Calibration also refreshed here: n=146 (through 2026-07-23, pre-§29 sizing) to
+n=164 (through 2026-07-28). The judge cuts *more* than the stale file said.
 
 ## #10 — the peak that only moved on buy bars
 
@@ -74,7 +105,76 @@ transact is not a high-water mark.
 **Note for §41:** live still samples the peak only when an order is *attempted*
 (`pre_trade_checks` is not called on a cycle that places nothing). That is the
 same class of error, one level up, and it is in scope for §41 rather than fixed
-quietly here.
+quietly here. — **Now #11 below, closed 2026-07-29.**
+
+## #11 — live sampled the peak only when an order was attempted
+
+Predicted by #10's own note and closed 2026-07-29 (W2-2).
+
+§31 put `risk.update_high_water` inside `risk.pre_trade_checks`, and reasoned
+explicitly about running it for sells as well as buys — *"the peak must keep
+tracking even while entries are blocked"* (`src/risk.py:899-902`). That
+reasoning is correct and insufficient: `pre_trade_checks` has exactly one caller
+(`main.py`'s order loop) and fires **only when an order is actually attempted**.
+A cycle producing no buy and no sell never touched the mark at all.
+
+**Direction of the error.** The peak only ratchets up, so equity earned on a
+quiet day was invisible to it. A book drifting up over a week of holds keeps
+last week's peak, and the first 10% drawdown is then measured from a stale LOW
+peak — the breaker fires **late**. This runs OPPOSITE to #10, which made the
+sim's latch bite *less* than live. The two errors were not cancelling: one was
+in the simulator and one is in production.
+
+**Where it bites.** Invisibly on the 500-symbol snapshots, where something
+trades on virtually every bar — which is exactly why #10's census came back
+byte-identical. It bites on the book this bot actually runs: **38 symbols, with
+whole days where nothing is entered.** Same shape as #10: the error hid in the
+place nobody measures.
+
+Closed by ratcheting once per cycle in `src/main.py`, immediately after the
+account is read fresh from the broker (invariant #4) and before the first early
+return — the daily-loss kill switch and the HALT check both return before the
+order loop, so any later placement would leave the same hole. `pre_trade_checks`
+still ratchets per order; this is the floor under it, and `update_high_water` is
+max-based so running both is a no-op the second time.
+
+## #12 — live read raw bars, every snapshot is adjusted
+
+Found 2026-07-29 (W2-3).
+
+`alpaca-py`'s `StockBarsRequest.adjustment` defaults to `None`, which the API
+treats as **raw**. Neither `broker.bars()` (the live path) nor
+`backtest.fetch_bars()` passed it. Every frozen snapshot, meanwhile, is split-
+AND dividend-adjusted: `scripts/build_snapshot.py` uses yfinance
+`auto_adjust=True`, and `scripts/build_intraday_snapshot.py` already used
+`adjustment=Adjustment.ALL`.
+
+So **the live bot has been reading a different price series from the one every
+gate verdict was scored on.**
+
+**Direction of the error, and why it is not small.** A 2-for-1 split in a raw
+series is a 50% overnight gap that never happened. It collapses an SMA, spikes
+ATR, and can fire an entry signal or trip a stop on an event that did not change
+the value of a single share held. The bot cannot distinguish that gap from a
+crash. The effect is not a consistent bias in one direction — it is noise
+injected at unpredictable moments, which is worse than a bias because it cannot
+be corrected for.
+
+**This was already written down.** `data/snapshots/MANIFEST.json` records the
+first intraday build going out RAW and carrying **11 unadjusted splits** "that
+the simulator read as overnight collapses — it voided a gate run." The fix was
+applied to that one builder and never propagated to the live path. Same failure
+shape as #8: the lesson was learned, recorded, and applied in exactly one place.
+
+Closed by passing `Adjustment.ALL` in both request builders.
+`tests/test_bars_are_split_adjusted.py` asserts both, refuses `SPLIT`-only
+(which would leave a dividend mismatch), and asserts the snapshot builder still
+auto-adjusts — so the alignment cannot be re-broken from either side.
+
+**This changes live inputs.** It is a data-correctness fix, not a strategy or
+threshold change, so it is not gated — but it is the one item in W2 that alters
+what the production bot sees, and it is recorded here rather than mentioned in
+a commit message.
 
 ---
 

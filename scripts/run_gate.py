@@ -47,6 +47,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import backtest as bt                                       # noqa: E402
 import gatespec as gs                                       # noqa: E402
+import judge_model as jm                                    # noqa: E402
 import significance as sig                                  # noqa: E402
 
 SPEC_DIR = "research/specs"
@@ -96,14 +97,44 @@ def verify_data(spec: dict) -> dict:
 
 # ---- running ---------------------------------------------------------------
 
+def judge_setting(spec: dict) -> bool | None:
+    """True / False as declared, or None for a spec that predates the field.
+
+    None is NOT False. §35-§41 were scored judge-less by accident, and the
+    difference between "chose not to model the judge" and "did not know the
+    question existed" is the whole finding — flattening them here would erase
+    it. register_gate.py refuses any NEW spec without the field.
+    """
+    return spec.get("judge_model")
+
+
+def apply_judge(cfg: dict, on: bool) -> dict:
+    """Set the simulated judge for this run, overriding config.yaml.
+
+    config.yaml ships `enabled: false` on purpose, so gates predating W2-1
+    reproduce. The SPEC decides, not the ambient config — which is what makes
+    the setting part of the frozen registration rather than of whatever the
+    machine happened to have on disk that day.
+    """
+    cfg.setdefault("backtest", {}).setdefault("judge_model", {})["enabled"] = on
+    return cfg
+
+
 def run_arm(args) -> tuple:
-    """(name, summary dict, trade pnls, seconds). Top-level so it can pickle."""
+    """(name, summary, trade pnls, seconds, judge stats). Top-level to pickle.
+
+    The judge counters are read HERE and returned, not read by the parent after
+    the pool closes: arms fan out over `fork`, so each child mutates its own
+    copy of the module global and the parent's would stay at zero. Returning
+    them is what makes the parent's refusal check see real numbers.
+    """
     spec, arm, base_cfg, sym_bars, aux, cash = args
     t0 = time.monotonic()
     cfg = gs.apply_overlay(base_cfg, spec, arm)
+    jm.reset_stats()
     result = bt.simulate_ensemble(sym_bars, cfg, cash, **aux)
     return (arm["name"], result.summary(), sig.trade_pnls(result),
-            time.monotonic() - t0)
+            time.monotonic() - t0, jm.stats())
 
 
 def run_arms(spec, base_cfg, sym_bars, aux, cash, workers: int) -> dict:
@@ -138,7 +169,8 @@ def in_spec_order(done: list, arms: list) -> dict:
     mapping ever slipped, the pass mark would invert silently rather than
     error, which is the worst available failure.
     """
-    by_name = {name: (summary, pnls, secs) for name, summary, pnls, secs in done}
+    by_name = {name: (summary, pnls, secs, jstats)
+               for name, summary, pnls, secs, jstats in done}
     missing = [a["name"] for a in arms if a["name"] not in by_name]
     if missing:
         raise SystemExit(f"arms produced no result: {missing}")
@@ -168,7 +200,7 @@ def default_candidate(spec: dict) -> str:
 
 def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
     base_summary = arms["baseline"][0]
-    cand_summary, cand_pnls, _ = arms[candidate]
+    cand_summary, cand_pnls = arms[candidate][0], arms[candidate][1]
     base_pnls = arms["baseline"][1]
 
     comp = None
@@ -263,17 +295,39 @@ def main() -> int:
     spec = gs.load(os.path.join(args.spec_dir, f"{args.spec_id}.yaml"))
     reg = check_frozen(spec, args.registrations)
 
+    judge = judge_setting(spec)
     print(f"{spec['id']} — {spec['title']}")
     print(f"claim {spec['claim']} | K={spec.get('bonferroni_k', 1)} | "
           f"frozen {reg['registered_at'][:19]} | "
-          f"sha {reg['spec_sha256'][:16]}…\n")
+          f"sha {reg['spec_sha256'][:16]}… | "
+          f"judge {'ON' if judge else 'OFF' if judge is False else 'UNDECLARED'}\n")
+    if judge is None:
+        print("=" * 72)
+        print("THIS SPEC PREDATES THE `judge_model` FIELD (W2-1, 2026-07-29).")
+        print("It runs WITHOUT the simulated judge, which is how it was frozen")
+        print("and the only way it reproduces. Live, the judge cuts 58% of buys")
+        print("and vetoes 2.4% — so this run measures a bot that does not exist")
+        print("in production. That is divergence #8, and it is why §35-§41 must")
+        print("be read as judge-less measurements.")
+        print("=" * 72 + "\n")
     print(f"prior: {spec['prior'].strip()}\n")
     verify_data(spec)
     if args.dry_run:
         print("\n--dry-run: freeze and data verified, nothing scored.")
         return 0
 
-    base_cfg = bt.load_config()
+    base_cfg = apply_judge(bt.load_config(), bool(judge))
+    if judge:
+        # Fail here, not 300 seconds into the run. A missing or too-small
+        # calibration raises CalibrationError by design rather than silently
+        # sizing at 1.0 — but only on first use, which without this line is
+        # deep inside a worker process where the traceback is worth less.
+        cal = jm.load_calibration()
+        print(f"  judge calibration n={cal['n_judged_buys']} "
+              f"({cal['observed_from']}..{cal['observed_to']})  "
+              f"veto {cal['veto_rate']:.1%}  "
+              f"downsize {cal['downsize_rate']:.1%}  "
+              f"mean scale {cal['mean_scale']:.3f}")
     sym_bars = bt.load_bars_file(spec["snapshot"]["path"])
     aux = {k: bt.load_bars_file(v["path"])
            for k, v in (spec.get("aux") or {}).items()}
@@ -295,8 +349,41 @@ def main() -> int:
     arms = run_arms(spec, base_cfg, sym_bars, aux,
                     spec.get("cash", 100_000.0), args.workers)
     wall = time.monotonic() - t0
-    for name, (summary, _, secs) in arms.items():
+    for name, (summary, _, secs, _js) in arms.items():
         print(fmt(name, summary, secs), flush=True)
+
+    judged = {name: js for name, (_, _, _, js) in arms.items()}
+    if judge:
+        print()
+        for name, js in judged.items():
+            print(f"  judge on {name:<22} sized {js['sized']:6d}  "
+                  f"cut {js['cut']:6d}  vetoed {js['vetoed']:5d}  "
+                  f"truncated to 0 {js['zeroed']:5d}")
+        # THE CHECK THAT MAKES THE FLAG MEAN SOMETHING.
+        #
+        # `judge_model: true` is a claim the run makes about itself. Without
+        # this, a broken wiring, an empty histogram or a future refactor that
+        # stops calling judge_model.apply() would produce a verdict labelled
+        # judge-on and measured judge-off — which is precisely the failure that
+        # went unnoticed from §35 to §41, wearing a different hat.
+        #
+        # Refusing BEFORE the verdict is written is the point: a rejected run
+        # costs the compute again, while a wrong row in verdicts.jsonl is a
+        # false record that later work is built on.
+        total = sum(js["sized"] for js in judged.values())
+        acted = sum(js["cut"] + js["vetoed"] for js in judged.values())
+        if total == 0 or acted == 0:
+            raise SystemExit(
+                f"\nREFUSING to record {spec['id']}: the spec declares "
+                f"`judge_model: true`,\nbut the model never acted — "
+                f"{total} entries sized, {acted} cut or vetoed.\n\n"
+                f"A verdict labelled judge-on and measured judge-off is worse "
+                f"than no\nverdict: it looks like it closed divergence #8. "
+                f"Nothing has been written.\n\n"
+                f"Check that backtest.simulate_ensemble still calls "
+                f"judge_model.apply(), and\nthat "
+                f"knowledge/judge_calibration.json has a non-degenerate "
+                f"histogram.")
 
     bh = arms["baseline"][0].get("buy_hold_return_pct")
     if bh is not None:
@@ -367,7 +454,12 @@ def main() -> int:
         "passed": verdict["passed"], "clauses": verdict["clauses"],
         "comparison": verdict["comparison"], "wall_seconds": round(wall, 1),
         "workers": args.workers,
-        "arms": {name: summary for name, (summary, _, _) in arms.items()},
+        # Recorded so verdicts.jsonl can be read years from now without having
+        # to reconstruct which config was on disk. `null` means the spec
+        # predates the field — §35-§41 — and is NOT the same as `false`.
+        "judge_model": judge,
+        "judge_stats": judged if judge else None,
+        "arms": {name: summary for name, (summary, _, _, _) in arms.items()},
     }
     os.makedirs(os.path.dirname(args.verdicts) or ".", exist_ok=True)
     with open(args.verdicts, "a") as f:

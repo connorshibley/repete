@@ -580,6 +580,37 @@ def _run_cycle(completed_bars_only: bool = False):
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
 
+    # --- DIVERGENCE #11: ratchet the equity peak ONCE PER CYCLE ---
+    #
+    # §31 put `update_high_water` inside `risk.pre_trade_checks`, which is only
+    # ever called from ONE place (the order loop below) and only when an order
+    # is actually attempted. So a cycle that generates no buy and no sell never
+    # touched the high-water mark at all.
+    #
+    # Why that matters, given the peak only ever ratchets UP: equity earned on
+    # a quiet day is invisible to it. The book drifts up over a week of holds,
+    # nobody trades, the peak stays at last week's value — and then the first
+    # 10% drawdown is measured from a stale low peak, so the breaker fires LATE
+    # (or, symmetrically, a real high never registers and the bot sits closer to
+    # the rail than its equity says it should).
+    #
+    # It is the same class of error as divergence #10 one level up: the
+    # simulator ratcheted only inside the buy branch, live ratchets only inside
+    # an order attempt. §40 found the sim version; this is its live twin, and it
+    # bites HARDEST on exactly the book this bot runs — 38 symbols with whole
+    # days of no entries — while being invisible on the 500-symbol snapshots
+    # where something trades on virtually every bar.
+    #
+    # Reading fresh from the broker (invariant #4), before any decision, is the
+    # only placement that makes the mark independent of what the cycle decides
+    # to do. `pre_trade_checks` still ratchets per order; this is not a
+    # replacement for it but the floor under it, and update_high_water is
+    # idempotent-by-max so running both is a no-op on the second call.
+    if cfg["risk"].get("max_drawdown_pct"):
+        _peak = risk.update_high_water(account["equity"])
+        log.info("Equity peak: $%.2f (drawdown %.2f%%)",
+                 _peak, risk.drawdown_pct(account["equity"], _peak))
+
     # --- Kill switch: daily loss limit ---
     if risk.daily_loss_breached(account, cfg):
         # Engage HALT and record the breach BEFORE attempting the flatten. A

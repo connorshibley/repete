@@ -63,6 +63,33 @@ def main() -> int:
         raise SystemExit(f"spec id {spec['id']!r} does not match filename "
                          f"{args.spec_id!r}")
 
+    # W2-1 (2026-07-29). The judge is not optional to THINK about, only to use.
+    #
+    # §29 built src/judge_model.py to close the live half of divergence #8 and
+    # shipped it `enabled: false`. Nothing in run_gate.py ever turned it on, so
+    # §35, §37, §38, §39, §40 and §41 all scored a bot with no judge while the
+    # live bot cut 58% of its buys. That went unnoticed for three days because
+    # a judge-less run and a judge-on run are indistinguishable from the
+    # outside: both just print numbers.
+    #
+    # Refusing at REGISTRATION rather than at load is deliberate. Old specs keep
+    # their frozen hashes and re-execute byte-identically — the record stays
+    # reproducible — while no NEW claim can be frozen without its author having
+    # answered the question out loud, in the file, before seeing any data.
+    if "judge_model" not in spec:
+        raise SystemExit(
+            f"REFUSING to register {args.spec_id}: it does not declare "
+            f"`judge_model`.\n\n"
+            f"Add ONE of these at the top level of "
+            f"{spec_path(args.spec_id)}:\n\n"
+            f"  judge_model: true    # model the judge, as live does\n"
+            f"  judge_model: false   # deliberately without it — say why in "
+            f"`prior`\n\n"
+            f"There is no default, because the default is what went wrong. "
+            f"§35-§41 were\nall scored judge-less by accident, and a silent "
+            f"`false` here would let that\nrecur while the spec looked "
+            f"complete.")
+
     digest = gs.canonical_sha256(spec)
     prior = gs.registrations(args.registrations).get(args.spec_id)
 
@@ -98,6 +125,7 @@ def main() -> int:
           f"{', '.join(a['name'] for a in spec['arms'])}")
     print(f"  prior  : {spec['prior'].strip().splitlines()[0][:72]}")
     print(f"  K      : {spec.get('bonferroni_k', 1)}")
+    print(f"  judge  : {'ON — models the live 58% haircut' if spec['judge_model'] else 'OFF — deliberately judge-less'}")
     print("\nThe pass mark is now frozen. Run it with:")
     print(f"  python scripts/run_gate.py {args.spec_id}")
     return 0

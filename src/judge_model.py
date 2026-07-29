@@ -128,6 +128,35 @@ def scale_for(symbol: str, ts: str, cfg: dict) -> float:
     return 1.0
 
 
+# ---- run-scoped activity counters (W2-1, 2026-07-29) -----------------------
+#
+# `enabled: true` is a claim about the run, not evidence about it. §35-§41 were
+# all scored with this model switched off and nobody noticed, because a
+# judge-less run and a judge-on run look identical from the outside: both print
+# numbers. Divergence #8 survived being "closed" for three days for exactly
+# that reason.
+#
+# So the model now COUNTS what it did, and `run_gate.py` refuses to record a
+# verdict that claims the judge was on while these counters say it never cut
+# anything. A documented check is not a check.
+#
+# Deliberately a plain module global rather than anything cleverer: arms fan out
+# across a `fork` pool, so each child gets its own copy and the parent's stays
+# at zero. `run_arm` therefore reads and RETURNS the child's counts rather than
+# trusting a shared value that fork semantics would silently strand.
+_STATS = {"sized": 0, "cut": 0, "vetoed": 0, "zeroed": 0}
+
+
+def reset_stats() -> None:
+    for k in _STATS:
+        _STATS[k] = 0
+
+
+def stats() -> dict:
+    """A copy, so a caller stashing it cannot be mutated out from under."""
+    return dict(_STATS)
+
+
 def apply(qty: int, symbol: str, ts: str, cfg: dict) -> int:
     """Mirror of the live path at `main.py:623` — `int(full_qty * scale)`.
 
@@ -138,4 +167,23 @@ def apply(qty: int, symbol: str, ts: str, cfg: dict) -> int:
     """
     if qty <= 0:
         return qty
-    return int(qty * scale_for(symbol, ts, cfg))
+    scale = scale_for(symbol, ts, cfg)
+    out = int(qty * scale)
+    # Counted only when the model is live. `scale_for` returns 1.0 for a
+    # disabled model, and counting those as "sized" would make a judge-less run
+    # report activity — the precise misreading these counters exist to stop.
+    if ((cfg.get("backtest") or {}).get("judge_model") or {}).get("enabled"):
+        _STATS["sized"] += 1
+        if scale == 0.0:
+            _STATS["vetoed"] += 1
+        elif scale < 1.0:
+            _STATS["cut"] += 1
+            if out == 0:
+                # A haircut that truncates a 1-share intent to 0 skips the
+                # trade. Counted ONLY on the non-veto branch, so `vetoed` and
+                # `zeroed` stay disjoint: the judge refused the first, and
+                # whole-share arithmetic killed the second (§28's finding
+                # recurring). Overlapping them would double-count the same
+                # event and inflate the runner's `acted` threshold.
+                _STATS["zeroed"] += 1
+    return out

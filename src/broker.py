@@ -14,6 +14,7 @@ from alpaca.trading.requests import (MarketOrderRequest, TakeProfitRequest,
                                      GetOrderByIdRequest)
 from alpaca.trading.enums import (OrderSide, TimeInForce, OrderClass,
                                   QueryOrderStatus)
+from alpaca.data.enums import Adjustment
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
@@ -82,10 +83,26 @@ class Broker:
         # NOTE: the API-side `limit` truncates from the OLDEST end of the
         # window, so a large lookback would return stale months-old bars.
         # Fetch the whole window and slice the most recent `limit` here.
+        # DIVERGENCE #12 (W2-3, 2026-07-29): adjustment was omitted, and
+        # Alpaca's default is RAW. Every frozen snapshot is split- AND
+        # dividend-adjusted (yfinance auto_adjust=True; the intraday file uses
+        # adjustment=ALL), so the live bot was reading a different price series
+        # from the one every gate scored.
+        #
+        # This is not theoretical here. data/snapshots/MANIFEST.json records the
+        # first intraday build going out RAW, carrying 11 unadjusted splits
+        # "that the simulator read as overnight collapses — it voided a gate
+        # run." A 2-for-1 split is a 50% overnight gap in a raw series: it
+        # collapses SMAs, spikes ATR, and can fire an entry signal or trip a
+        # stop on an event that never moved the value of the position.
+        #
+        # ALL rather than SPLIT: the snapshots are dividend-adjusted too, and
+        # matching them is the whole point.
         req = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=_TIMEFRAMES[timeframe],
             start=datetime.now(timezone.utc) - timedelta(days=limit * 2),
+            adjustment=Adjustment.ALL,
         )
         resp = self.data.get_stock_bars(req)
         rows = resp.data.get(symbol, [])

@@ -1,0 +1,46 @@
+SHIPPED config, unmodified: risk_per_trade_pct=8.0 max_position_pct=10.0 max_portfolio_heat_pct=4.0 max_open_positions=0  judge=OFF
+
+=== 2000-2006 — 500 symbols (106s) ===
+  return +5.26%  B&H +138.54%  PF 1.202
+  deployment: mean 8.07%  median 0.00%  max 98.98%  FULLY IN CASH on 84.3% of bars
+  signals 422,592  ->  executed 101  (0.02%)
+      drawdown                399,671  (94.58%)
+      regime_exposure          16,587  ( 3.93%)
+      heat                      5,356  ( 1.27%)
+      zero_qty                    531  ( 0.13%)
+      expired_unfilled            346  ( 0.08%)
+
+=== 2007-2013 — 500 symbols (115s) ===
+  return +2.59%  B&H +92.48%  PF 1.117
+  deployment: mean 9.75%  median 0.00%  max 100.00%  FULLY IN CASH on 86.8% of bars
+  signals 423,926  ->  executed 155  (0.04%)
+      drawdown                409,991  (96.71%)
+      regime_exposure           7,425  ( 1.75%)
+      zero_qty                  4,666  ( 1.10%)
+      heat                      1,287  ( 0.30%)
+      expired_unfilled            401  ( 0.09%)
+      cooldown                      1  ( 0.00%)
+
+=== 2014-2019 — 500 symbols (102s) ===
+  return +69.02%  B&H +90.41%  PF 1.486
+  deployment: mean 68.97%  median 92.04%  max 100.00%  FULLY IN CASH on 18.9% of bars
+  signals 336,408  ->  executed 1,732  (0.51%)
+      zero_qty                213,155  (63.36%)
+      drawdown                 69,468  (20.65%)
+      regime_exposure          49,151  (14.61%)
+      heat                      2,508  ( 0.75%)
+      expired_unfilled            360  ( 0.11%)
+      correlation                  19  ( 0.01%)
+      cooldown                     15  ( 0.00%)
+
+=== 2022-2026 — 500 symbols (50s) ===
+  return -5.26%  B&H +45.11%  PF 0.449
+  deployment: mean 4.09%  median 0.00%  max 75.41%  FULLY IN CASH on 92.4% of bars
+  signals 245,213  ->  executed 29  (0.01%)
+      drawdown                243,814  (99.43%)
+      heat                        436  ( 0.18%)
+      regime_exposure             417  ( 0.17%)
+      expired_unfilled            278  ( 0.11%)
+      zero_qty                    224  ( 0.09%)
+      unprotectable_entry          15  ( 0.01%)
+

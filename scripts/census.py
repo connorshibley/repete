@@ -32,6 +32,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import backtest as bt                                       # noqa: E402
+import judge_model as jm                                    # noqa: E402
 
 SNAPSHOTS = [
     ("2000-2006", "data/snapshots/bars_wide_2000-01-01_2006-12-31.json.gz"),
@@ -47,14 +48,27 @@ def main() -> int:
     p.add_argument("--cash", type=float, default=100_000.0)
     p.add_argument("--top", type=int, default=8,
                    help="block reasons to list per period")
+    p.add_argument("--judge-model", action="store_true",
+                   help="model the live judge's haircut (W2-1). §40's census "
+                        "ran WITHOUT it, like every gate from §35 to §41.")
     args = p.parse_args()
 
     cfg = bt.load_config()
+    if args.judge_model:
+        cfg.setdefault("backtest", {}).setdefault(
+            "judge_model", {})["enabled"] = True
+        cal = jm.load_calibration()
+        print(f"JUDGE MODEL ON — n={cal['n_judged_buys']} "
+              f"({cal['observed_from']}..{cal['observed_to']}), "
+              f"veto {cal['veto_rate']:.1%}, "
+              f"downsize {cal['downsize_rate']:.1%}, "
+              f"mean scale {cal['mean_scale']:.3f}")
     print("SHIPPED config, unmodified: "
           f"risk_per_trade_pct={cfg['risk'].get('risk_per_trade_pct')} "
           f"max_position_pct={cfg['risk'].get('max_position_pct')} "
           f"max_portfolio_heat_pct={cfg['risk'].get('max_portfolio_heat_pct')} "
-          f"max_open_positions={cfg['risk'].get('max_open_positions')}\n")
+          f"max_open_positions={cfg['risk'].get('max_open_positions')}"
+          f"  judge={'ON' if args.judge_model else 'OFF'}\n")
 
     for label, path in SNAPSHOTS:
         if not os.path.exists(path):
