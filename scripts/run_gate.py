@@ -147,6 +147,25 @@ def in_spec_order(done: list, arms: list) -> dict:
 
 # ---- the pass mark ---------------------------------------------------------
 
+def default_candidate(spec: dict) -> str:
+    """Which arm the clauses are applied to when the spec names none.
+
+    Two arms or more: the second, because the first is `baseline` and exists to
+    be beaten. Exactly one arm: that arm — a single-arm spec (§39) puts the
+    BASELINE ITSELF on trial against benchmarks from its own run.
+
+    Extracted and tested because the inline version was `spec["arms"][1]`, which
+    crashed §39 with IndexError AFTER a 388-second run had computed every
+    number. Validation had been relaxed to permit one arm; this line was not
+    updated, and no test caught it because `evaluate()` is always called with an
+    explicit candidate. The gap was between the tested function and its caller.
+    """
+    if spec.get("candidate"):
+        return spec["candidate"]
+    arms = spec["arms"]
+    return arms[1]["name"] if len(arms) > 1 else arms[0]["name"]
+
+
 def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
     base_summary = arms["baseline"][0]
     cand_summary, cand_pnls, _ = arms[candidate]
@@ -170,6 +189,21 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
         elif rule == "min_trades":
             ok = cand_summary["n_trades"] >= clause["n"]
             detail = f"{cand_summary['n_trades']} vs {clause['n']}"
+        elif rule == "beats_buy_hold":
+            bh = cand_summary["buy_hold_return_pct"]
+            ok = cand_summary["total_return_pct"] >= bh
+            detail = f"{cand_summary['total_return_pct']:+.2f}% vs B&H {bh:+.2f}%"
+        elif rule == "beats_exposure_matched":
+            # backtest.enablement_gate's own formula, reproduced rather than
+            # reinvented: buy-and-hold scaled to the average exposure the arm
+            # actually carried. A bot sitting 90% in cash cannot fairly race a
+            # 100%-deployed index, and this is the fair bar for it.
+            bh = cand_summary["buy_hold_return_pct"]
+            deploy = cand_summary.get("avg_deployment_pct", 100.0) / 100.0
+            bar = bh * deploy
+            ok = cand_summary["total_return_pct"] >= bar
+            detail = (f"{cand_summary['total_return_pct']:+.2f}% vs {bar:+.2f}% "
+                      f"(B&H {bh:+.2f}% x {deploy:.1%} deployment)")
         elif rule in ("significantly_better", "not_worse"):
             if not base_pnls or not cand_pnls:
                 # An arm with no closed trades cannot be compared. Recording
@@ -289,7 +323,7 @@ def main() -> int:
         print(f"\n  {len(cleared)}/{len(family)} members clear"
               + (f": {', '.join(cleared)}" if cleared else ""))
     else:
-        candidate = spec.get("candidate") or spec["arms"][1]["name"]
+        candidate = default_candidate(spec)
         verdict = evaluate(spec, arms, candidate, args.resamples)
         print(f"\n-- PRE-REGISTERED PASS MARK ({candidate}) --")
         for c in verdict["clauses"]:

@@ -3600,3 +3600,132 @@ registered claim.
 the incumbent rather than any candidate: *does the live ensemble have any edge
 over a matched-exposure benchmark on periods it was not tuned on?* It should be
 pre-registered and answered before another candidate strategy is tested.
+
+---
+
+## ALREADY-SEEN OBSERVATION (2026-07-28) — the incumbent against its own exposure
+
+**Not a result. Not a claim. Arithmetic on numbers already in this file**, written
+down before §39 is registered so that §39 cannot later be read as discovering it.
+
+`enablement_gate` defines the fair bar for a bot whose rails keep it mostly in
+cash: `buy_hold_return_pct × (avg_deployment_pct / 100)`. Applied to the
+incumbent ensemble's own baseline runs:
+
+| period | incumbent | B&H | deploy | exposure-matched bar | |
+|---|---|---|---|---|---|
+| 2007-2013 (§37) | +0.78% | +92.48% | 10.44% | **+9.65%** | fails |
+| 2014-2019 (§35) | +64.36% | +90.41% | 69.59% | +62.92% | passes by 1.44pp |
+| 2022-2026 (§38) | −11.62% | +45.11% | 8.31% | **+3.75%** | fails |
+
+Roughly **one in three**, and the single pass is a 1.44pp margin at 70%
+deployment — the one period where the bot was mostly invested.
+
+### Why this is not §39
+
+Every one of these numbers was produced as a *baseline* for someone else's
+claim. Reading them now is legitimate — they exist — but a "test" whose answer
+can be looked up is not a test. §38 is the standing lesson: a result from data
+already read is a re-description of spent evidence.
+
+So §39 runs on **2000-2006**, which this repository has never scored. What the
+table above does is make the prior honest: §39's registration can say *"the
+incumbent probably fails"* and mean it, with the reason on the page rather than
+in someone's head.
+
+### The uncomfortable framing
+
+`enablement_gate` is this repository's standard for **"may a strategy be enabled
+live?"** It has rejected nine candidates. It has never once been pointed at the
+strategies that are already running.
+
+---
+
+## §39 — THE INCUMBENT FACES ITS OWN GATE (pre-registered 2026-07-29, before the run)
+
+Spec `research/specs/s39.yaml`, frozen `bd5b2be88f59c8d1…`. Snapshot
+`bars_wide_2000-01-01_2006-12-31.json.gz` (sha256 `432cec564ccee6ab…`), 500
+symbols, 878,288 bars, screened on 2000 liquidity. A period this repository had
+never scored.
+
+**One arm, no candidate.** The subject is the shipped configuration exactly as
+production runs it — no `shared` risk overlay, because imposing one would mean
+measuring a bot that does not exist. Every clause compares it to benchmarks
+derived from its own run.
+
+### §39 RESULT — **REJECTED. The incumbent fails its own gate, 3 of 4.**
+
+| | | |
+|---|---|---|
+| incumbent | **+5.26%** | PF 1.202 · maxDD 11.51% · 101 trades · 85 symbols · **8.07% deployed** |
+| buy-and-hold | **+138.54%** | maxDD 28.2% |
+| exposure-matched bar | **+11.18%** | 138.54% × 8.07% |
+
+```
+[FAIL] (a) enablement_gate  PF 1.202 < 1.3; return beats neither B&H, the
+                            risk-adjusted bar, nor the exposure-matched bar
+[FAIL] (b) beats_exposure_matched  +5.26% vs +11.18%
+[FAIL] (c) beats_buy_hold          +5.26% vs +138.54%
+[PASS] (d) min_trades              101 vs 30
+```
+
+**It fails the fair bar, not just the harsh one.** Clause (c) — losing to a
+138% market while 92% in cash — is close to arithmetically inevitable and is
+the least interesting failure here. Clause (b) is the one that matters: scaled
+to the exposure it actually carried, the bot returned **less than half** what
+simply holding the index at the same average weight would have returned. The
+selection is subtracting value, not merely under-deploying.
+
+And `enablement_gate` — the function that rejected nine candidates — rejects the
+incumbent on the same profit-factor floor it applies to them: **1.202 against a
+1.3 minimum.**
+
+### Where this leaves the count
+
+| period | incumbent vs exposure-matched | |
+|---|---|---|
+| 2000-2006 (§39, unseen) | +5.26% vs +11.18% | **fails** |
+| 2007-2013 (§37) | +0.78% vs +9.65% | fails |
+| 2014-2019 (§35) | +64.36% vs +62.92% | passes by 1.44pp |
+| 2022-2026 (§38) | −11.62% vs +3.75% | fails |
+
+**One pass in four**, and that pass is a 1.44pp margin in the single period
+where the bot was mostly invested. §39 is the only one of the four that was a
+genuine pre-registered test; the other three are the already-seen observation
+recorded before it.
+
+### What this does and does not license
+
+It does **not** say the live bot loses money — the paper ledger has one closed
+trade and decides nothing. It says the shipped configuration, run over four
+periods spanning 26 years, does not clear the bar this project holds candidates
+to, and fails it on unseen data in the direction its own prior predicted.
+
+**Nothing is being tuned in response.** Fitting parameters to 2000-2006 now
+would manufacture precisely the overfit §33 and §34 established this repository
+cannot detect. The registered failure modes stand: survivorship flatters the
+incumbent here too, and the universe breadth (500 symbols vs the 38 it was tuned
+on) is an uncontrolled confound.
+
+### The honest reading
+
+Nine candidate rejections were all asking *"is this new thing better than what
+we run?"* — a question whose answer barely matters if what we run does not clear
+the bar either. The candidates were being measured against an incumbent that
+had never been measured.
+
+**EDGE claims 0 for 10.** Nothing enabled. `mode: paper` unchanged.
+
+### Process note — the first run crashed after computing everything
+
+`run_gate.py` picked the candidate arm with `spec["arms"][1]`, which raised
+IndexError on a one-arm spec **after** a 388-second run had produced every
+number. Validation had been relaxed to permit one arm; that line was not
+updated, and no test caught it because `evaluate()` is always called with an
+explicit candidate — the bug lived in the gap between a tested function and its
+caller.
+
+Fixed by extracting `default_candidate()` with its own tests, and confirmed by
+control that restoring the old line turns the new test RED. The re-run used the
+identical frozen spec (`bd5b2be8…`, unchanged), and the simulation is
+deterministic — 268s versus 388s is CPU contention, not a different experiment.

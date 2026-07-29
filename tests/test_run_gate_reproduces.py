@@ -272,3 +272,109 @@ def test_every_member_is_compared_against_baseline_not_each_other():
     # best sibling.
     assert per_arm["b"]["passed"] is True
     assert "1.500 vs 1.000" in per_arm["b"]["clauses"][0]["detail"]
+
+
+# ---- self-referential clauses (§39: the incumbent on trial) ----
+
+def _self_spec(**over):
+    """A single-arm spec — legal because no clause compares to another arm."""
+    spec = {
+        "id": "t", "claim": "EDGE", "title": "t",
+        "snapshot": {"path": "b.gz", "sha256": "a" * 64},
+        "bonferroni_k": 10,
+        "arms": [{"name": "baseline"}],
+        "clauses": [{"id": "b", "rule": "beats_exposure_matched"}],
+        "prior": "The incumbent probably fails its own enablement gate.",
+        "failure_modes": ["survivorship flatters any long strategy"],
+    }
+    spec.update(over)
+    return spec
+
+
+def _one(summary):
+    return {"baseline": (summary, [1.0] * 60, 0.0)}
+
+
+def test_beats_exposure_matched_is_exact_at_the_boundary():
+    """`>=` buy_hold * deployment. Tested at the boundary because an off-by-one
+    here silently redefines what every future use of this clause meant."""
+    spec = _self_spec()
+    at = _one(_summary(total_return_pct=45.0, buy_hold_return_pct=90.0,
+                       avg_deployment_pct=50.0))          # bar = 45.0 exactly
+    assert run_gate.evaluate(spec, at, "baseline", 50)["clauses"][0]["pass"]
+    under = _one(_summary(total_return_pct=44.99, buy_hold_return_pct=90.0,
+                          avg_deployment_pct=50.0))
+    assert not run_gate.evaluate(spec, under, "baseline", 50)["clauses"][0]["pass"]
+
+
+def test_beats_exposure_matched_reproduces_the_real_2007_numbers():
+    """The incumbent's actual §37 figures: +0.78% against 92.48% x 10.44%.
+    Pinning a real measured case stops the formula drifting away from
+    backtest.enablement_gate's, which is where it came from."""
+    arms = _one(_summary(total_return_pct=0.78, buy_hold_return_pct=92.48,
+                         avg_deployment_pct=10.44))
+    out = run_gate.evaluate(_self_spec(), arms, "baseline", 50)
+    assert out["clauses"][0]["pass"] is False
+    # 92.48 x 0.1044 = 9.6549 -> +9.65%. Written as +9.66% in the first draft of
+    # the §39 plan; the test caught it. The verdict is unchanged either way
+    # (+0.78% clears neither), which is exactly why a boundary this dull needs a
+    # test rather than a mental multiplication.
+    assert "+9.65%" in out["clauses"][0]["detail"]
+
+
+def test_a_fully_deployed_arm_faces_the_full_buy_and_hold():
+    """At 100% deployment the exposure-matched bar IS buy-and-hold — no
+    discount for a bot that was always invested."""
+    arms = _one(_summary(total_return_pct=50.0, buy_hold_return_pct=90.0,
+                         avg_deployment_pct=100.0))
+    assert not run_gate.evaluate(_self_spec(), arms, "baseline",
+                                 50)["clauses"][0]["pass"]
+
+
+def test_zero_deployment_does_not_make_the_bar_trivially_passable():
+    """A bot that never invested has a 0% bar, so any non-negative return
+    clears it. That is arithmetically correct and useless as evidence, which is
+    why `min_trades` and `enablement_gate` sit alongside it in §39 — recorded
+    here so nobody later reads a 0%-deployment PASS as a result."""
+    arms = _one(_summary(total_return_pct=0.0, buy_hold_return_pct=90.0,
+                         avg_deployment_pct=0.0, n_trades=0))
+    assert run_gate.evaluate(_self_spec(), arms, "baseline",
+                             50)["clauses"][0]["pass"] is True
+    guarded = _self_spec(clauses=[{"id": "b", "rule": "beats_exposure_matched"},
+                                  {"id": "d", "rule": "min_trades", "n": 30}])
+    assert run_gate.evaluate(guarded, arms, "baseline", 50)["passed"] is False
+
+
+def test_beats_buy_hold_is_the_harsher_bar():
+    spec = _self_spec(clauses=[{"id": "c", "rule": "beats_buy_hold"}])
+    arms = _one(_summary(total_return_pct=64.36, buy_hold_return_pct=90.41,
+                         avg_deployment_pct=69.59))
+    assert run_gate.evaluate(spec, arms, "baseline", 50)["clauses"][0]["pass"] \
+        is False
+    # …while the exposure-matched bar (90.41 x 69.59% = 62.92) is cleared.
+    assert run_gate.evaluate(_self_spec(), arms, "baseline",
+                             50)["clauses"][0]["pass"] is True
+
+
+# ---- which arm the clauses land on ----
+
+def test_default_candidate_is_the_second_arm_when_there_are_two():
+    assert run_gate.default_candidate(_spec()) == "cand"
+
+
+def test_default_candidate_is_the_only_arm_when_there_is_one():
+    """§39 puts the BASELINE itself on trial. The inline version of this was
+    `spec["arms"][1]`, which raised IndexError AFTER a 388-second run had
+    computed every number — validation had been relaxed to allow one arm and
+    this line was not updated.
+
+    Nothing caught it because `evaluate()` is always called with an explicit
+    candidate in tests, so the bug lived in the gap between a tested function
+    and its caller. That gap is what this test closes."""
+    assert run_gate.default_candidate(_self_spec()) == "baseline"
+
+
+def test_an_explicit_candidate_wins_over_both_defaults():
+    spec = _spec(candidate="cand", arms=[{"name": "baseline"},
+                                         {"name": "other"}, {"name": "cand"}])
+    assert run_gate.default_candidate(spec) == "cand"
