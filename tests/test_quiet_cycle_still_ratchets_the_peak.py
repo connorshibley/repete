@@ -138,17 +138,42 @@ def test_the_ratchet_runs_before_any_decision(cycle_env):
     """Placement is the fix. Reading the peak AFTER the decision loop would
     reintroduce the bug for any cycle that exits early — the daily-loss kill
     switch returns before the loop, and so does a HALT.
+
+    Rewritten in W4-7 (2026-07-29) after the refactor moved the fresh account
+    read into `_bootstrap_cycle`. This test FAILED on that move, which is what
+    it is for — but the failure was structural, not behavioural, so the fix is
+    to track the new shape rather than to relax the property. Both halves are
+    still pinned, in the two functions that now hold them.
     """
     import inspect
+    boot = inspect.getsource(main._bootstrap_cycle)
     src = inspect.getsource(main._run_cycle)
 
-    ratchet = src.index("risk.update_high_water(account[\"equity\"])")
-    account = src.index("account = broker.account()")
-    kill = src.index("risk.daily_loss_breached")
+    # 1. The account is still read FRESH from the broker, not from memory or a
+    #    prior cycle (invariant #4), and the bootstrap hands it back.
+    assert "account = broker.account()" in boot
+    assert "return cfg, ledger, memory, broker, account, positions" in boot
 
-    assert account < ratchet < kill, (
+    # 2. `_run_cycle` unpacks that result BEFORE it ratchets, so the equity the
+    #    peak is measured against is this cycle's.
+    unpack = src.index("cfg, ledger, memory, broker, account, positions = started")
+    ratchet = src.index('risk.update_high_water(account["equity"])')
+    # The daily-loss kill switch is the first thing in _run_cycle that can
+    # return early. W4-7 moved its body into _kill_switch_fired, so the call is
+    # what marks the boundary now.
+    kill = src.index("_kill_switch_fired(")
+
+    assert unpack < ratchet < kill, (
         "the per-cycle ratchet must sit between the fresh account read and "
         "the first early return, or a cycle that halts skips it")
+
+    # 3. And nothing returns between the two. An early exit slipped in here
+    #    would restore divergence #11 for exactly the cycles that take it, and
+    #    the ordering assertion above would not notice.
+    between = src[unpack:ratchet]
+    assert "return" not in between, (
+        f"an early return was added between the account read and the "
+        f"ratchet:\n{between}")
 
 
 def test_gutting_the_cycle_ratchet_would_fail_this_file():

@@ -537,7 +537,17 @@ def check_degradation_slo(ledger: Ledger, cfg: dict):
         log.warning("SLO check failed: %s", e)
 
 
-def _run_cycle(completed_bars_only: bool = False):
+def _bootstrap_cycle():
+    """Config, preflight, stores, HALT check, broker state.
+
+    Returns `(cfg, ledger, memory, broker, account, positions)`, or **None**
+    when the cycle must not proceed — a preflight failure or an engaged HALT.
+    `None` is the abort signal rather than an exception because both cases are
+    ORDINARY: a misconfigured system and a deliberately halted one are things
+    the operator did, not faults to raise through.
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
     load_dotenv()
     with open("config.yaml") as f:
         cfg = yaml.safe_load(f)
@@ -559,7 +569,7 @@ def _run_cycle(completed_bars_only: bool = False):
                    fails[0][:120] + (" (+more)" if len(fails) > 1 else ""))
         except Exception:  # noqa: BLE001
             pass
-        return
+        return None
 
     # Storage backend is chosen ONCE, before any store is constructed.
     store.configure(cfg)
@@ -573,75 +583,52 @@ def _run_cycle(completed_bars_only: bool = False):
     if risk.check_halt():
         log.critical("HALT file present — refusing to trade. Delete HALT to resume.")
         ledger.log_event("halted_cycle_skipped")
-        return
+        return None
 
     broker = Broker(cfg)
     account = broker.account()          # deterministic state: always from the broker,
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
+    return cfg, ledger, memory, broker, account, positions
 
-    # --- DIVERGENCE #11: ratchet the equity peak ONCE PER CYCLE ---
-    #
-    # §31 put `update_high_water` inside `risk.pre_trade_checks`, which is only
-    # ever called from ONE place (the order loop below) and only when an order
-    # is actually attempted. So a cycle that generates no buy and no sell never
-    # touched the high-water mark at all.
-    #
-    # Why that matters, given the peak only ever ratchets UP: equity earned on
-    # a quiet day is invisible to it. The book drifts up over a week of holds,
-    # nobody trades, the peak stays at last week's value — and then the first
-    # 10% drawdown is measured from a stale low peak, so the breaker fires LATE
-    # (or, symmetrically, a real high never registers and the bot sits closer to
-    # the rail than its equity says it should).
-    #
-    # It is the same class of error as divergence #10 one level up: the
-    # simulator ratcheted only inside the buy branch, live ratchets only inside
-    # an order attempt. §40 found the sim version; this is its live twin, and it
-    # bites HARDEST on exactly the book this bot runs — 38 symbols with whole
-    # days of no entries — while being invisible on the 500-symbol snapshots
-    # where something trades on virtually every bar.
-    #
-    # Reading fresh from the broker (invariant #4), before any decision, is the
-    # only placement that makes the mark independent of what the cycle decides
-    # to do. `pre_trade_checks` still ratchets per order; this is not a
-    # replacement for it but the floor under it, and update_high_water is
-    # idempotent-by-max so running both is a no-op on the second call.
-    if cfg["risk"].get("max_drawdown_pct"):
-        _peak = risk.update_high_water(account["equity"])
-        log.info("Equity peak: $%.2f (drawdown %.2f%%)",
-                 _peak, risk.drawdown_pct(account["equity"], _peak))
 
-    # --- Kill switch: daily loss limit ---
-    if risk.daily_loss_breached(account, cfg):
-        # Engage HALT and record the breach BEFORE attempting the flatten. A
-        # broker error while closing (timeout/API outage) must not leave the
-        # daily-loss breach un-halted and unrecorded — otherwise the next
-        # scheduled cycle re-enters this path instead of being HALT-blocked.
-        risk.engage_halt("daily loss limit breached — flattening all positions")
-        ledger.log_event("kill_switch",
-                         "daily loss limit breached; HALT engaged; flattening")
-        try:
-            broker.flatten_all()
-        except Exception as e:  # noqa: BLE001 — HALT already set; report + stop
-            log.critical("flatten_all failed after kill switch: %s", e)
-            ledger.log_event("kill_switch_flatten_failed",
-                             f"{e} — positions may remain open; HALT engaged")
-        return
+def _kill_switch_fired(broker, ledger: Ledger, account: dict, cfg: dict) -> bool:
+    """The HARD stop: flatten the book and engage HALT on a daily-loss breach.
 
-    # Sync broker-side exits (bracket leg fills, flattens, manual closes)
-    # into the ledger BEFORE reading open trades.
-    reconcile_closed_positions(broker, ledger, memory, cfg, positions)
-    # Complement: a broker position with no open ledger buy is a ghost from a
-    # crash between order submit and the ledger write — adopt it so it is
-    # tracked before we read open trades below.
-    adopt_untracked_positions(broker, ledger, cfg, positions)
-    record_fill_quality(broker, ledger)
+    Returns True when it fired and the cycle must end. Distinct from the
+    drawdown breaker, which only blocks entries — see config.yaml's
+    `max_drawdown_pct` note for why the two are deliberately not merged.
 
-    open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
+    if not risk.daily_loss_breached(account, cfg):
+        return False
+    # Engage HALT and record the breach BEFORE attempting the flatten. A
+    # broker error while closing (timeout/API outage) must not leave the
+    # daily-loss breach un-halted and unrecorded — otherwise the next
+    # scheduled cycle re-enters this path instead of being HALT-blocked.
+    risk.engage_halt("daily loss limit breached — flattening all positions")
+    ledger.log_event("kill_switch",
+                     "daily loss limit breached; HALT engaged; flattening")
+    try:
+        broker.flatten_all()
+    except Exception as e:  # noqa: BLE001 — HALT already set; report + stop
+        log.critical("flatten_all failed after kill switch: %s", e)
+        ledger.log_event("kill_switch_flatten_failed",
+                         f"{e} — positions may remain open; HALT engaged")
+    return True
 
-    # --- Today's market context (news): judge context + validated watchlist
-    # nominations. NOMINATION != TRADE: entries still need a deterministic
-    # strategy signal + judge + rails. Stale/missing context = feature off. ---
+
+def _market_context(cfg: dict, broker, ledger: Ledger, positions: dict):
+    """Today's news context, the nominated watchlist, and the scan universe.
+
+    Returns `(news_ctx, nominated, scan_symbols)`. Fail-soft throughout: a
+    missing or unrefreshable context means the feature is off for this cycle,
+    never that the cycle stops. A NOMINATION IS NOT A TRADE — entries still
+    need a deterministic strategy signal, the judge, and every rail.
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
     import market_context as market_context_mod
     news_ctx = market_context_mod.load(cfg) or {}
     # Missed-run resilience (2026-07-21): if every hourly news-brain fire was
@@ -679,6 +666,254 @@ def _run_cycle(completed_bars_only: bool = False):
     scan_symbols = risk.scan_order(list(cfg["symbols"]), cfg)
     scan_symbols += [s for s in nominated if s not in scan_symbols]
     scan_symbols += [s for s in positions if s not in scan_symbols]
+    return news_ctx, nominated, scan_symbols
+
+
+def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
+                             scan_symbols: list, completed_bars_only: bool):
+    """Fetch every symbol's bars, apply the data rails, and read the regime.
+
+    Returns `(all_bars, entries_blocked_reason, market_regime, regime_label)`,
+    or **None** when the cycle must abort because SPY itself is stale.
+
+    Three distinct failure polarities live here, deliberately:
+      * a single symbol's fetch RAISES -> skip that symbol, log, carry on
+      * a single symbol is STALE       -> drop that symbol
+      * SPY is STALE                   -> abort the cycle (None)
+      * the two vendors DISAGREE       -> block ENTRIES only; exits still run
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
+    # Ensemble needs the full cross-section; lookback sized to the most
+    # demanding strategy.
+    lookback = strategies.max_lookback_bars(cfg)
+    all_bars: dict = {}
+    for symbol in scan_symbols:
+        try:
+            fetched = broker.bars(symbol, cfg["strategy"]["timeframe"], lookback)
+            if completed_bars_only:
+                fetched = datacheck.drop_forming_bar(fetched)
+            if fetched:
+                all_bars[symbol] = fetched
+        except Exception as e:  # noqa: BLE001 — data failure: skip symbol, log it
+            log.error("Data fetch failed for %s: %s", symbol, e)
+            ledger.log_event("data_error", f"{symbol}: {e}")
+
+    # --- Freshness guard: never trade on stale data (deterministic rail).
+    # SPY stale => the whole feed is suspect: abort the cycle. A single
+    # stale symbol => drop just that symbol. ---
+    max_age = cfg["risk"].get("max_bar_age_days", 4)
+    if not risk.bars_fresh(all_bars.get("SPY", []), max_age):
+        last_ts = all_bars["SPY"][-1]["ts"] if all_bars.get("SPY") else "none"
+        log.critical("STALE DATA — newest SPY bar is %s (max age %dd). "
+                     "Refusing to trade this cycle.", last_ts, max_age)
+        ledger.log_event("stale_data_abort",
+                         f"newest SPY bar {last_ts}, max_bar_age_days={max_age}")
+        return None
+    for symbol in list(all_bars):
+        if not risk.bars_fresh(all_bars[symbol], max_age):
+            ledger.log_event("data_stale",
+                             f"{symbol}: newest bar {all_bars[symbol][-1]['ts']}")
+            log.warning("%s: stale bars — symbol skipped this cycle", symbol)
+            del all_bars[symbol]
+
+    # Second-vendor cross-check (2026-07-21): fresh-LOOKING bars can still be
+    # wrong (the 07-16 class). If Alpaca and yfinance disagree on SPY's close,
+    # one is lying and we can't know which — entries are blocked this cycle
+    # (exits and protective actions never are).
+    entries_blocked_reason = datacheck.crosscheck_spy(all_bars.get("SPY", []),
+                                                      cfg)
+    if entries_blocked_reason:
+        ledger.log_event("degradation", entries_blocked_reason)
+        log.critical("%s", entries_blocked_reason)
+
+    # Market regime (deterministic, from SPY bars already fetched): tagged onto
+    # every decision/judgment so the learning loop can discount off-regime evidence.
+    market_regime = regime_mod.compute_regime(all_bars.get("SPY", []),
+                                              cfg["learning"]["regime"])
+    regime_label = market_regime["label"] if market_regime else None
+    log.info("Regime: %s", regime_mod.describe(market_regime))
+    return all_bars, entries_blocked_reason, market_regime, regime_label
+
+
+def _precompute(cfg: dict, all_bars: dict, open_trades: dict,
+                positions: dict) -> tuple[dict, dict, dict]:
+    """Once-per-cycle work that the per-symbol loop reads but must not repeat.
+
+    Returns `(xs_ctx, earnings_blackouts, blackout_days)`.
+
+    `blackout_days` is returned rather than kept local because the per-symbol
+    loop quotes the day count in its hold reason ("earnings within 3d"). The
+    first draft of this extraction dropped it and ruff caught the undefined
+    name in the closure before any test ran — which is what W4-2 enabled the F
+    rules for.
+
+    Two details here are easy to break and both are deliberate:
+      * the cross-section includes owners of OPEN positions even when their
+        strategy is disabled — otherwise a disabled strategy's exits stop
+        working and the book is stranded;
+      * the earnings calendar FAILS OPEN. Losing a filter is not losing a
+        cycle, and only NEW entries are ever blocked.
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
+    open_owners = {rec.get("strategy") or strategies.DEFAULT_OWNER
+                   for rec in open_trades.values()}
+    xs_ctx = strategies.prepare_cross_sections(cfg, all_bars,
+                                               extra_owners=open_owners)
+
+    # PER-STRATEGY param, off by default: block NEW entries in names reporting
+    # within that strategy's N days. Deterministic, computed before the loop;
+    # exits are never blocked. Per-strategy because the gate evidence split: it
+    # helps trend entries (tsmom) and hurts dip-buying (meanrev).
+    earnings_blackouts: dict = {}   # strategy name -> set of blacked-out syms
+    ebd = {name: params.get("earnings_blackout_days", 0)
+           for name, params in strategies.enabled(cfg)}
+    if any(ebd.values()):
+        try:
+            import earnings
+            flat = [s for s in cfg["symbols"] if s not in positions]
+            for name, days in ebd.items():
+                if days:
+                    earnings_blackouts[name] = earnings.blackout_symbols(
+                        flat, days)
+                    if earnings_blackouts[name]:
+                        log.info("Earnings blackout [%s, %dd]: %s", name,
+                                 days, sorted(earnings_blackouts[name]))
+        except Exception as e:  # noqa: BLE001 — filter loss ≠ cycle loss
+            log.warning("earnings blackout unavailable (%s) — continuing", e)
+    return xs_ctx, earnings_blackouts, ebd
+
+
+def _finalize_cycle(cfg: dict, ledger: Ledger, memory, broker, account: dict,
+                    positions: dict, all_bars: dict, regime_label) -> None:
+    """Everything after the last trading decision: learn, measure, stamp,
+    publish.
+
+    Nothing here may abort the cycle, and nothing here may change a trading
+    decision — the orders are already placed. Every step is either measurement
+    or presentation, and the two that touch the outside world are wrapped
+    because a cosmetic failure must never turn a completed cycle into a crashed
+    one.
+
+    ORDER IS LOAD-BEARING: `cycle_complete` is written AFTER the learning and
+    measurement passes and BEFORE the page render. The watchdog keys off that
+    event (HEARTBEAT.md), so stamping it earlier would let a cycle that died
+    mid-learning report success — the 2026-07-24 incident in reverse.
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    """
+    # --- Learning pass: evaluate fresh closes, resolve due judgments,
+    # apply lifecycle transitions. Bounded, embargoed, never raises. ---
+    summary = learn.inline_pass(ledger, memory.lessons, memory.judgments, cfg,
+                                broker=broker)
+    if any(summary.values()):
+        log.info("Learning: %s", summary)
+
+    # Post-exit runner tracking: measure what happened AFTER each close
+    # (bounded bar fetches; measurement only — see src/postexit.py).
+    pe = postexit.run(ledger, broker, cfg)
+    if any(pe.values()):
+        log.info("Post-exit tracking: %s", pe)
+
+    # Which code just traded? Stamped on every cycle so §26 divergence #7 —
+    # production silently 57 commits behind — is reconstructable from the
+    # ledger alone, with or without an alert having fired.
+    _deploy = check_deploy_drift(ledger)
+
+    # What the open book is worth right now, for the dashboard. `positions` is
+    # the fresh broker read this cycle already made (invariant #4) — no extra
+    # API call. Display only; never read back into a trading decision.
+    try:
+        ledger.log_positions_mark(positions)
+    except Exception as e:  # noqa: BLE001 — a cosmetic snapshot never kills a cycle
+        log.warning("positions mark failed: %s", e)
+
+    import json as _json
+    ledger.log_event("cycle_complete",
+                     _json.dumps({"equity": account["equity"],
+                                  "n_positions": len(positions),
+                                  "regime": regime_label,
+                                  "sha": _deploy.get("sha"),
+                                  "config_dirty": _deploy.get("config_dirty"),
+                                  "behind": _deploy.get("behind")}))
+
+    # Degradation SLO: too many fail-open events in one day means the ops
+    # error budget is burned — escalate to a human (alert only; HALT stays
+    # reserved for the daily-loss kill switch).
+    check_degradation_slo(ledger, cfg)
+    try:  # page regeneration is cosmetic — never touches the cycle
+        import blog
+        import dashboard
+        dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
+        blog.render(cfg)
+        # journal.html too (2026-07-28). It used to be rendered ONLY from
+        # journal_and_link(), i.e. only when a trade fired, so a stale page had
+        # no way to repair itself on a quiet day — and one did not: the
+        # published journal showed a single entry, for a trade_id absent from
+        # every current store, while memory/journal.jsonl held 17. Rebuilding
+        # from the store every cycle makes the page self-correcting.
+        journal.render(cfg)
+    except Exception as e:  # noqa: BLE001
+        log.warning("page render failed: %s", e)
+
+
+def _run_cycle(completed_bars_only: bool = False):
+    started = _bootstrap_cycle()
+    if started is None:
+        return
+    cfg, ledger, memory, broker, account, positions = started
+
+    # --- DIVERGENCE #11: ratchet the equity peak ONCE PER CYCLE ---
+    #
+    # §31 put `update_high_water` inside `risk.pre_trade_checks`, which is only
+    # ever called from ONE place (the order loop below) and only when an order
+    # is actually attempted. So a cycle that generates no buy and no sell never
+    # touched the high-water mark at all.
+    #
+    # Why that matters, given the peak only ever ratchets UP: equity earned on
+    # a quiet day is invisible to it. The book drifts up over a week of holds,
+    # nobody trades, the peak stays at last week's value — and then the first
+    # 10% drawdown is measured from a stale low peak, so the breaker fires LATE
+    # (or, symmetrically, a real high never registers and the bot sits closer to
+    # the rail than its equity says it should).
+    #
+    # It is the same class of error as divergence #10 one level up: the
+    # simulator ratcheted only inside the buy branch, live ratchets only inside
+    # an order attempt. §40 found the sim version; this is its live twin, and it
+    # bites HARDEST on exactly the book this bot runs — 38 symbols with whole
+    # days of no entries — while being invisible on the 500-symbol snapshots
+    # where something trades on virtually every bar.
+    #
+    # Reading fresh from the broker (invariant #4), before any decision, is the
+    # only placement that makes the mark independent of what the cycle decides
+    # to do. `pre_trade_checks` still ratchets per order; this is not a
+    # replacement for it but the floor under it, and update_high_water is
+    # idempotent-by-max so running both is a no-op on the second call.
+    if cfg["risk"].get("max_drawdown_pct"):
+        _peak = risk.update_high_water(account["equity"])
+        log.info("Equity peak: $%.2f (drawdown %.2f%%)",
+                 _peak, risk.drawdown_pct(account["equity"], _peak))
+
+    # --- Kill switch: daily loss limit ---
+    if _kill_switch_fired(broker, ledger, account, cfg):
+        return
+
+    # Sync broker-side exits (bracket leg fills, flattens, manual closes)
+    # into the ledger BEFORE reading open trades.
+    reconcile_closed_positions(broker, ledger, memory, cfg, positions)
+    # Complement: a broker position with no open ledger buy is a ghost from a
+    # crash between order submit and the ledger write — adopt it so it is
+    # tracked before we read open trades below.
+    adopt_untracked_positions(broker, ledger, cfg, positions)
+    record_fill_quality(broker, ledger)
+
+    open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
+
+    # --- Today's market context (news): judge context + validated watchlist
+    # nominations, and the scan universe derived from them. ---
+    news_ctx, nominated, scan_symbols = _market_context(
+        cfg, broker, ledger, positions)
 
     market_regime = None   # computed after the ensemble bar fetch (from SPY bars)
     regime_label = None
@@ -979,55 +1214,12 @@ def _run_cycle(completed_bars_only: bool = False):
                     break
         return "executed"
 
-    # --- Phase 1: fetch all bars up front (ensemble needs the full
-    # cross-section; lookback sized to the most demanding strategy) ---
-    lookback = strategies.max_lookback_bars(cfg)
-    all_bars: dict = {}
-    for symbol in scan_symbols:
-        try:
-            fetched = broker.bars(symbol, cfg["strategy"]["timeframe"], lookback)
-            if completed_bars_only:
-                fetched = datacheck.drop_forming_bar(fetched)
-            if fetched:
-                all_bars[symbol] = fetched
-        except Exception as e:  # noqa: BLE001 — data failure: skip symbol, log it
-            log.error("Data fetch failed for %s: %s", symbol, e)
-            ledger.log_event("data_error", f"{symbol}: {e}")
-
-    # --- Freshness guard: never trade on stale data (deterministic rail).
-    # SPY stale => the whole feed is suspect: abort the cycle. A single
-    # stale symbol => drop just that symbol. ---
-    max_age = cfg["risk"].get("max_bar_age_days", 4)
-    if not risk.bars_fresh(all_bars.get("SPY", []), max_age):
-        last_ts = all_bars["SPY"][-1]["ts"] if all_bars.get("SPY") else "none"
-        log.critical("STALE DATA — newest SPY bar is %s (max age %dd). "
-                     "Refusing to trade this cycle.", last_ts, max_age)
-        ledger.log_event("stale_data_abort",
-                         f"newest SPY bar {last_ts}, max_bar_age_days={max_age}")
-        return
-    for symbol in list(all_bars):
-        if not risk.bars_fresh(all_bars[symbol], max_age):
-            ledger.log_event("data_stale",
-                             f"{symbol}: newest bar {all_bars[symbol][-1]['ts']}")
-            log.warning("%s: stale bars — symbol skipped this cycle", symbol)
-            del all_bars[symbol]
-
-    # Second-vendor cross-check (2026-07-21): fresh-LOOKING bars can still be
-    # wrong (the 07-16 class). If Alpaca and yfinance disagree on SPY's close,
-    # one is lying and we can't know which — entries are blocked this cycle
-    # (exits and protective actions never are).
-    entries_blocked_reason = datacheck.crosscheck_spy(all_bars.get("SPY", []),
-                                                      cfg)
-    if entries_blocked_reason:
-        ledger.log_event("degradation", entries_blocked_reason)
-        log.critical("%s", entries_blocked_reason)
-
-    # Market regime (deterministic, from SPY bars already fetched): tagged onto
-    # every decision/judgment so the learning loop can discount off-regime evidence.
-    market_regime = regime_mod.compute_regime(all_bars.get("SPY", []),
-                                              cfg["learning"]["regime"])
-    regime_label = market_regime["label"] if market_regime else None
-    log.info("Regime: %s", regime_mod.describe(market_regime))
+    # --- Phase 1: fetch, validate, and read the regime off the bars ---
+    fetched_ctx = _fetch_and_validate_bars(
+        broker, cfg, ledger, scan_symbols, completed_bars_only)
+    if fetched_ctx is None:
+        return                      # SPY stale — the whole feed is suspect
+    all_bars, entries_blocked_reason, market_regime, regime_label = fetched_ctx
 
     # Chandelier trail maintenance (param-gated; no-op while mult is 0).
     update_trailing_stops(broker, ledger, cfg, open_trades, all_bars)
@@ -1041,34 +1233,9 @@ def _run_cycle(completed_bars_only: bool = False):
             if ets and ets > last_exit.get(t["symbol"], ""):
                 last_exit[t["symbol"]] = ets
 
-    # --- Phase 2: once-per-cycle cross-sectional precompute (includes
-    # disabled strategies that still own open positions — exits must work) ---
-    open_owners = {rec.get("strategy") or strategies.DEFAULT_OWNER
-                   for rec in open_trades.values()}
-    xs_ctx = strategies.prepare_cross_sections(cfg, all_bars,
-                                               extra_owners=open_owners)
-
-    # --- Earnings blackout (PER-STRATEGY param, off by default): block NEW
-    # entries in names reporting within that strategy's N days. Deterministic,
-    # computed before the loop; exits are never blocked; calendar failures
-    # fail open. Per-strategy because the gate evidence split: it helps
-    # trend entries (tsmom) and hurts dip-buying (meanrev). ---
-    earnings_blackouts: dict = {}   # strategy name -> set of blacked-out syms
-    ebd = {name: params.get("earnings_blackout_days", 0)
-           for name, params in strategies.enabled(cfg)}
-    if any(ebd.values()):
-        try:
-            import earnings
-            flat = [s for s in cfg["symbols"] if s not in positions]
-            for name, days in ebd.items():
-                if days:
-                    earnings_blackouts[name] = earnings.blackout_symbols(
-                        flat, days)
-                    if earnings_blackouts[name]:
-                        log.info("Earnings blackout [%s, %dd]: %s", name,
-                                 days, sorted(earnings_blackouts[name]))
-        except Exception as e:  # noqa: BLE001 — filter loss ≠ cycle loss
-            log.warning("earnings blackout unavailable (%s) — continuing", e)
+    # --- Phase 2: cross-sectional precompute + the earnings blackout ---
+    xs_ctx, earnings_blackouts, ebd = _precompute(
+        cfg, all_bars, open_trades, positions)
 
     # --- Phase 3: per-symbol ensemble loop with position ownership ---
     entries_this_cycle: dict = {}   # strategy -> executed entries this cycle,
@@ -1190,59 +1357,8 @@ def _run_cycle(completed_bars_only: bool = False):
                                 regime=regime_label)
             log.info("%s: HOLD — %d strategies, no entry", symbol, len(hold_reasons))
 
-    # --- Learning pass: evaluate fresh closes, resolve due judgments,
-    # apply lifecycle transitions. Bounded, embargoed, never raises. ---
-    summary = learn.inline_pass(ledger, memory.lessons, memory.judgments, cfg,
-                                broker=broker)
-    if any(summary.values()):
-        log.info("Learning: %s", summary)
-
-    # Post-exit runner tracking: measure what happened AFTER each close
-    # (bounded bar fetches; measurement only — see src/postexit.py).
-    pe = postexit.run(ledger, broker, cfg)
-    if any(pe.values()):
-        log.info("Post-exit tracking: %s", pe)
-
-    # Which code just traded? Stamped on every cycle so §26 divergence #7 —
-    # production silently 57 commits behind — is reconstructable from the
-    # ledger alone, with or without an alert having fired.
-    _deploy = check_deploy_drift(ledger)
-
-    # What the open book is worth right now, for the dashboard. `positions` is
-    # the fresh broker read this cycle already made (invariant #4) — no extra
-    # API call. Display only; never read back into a trading decision.
-    try:
-        ledger.log_positions_mark(positions)
-    except Exception as e:  # noqa: BLE001 — a cosmetic snapshot never kills a cycle
-        log.warning("positions mark failed: %s", e)
-
-    import json as _json
-    ledger.log_event("cycle_complete",
-                     _json.dumps({"equity": account["equity"],
-                                  "n_positions": len(positions),
-                                  "regime": regime_label,
-                                  "sha": _deploy.get("sha"),
-                                  "config_dirty": _deploy.get("config_dirty"),
-                                  "behind": _deploy.get("behind")}))
-
-    # Degradation SLO: too many fail-open events in one day means the ops
-    # error budget is burned — escalate to a human (alert only; HALT stays
-    # reserved for the daily-loss kill switch).
-    check_degradation_slo(ledger, cfg)
-    try:  # page regeneration is cosmetic — never touches the cycle
-        import blog
-        import dashboard
-        dashboard.render(cfg, spy_bars=all_bars.get("SPY"))
-        blog.render(cfg)
-        # journal.html too (2026-07-28). It used to be rendered ONLY from
-        # journal_and_link(), i.e. only when a trade fired, so a stale page had
-        # no way to repair itself on a quiet day — and one did not: the
-        # published journal showed a single entry, for a trade_id absent from
-        # every current store, while memory/journal.jsonl held 17. Rebuilding
-        # from the store every cycle makes the page self-correcting.
-        journal.render(cfg)
-    except Exception as e:  # noqa: BLE001
-        log.warning("page render failed: %s", e)
+    _finalize_cycle(cfg, ledger, memory, broker, account, positions,
+                    all_bars, regime_label)
     log.info("Cycle complete.")
     # Reached only when every stage above ran. Every early return in this
     # function falls out as None, which is falsy on purpose — "completed" is
