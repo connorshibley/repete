@@ -3970,3 +3970,83 @@ unchanged: production trips at a 10% drawdown and then stops buying permanently
 until `memory/.equity_highwater.json` is deleted by hand. §41 establishes that
 the obvious fix costs more drawdown than the pre-registered allowance permits —
 it does not establish that the latch is acceptable.
+
+---
+
+## §42 — DIAGNOSTIC: what the judge does to the census (W2-1, 2026-07-29)
+
+**Not a claim. No verdict. Nothing is enabled or rejected by this section.**
+`scripts/census.py` on the SHIPPED config, run twice, changing exactly one
+thing: whether `backtest.judge_model` is on. Both runs come from the same
+commit, so the judge is the only variable.
+
+### The control reproduces §40 to the digit
+
+| period | §40 executed | judge-OFF today | §40 in cash | judge-OFF today |
+|---|---|---|---|---|
+| 2000-2006 | 101 | **101** | 84.3% | **84.3%** |
+| 2007-2013 | 155 | **155** | 86.8% | **86.8%** |
+| 2014-2019 | 1,732 | **1,732** | 18.9% | **18.9%** |
+| 2022-2026 | 29 | **29** | 92.4% | **92.4%** |
+
+Returns match too (+5.26 / +2.59 / +69.02 / −5.26). This matters: it is what
+licenses reading the table below as *the judge's effect* rather than as drift
+from four days of unrelated commits.
+
+### The paired result
+
+| period | executed off → on | deployment off → on | return off → on | PF off → on | drawdown share off → on |
+|---|---|---|---|---|---|
+| 2000-2006 | 101 → **753** | 8.07% → 20.95% | +5.26% → +9.45% | 1.202 → **1.122** | 94.58% → 74.45% |
+| 2007-2013 | 155 → **269** | 9.75% → 10.92% | +2.59% → +2.42% | 1.117 → **1.082** | 96.71% → 93.76% |
+| 2014-2019 | 1,732 → **3,057** | 68.97% → 69.25% | +69.02% → +56.71% | 1.486 → **1.396** | 20.65% → 20.97% |
+| 2022-2026 | 29 → **54** | 4.09% → 4.72% | −5.26% → −7.71% | 0.449 → **0.367** | 99.43% → 96.86% |
+
+### Two findings, in opposite directions
+
+**1. Modelling the judge makes the bot trade MORE — in all four periods.**
+1.7x to 7.5x more executions. That reads backwards, since the judge only ever
+SHRINKS a position, until the latch is put back in the picture: smaller
+positions produce shallower drawdowns, a shallower drawdown trips the 10% rail
+less often, and a rail that trips less often blocks fewer entries. On 2000-2006
+the drawdown share of all blocks falls 94.58% -> 74.45% and executions go 101 ->
+753.
+
+So **§35-§41 measured a bot MORE locked out than production is.** §40's
+headline — "84-92% fully in cash, 94-99% of blocks are the drawdown rail" —
+overstates the real bot's lockout. The latch is still the dominant blocker in
+three of four periods (74%, 94%, 97%), and §40's diagnosis stands in direction.
+Its magnitude does not.
+
+**2. Profit factor falls in all four periods.** 1.202→1.122, 1.117→1.082,
+1.486→1.396, 0.449→0.367, and return falls in three of four. The judge-less
+simulator was **flattering the incumbent's trade quality**, which is the more
+important of the two findings and the one that would have been easiest to miss,
+because it runs against the direction of the first.
+
+### What this does NOT do
+
+**It reverses nothing.** All ten EDGE verdicts are rejections. A simulator that
+overstated the incumbent's profit factor makes a rejection *more* robust, not
+less — the candidate had to beat a bar that was set too high, and still failed.
+No verdict is withdrawn, re-scored, or revisited on this basis, and the EDGE
+tally stands at **0 for 10**.
+
+**It does not re-open §41.** §41's rejection was measured judge-less, so whether
+the decay arm still roughly doubles maxDD with the judge on is unmeasured. That
+is a reason to register a NEW claim, never a reason to re-score a rejected one.
+
+**It is not evidence about live.** The judge model reproduces a *distribution*
+(n=164 decisions over 12 days, one regime, heavily serially correlated), not the
+judge's actual decisions. Nothing here says the live bot would have executed 753
+times on 2000-2006. It says a simulator that models the haircut behaves
+differently from one that ignores it, by enough that the difference is not
+ignorable.
+
+### Renumbering note
+
+The deferred owner decision — pair the drawdown decay with reduced per-trade
+sizing and test at MATCHED drawdown — becomes **§43** when it is registered.
+This DIAGNOSTIC took §42 because it ran first. Numbers are permanent; the
+earlier plan text calling that claim "§42" is superseded here rather than
+edited away.
