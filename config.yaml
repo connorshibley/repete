@@ -537,6 +537,30 @@ x_posting:                # despite the name, this section is the BLOG + JOURNAL
   journal_url_base: https://connorshibley.github.io/trading-agent-dashboard/journal.html
                        # public journal page; trade tweets link to #<trade_id>
 
+publish:                # WHERE the public artifacts are written. One answer, so
+                        # nothing can write them by accident.
+  out_dir: "."          # dashboard.html, dashboard_data.json, blog.html and
+                        # journal.html land here. "." is the repo root, which is
+                        # what production wants — scripts/run_cycle.sh cd's there
+                        # before every render.
+                        #
+                        # This key exists because on 2026-07-28 the repo-root
+                        # blog.html and journal.html were silently replaced by
+                        # TEST FIXTURES: 2,456 bytes where the published copy had
+                        # 16,570, and 2,533 where it had 62,354. All nine
+                        # production render call sites omitted out_path, so every
+                        # one of them resolved against the PROCESS WORKING
+                        # DIRECTORY. Running pytest from the repo root was enough.
+                        # scripts/publish_dashboard.sh would then have pushed four
+                        # duplicate fake posts over an 11-day public archive.
+                        #
+                        # The artifacts are gitignored, so `git status` stayed
+                        # clean and src/deploycheck.py — which reads
+                        # `git status --porcelain` — could not have seen it.
+                        # tests/conftest.py now points this at a tmp path, which
+                        # makes the repo-root write UNREACHABLE from the fixture
+                        # rather than merely unused by it.
+
 backtest:               # offline harness (src/backtest.py) — never touches the live ledger
   slippage_bps: 5       # applied against you on every simulated fill
   fee_per_trade_usd: 0.0

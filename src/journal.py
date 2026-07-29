@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import disclaimer
 import llm
+import sitepaths
 
 log = logging.getLogger("journal")
 
@@ -113,9 +114,10 @@ def _load(path: str) -> list[dict]:
         return []
 
 
-def render(cfg: dict, out_path: str = OUT_PATH,
+def render(cfg: dict, out_path: str | None = None,
            path: str | None = None) -> str:
     """Render journal.html (newest first, one anchor per trade_id)."""
+    out_path = out_path or sitepaths.resolve(cfg, OUT_PATH)
     path = path or cfg.get("x_posting", {}).get("journal_path", DEFAULT_PATH)
     entries = _load(path)
     articles = []
