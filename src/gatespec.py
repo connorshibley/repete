@@ -72,6 +72,7 @@ SELF_RULES = (
     "min_trades",              # n_trades >= `n`
     "beats_buy_hold",          # return >= buy_hold_return_pct
     "beats_exposure_matched",  # return >= buy_hold_return_pct * deployment
+    "deployment_at_least",     # avg_deployment_pct >= `pct`          [§41]
 )
 
 CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES
@@ -152,6 +153,13 @@ def validate(spec: dict) -> None:
         if clause["rule"] == "min_trades":
             _need(isinstance(clause.get("n"), int),
                   "min_trades needs an integer `n`")
+        if clause["rule"] == "deployment_at_least":
+            _need(isinstance(clause.get("pct"), (int, float)),
+                  "deployment_at_least needs a numeric `pct`")
+            _need(0 < clause["pct"] <= 100,
+                  "deployment_at_least `pct` must be in (0, 100] — a threshold "
+                  "of 0 would pass a bot that never invested, which is the "
+                  "exact degenerate case §41 exists to rule out")
 
     ids = [c["id"] for c in spec["clauses"]]
     _need(len(set(ids)) == len(ids), f"duplicate clause ids: {ids}")

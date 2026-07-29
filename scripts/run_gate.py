@@ -204,6 +204,15 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
             ok = cand_summary["total_return_pct"] >= bar
             detail = (f"{cand_summary['total_return_pct']:+.2f}% vs {bar:+.2f}% "
                       f"(B&H {bh:+.2f}% x {deploy:.1%} deployment)")
+        elif rule == "deployment_at_least":
+            # §41. Without this clause the latch fix could clear every risk
+            # clause by changing nothing at all — a bot that still never
+            # invests trivially fails to make drawdown worse. This is the
+            # clause that makes "the breaker actually re-closed" a machine-
+            # checked pass condition rather than a claim in the write-up.
+            dep = cand_summary.get("avg_deployment_pct", 0.0)
+            ok = dep >= clause["pct"]
+            detail = f"{dep:.2f}% deployed vs {clause['pct']:.1f}% required"
         elif rule in ("significantly_better", "not_worse"):
             if not base_pnls or not cand_pnls:
                 # An arm with no closed trades cannot be compared. Recording

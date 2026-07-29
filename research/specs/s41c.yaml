@@ -1,0 +1,142 @@
+# §41c — CAN THE DRAWDOWN CIRCUIT BREAKER RE-CLOSE? (2014-2019)
+#
+# ONE CLAIM IN FOUR FILES. s41a, s41b, s41c and s41d were written and frozen
+# TOGETHER, before any of them was run. They are a CONJUNCTION: the claim is
+# adopted only if all four pass. Running one period and reporting it would be
+# period selection, which is what §34 retired.
+#
+# THE DEFECT. §40 (knowledge/backtest_candidates.md:3761-3783) established that
+# the breaker is a ONE-WAY LATCH:
+#
+#     Equity peaks at P. A drawdown of >= 10% blocks every entry. Open
+#     positions exit normally. The book goes to cash. In cash, equity is FLAT —
+#     permanently ~0.9P. The peak stays P, so the drawdown stays >= 10%. The
+#     bot never buys again. For the rest of the run.
+#
+# On 2014-2019 that is 20.65% of every blocked signal: 336,408 signals
+# became 1,732 trades, with the book fully in cash on 18.9% of bars.
+# A circuit breaker that cannot re-close is a kill switch.
+#
+# THE FIX UNDER TEST. risk.decayed_peak: after a grace period of STABILITY, the
+# gap between peak and equity halves every half-life. risk.decay_clock counts
+# bars since equity last made a NEW LOW, not bars since the last high — a
+# distinction that came out of testing, not from the design. Counting from the
+# high releases the rail DURING a decline: peak 100,000, equity down to 80,000,
+# 40 bars later gives a decayed peak of 87,071 and reports 8.12% drawdown,
+# under the cap. A 20% drawdown would have read as clear to trade. Counting
+# from the low means every new low restarts the clock, so a falling book stays
+# blocked and only a stabilised one earns its way back.
+#
+# ONE ARM, PRE-SPECIFIED. §34 forbids selection, and choosing the best of
+# several decay settings is exactly what it retired. grace 10 / half-life 20
+# trading days is fixed here before any run: a 10% drawdown stops blocking
+# entries roughly six weeks after it trips instead of never, and the numbers
+# are round rather than tuned.
+#
+# NOTHING IS ADOPTED BY PASSING. risk.drawdown_decay is absent from config.yaml,
+# so decayed_peak() is currently the identity and every §1-§40 result
+# reproduces byte-identically (verified on 2022-2026: -5.26%, PF 0.449, 29
+# trades, 243,814 drawdown blocks — all unchanged). A PASS makes adoption a
+# decision the owner may take; it does not take it.
+id: s41c
+claim: CAPACITY
+title: "Drawdown decay: can the breaker re-close without worsening risk? (2014-2019)"
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+
+# K=11. Ten EDGE claims precede this one. Four specs are ONE claim — the
+# conjunction moves or it does not — so the count rises by one, not four.
+# Same reasoning §37 used for its three arms.
+bonferroni_k: 11
+
+# NO `shared` block and NO overlay. The subject is the SHIPPED configuration;
+# §40 had to correct the record precisely because §35/§37/§38 imposed a common
+# sizing profile and three of four rows in the already-seen table turned out to
+# describe a quarter-sized bot.
+arms:
+  - name: baseline
+
+  - name: decay
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+
+# THE PASS MARK IS ABOUT RISK, NOT RETURN. Return is reported and is NOT a
+# clause. Making it the bar would be selecting on return, which §34 showed
+# cannot be done reliably on this data — a selector with the future in hand
+# still scored no better than a coin.
+clauses:
+  # The fix must not buy its deployment with drawdown.
+  - {id: a, rule: maxdd_within, pp: 3.0}
+
+  # Per-trade P&L not significantly worse. The CAPACITY rule: this asks
+  # "did trading more make each trade worse?", not "did it make money".
+  - {id: b, rule: not_worse}
+
+  # Without this an arm with two closed trades could clear the rest on noise.
+  - {id: c, rule: min_trades, n: 30}
+
+  # THE CLAUSE THAT MAKES THE CLAIM FALSIFIABLE. Without it the fix could pass
+  # every risk clause by changing nothing at all — a bot that still never
+  # invests trivially fails to make drawdown worse.
+  #
+  # PROVENANCE OF 25.0, declared because it must not be reverse-engineered
+  # later: it comes from §40's ALREADY-PUBLISHED baselines at shipped config —
+  # 4.09%, 8.07%, 9.75% and 68.97% — and from NO run of the candidate. It is
+  # more than double the best of the three latched periods and far short of
+  # demanding full investment.
+  #
+  # NON-BINDING ON s41c BY CONSTRUCTION: 2014-2019 already deploys 68.97% at
+  # baseline, because the latch barely operated in that period (drawdown is
+  # 20.65% of its blocks, not 94-99%). That period therefore tests the risk
+  # clauses only. Stated here rather than discovered afterwards.
+  - {id: d, rule: deployment_at_least, pct: 25.0}
+
+prior: >-
+  The deployment clause should pass on 2014-2019 and the risk clauses are the
+  real question. §40 measured the mechanism directly rather than inferring it,
+  so there is little doubt the latch is what holds deployment at 68.97%; the
+  open question is what the bot does with capital once it can use it. The
+  honest expectation is that maxdd_within is the clause most likely to fail: a
+  bot that re-enters after a drawdown is a bot that can take a second drawdown,
+  and 3.0pp is not a generous allowance. Clause (b) is the one I would least
+  like to see fail, because a significantly worse per-trade P&L at higher
+  deployment would say the rail had been carrying the strategy rather than
+  strangling it — that the bot was only profitable when it was barely trading,
+  which is not a strategy. This is a CAPACITY claim and cannot show edge; ten
+  EDGE claims have been rejected and this one does not touch that record.
+
+failure_modes:
+  - >-
+    SURVIVORSHIP. The universe is today's index membership screened on early
+    liquidity, so companies that failed during an unusually calm bull market are absent by
+    construction. This flatters any long strategy, and it flatters the DECAY
+    arm more than the baseline, because the decay arm holds more and for
+    longer. A PASS is therefore weaker evidence here than a FAIL is.
+  - >-
+    The decay parameters were chosen for roundness, not fitted — but they were
+    chosen by someone who had already read §40's census. Grace 10 and half-life
+    20 are not innocent of that knowledge, only of any candidate run. A PASS
+    should not be read as "these are the right numbers", only as "these numbers
+    did not make risk worse".
+  - >-
+    Clause (d) is non-binding on s41c and near-certain on the other three. It
+    proves the latch lifted; it proves nothing about whether lifting it helped.
+    Reading a PASS on (d) as a result would be reading the thermometer as the
+    weather.
+  - >-
+    More deployment means more exposure to the market's own direction. On a
+    period whose market rose, the decay arm will look better for reasons that
+    have nothing to do with the rail. Return is deliberately not a clause for
+    exactly this reason, and any write-up that quotes the return difference as
+    evidence is misreading this spec.
+  - >-
+    A PASS on all four does NOT mean the bot should trade live at these
+    settings. It means one mechanical defect has been repaired without making
+    measured risk worse. The 30-closed-trade live evidence gate is untouched
+    and the live record is still two closed trades.
