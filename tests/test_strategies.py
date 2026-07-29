@@ -3,7 +3,6 @@ import pytest
 
 import strategies
 from strategies import tsmom, xsmom, meanrev
-from conftest import make_bars
 
 
 def _long_bars(closes):

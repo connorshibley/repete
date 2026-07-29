@@ -12,7 +12,6 @@ re-implementation would be the fifth sim/live divergence.
 """
 from datetime import date, datetime, timezone
 
-import pytest
 
 import risk
 

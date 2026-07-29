@@ -174,6 +174,6 @@ def test_inline_pass_never_raises(env, monkeypatch):
     ledger, lessons, judgments, cfg = env
     monkeypatch.setattr(learn, "evaluate_closed_trades",
                         lambda *a, **k: 1 / 0)
-    summary = learn.inline_pass(ledger, lessons, judgments, cfg)  # no raise
+    learn.inline_pass(ledger, lessons, judgments, cfg)  # the point is: no raise
     events = [r for r in ledger.all_records() if r["type"] == "event"]
     assert any(e["event"] == "learning_error" for e in events)

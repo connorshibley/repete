@@ -10,8 +10,16 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Dependencies first — they change far less often than the source.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+#
+# The LOCKFILE, not requirements.txt (W4-1, 2026-07-29). requirements.txt names
+# the direct dependencies; requirements.lock pins all 58 including the
+# transitive closure. numpy and pandas arrive through that closure — nothing
+# names them — and they are exactly the packages whose float behaviour a gate
+# verdict rests on. Installing the loose file here let the container and the
+# laptop resolve differently on any given day, which is the one thing a project
+# built on reproducible verdicts cannot afford.
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY src/ ./src/
 COPY scripts/ ./scripts/

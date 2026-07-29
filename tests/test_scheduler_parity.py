@@ -34,7 +34,6 @@ rather than silently.
 import importlib.util
 import os
 import plistlib
-import re
 
 import pytest
 
@@ -48,6 +47,23 @@ CONTAINER_ONLY = {
     "open-cycle": "second daily entry pass; laptop runs the 15:45 cycle only",
     "midday-scan": "alerts only, never trades; noise on a personal machine",
     "mark-book": "hourly dashboard re-mark; cosmetic, needs an always-on host",
+}
+
+# The MIRROR of CONTAINER_ONLY, added 2026-07-29 (W4-5). It did not exist
+# because until then no job was legitimately laptop-only, so the asymmetry cost
+# nothing — the second test below simply had no escape hatch.
+#
+# Same rule as above: a job may be absent from one scheduler only if the reason
+# is written down here. An exemption is a declaration, not a silencer.
+LAPTOP_ONLY = {
+    "secretcheck": (
+        "scripts/check_secret_exposure.py reads .env and "
+        "~/.claude/projects/*.jsonl — files that exist on THIS machine and "
+        "nowhere else. In a container it would find no credentials, print "
+        "'nothing to check' and exit 0 unconditionally: a green job proving "
+        "nothing, which reads as coverage it does not provide. Stopping "
+        "off-laptop is the CORRECT behaviour here, not a regression. The same "
+        "reasoning kept it out of CI — see .github/workflows/ci.yml."),
 }
 
 # launchd groups the two daily posts into one plist; scheduler.py splits them.
@@ -91,10 +107,30 @@ def test_every_scheduler_job_is_either_deployed_or_declared_container_only():
 def test_no_launchd_job_is_missing_from_the_container():
     """The mirror image: a plist with no scheduler.py counterpart would run
     here and vanish the moment the agent moves to a server."""
-    extra = _launchd_jobs() - _scheduler_jobs()
+    extra = _launchd_jobs() - _scheduler_jobs() - set(LAPTOP_ONLY)
     assert not extra, (
         f"{sorted(extra)} have a launchd plist but no scripts/scheduler.py "
-        f"job — they would silently stop when this moves off the laptop")
+        f"job — they would silently stop when this moves off the laptop. "
+        f"Either add a scheduler.py job or add an entry to LAPTOP_ONLY "
+        f"explaining why the container skips it.")
+
+
+def test_laptop_only_declarations_are_real_plists():
+    """A stale exemption is worse than none — it would let a genuinely missing
+    container job hide behind the name of a plist that no longer exists. The
+    mirror of test_container_only_declarations_are_real_jobs."""
+    stale = set(LAPTOP_ONLY) - _launchd_jobs()
+    assert not stale, (
+        f"{sorted(stale)} are declared laptop-only but have no plist in "
+        f"scripts/ — remove the exemption")
+
+
+def test_laptop_only_exemptions_state_a_reason():
+    """The declaration is the whole mechanism. An empty or one-word reason
+    turns the allowlist into a mute button."""
+    for name, why in LAPTOP_ONLY.items():
+        assert len(why.strip()) >= 40, (
+            f"{name}'s LAPTOP_ONLY entry does not explain itself")
 
 
 def test_backup_and_restore_drill_are_deployed_here():
@@ -118,7 +154,7 @@ def test_container_only_declarations_are_real_jobs():
         f"scheduler.py — remove the exemption")
 
 
-@pytest.mark.parametrize("name", ["backup", "restoredrill"])
+@pytest.mark.parametrize("name", ["backup", "restoredrill", "secretcheck"])
 def test_new_plists_are_valid_and_point_at_a_real_runner(name):
     path = os.path.join(SCRIPTS, f"com.trading-agent.{name}.plist")
     raw = open(path, "rb").read()

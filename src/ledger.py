@@ -7,7 +7,6 @@ written only AFTER a position closes (the 'outcome embargo' from the
 research — memory must never see a result before it was observable).
 """
 import json
-import os
 from datetime import datetime, timezone
 
 import uuid

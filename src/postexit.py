@@ -22,8 +22,6 @@ Design constraints (CLAUDE.md invariants):
   * append-only JSONL + replay (the ledger pattern); bounded bar fetches
     per cycle; failures never crash a cycle.
 """
-import json
-import os
 from datetime import datetime, timedelta, timezone
 
 import logging

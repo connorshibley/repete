@@ -60,7 +60,8 @@ def test_post_text_link_uses_tco_math(cfg, capsys):
     x_poster.post_text(text, cfg, link=long_url)
     out = capsys.readouterr().out
     assert long_url in out            # full URL kept (t.co counts it as 23)
-    posted = [ln for ln in out.splitlines() if long_url in ln][0]
+    # [0] is the assertion: IndexError if the long URL never made it out.
+    [ln for ln in out.splitlines() if long_url in ln][0]
     # body was trimmed to leave t.co room: 275-24 chars max before the link
     body = out.split("--- X post (dry run) ---")[1].split(long_url)[0]
     assert len(body.strip()) <= 251

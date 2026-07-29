@@ -4,7 +4,6 @@ import json
 
 import blog
 import x_poster
-from ledger import Ledger
 
 
 def _cfg_paths(cfg, tmp_path):

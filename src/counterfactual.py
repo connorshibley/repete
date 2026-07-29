@@ -10,7 +10,7 @@ Embargo: resolution_due() blocks resolution until the full swing horizon
 (min_holding_days + extra_days) has passed — memory never sees an outcome
 before it was observable.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 
 def resolution_due(decision_ts: str, min_holding_days: int, extra_days: int,

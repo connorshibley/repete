@@ -22,7 +22,6 @@ Each of those is pinned below.
 import os
 import re
 
-import pytest
 
 import dashboard
 from ledger import Ledger

@@ -1,1 +1,8 @@
-pytest>=8.0
+# Test + lint toolchain. Pinned 2026-07-29 (W4-1).
+#
+# `.github/workflows/ci.yml` has claimed since 2026-07-22 that this file held
+# "the pinned pytest, not a floating one". It held `pytest>=8.0`. The comment
+# was false for a week in the file that gates every merge; now it is true.
+pytest==9.1.1
+ruff==0.16.0
+mypy==2.3.0

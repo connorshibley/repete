@@ -1,4 +1,3 @@
-import math
 
 import regime
 from conftest import make_bars

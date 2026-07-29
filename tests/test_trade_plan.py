@@ -136,7 +136,7 @@ def test_to_text_handles_an_empty_plan():
 
 def test_ledger_accepts_and_stores_the_plan():
     """The plan has to survive the round trip into the append-only record."""
-    import tempfile, os, json
+    import tempfile, os
     from ledger import Ledger
     with tempfile.TemporaryDirectory() as d:
         led = Ledger(os.path.join(d, "l.jsonl"))

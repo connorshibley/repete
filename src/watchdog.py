@@ -15,7 +15,6 @@ itself never raises.
 """
 import logging
 import os
-import subprocess
 import sys
 from datetime import date, datetime
 

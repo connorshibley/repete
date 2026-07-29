@@ -14,7 +14,6 @@ Two properties are load-bearing and neither is obvious from reading the script:
 import importlib.util
 import os
 
-import pytest
 
 
 def load():

@@ -11,7 +11,6 @@ learnings.md is a RENDERED VIEW regenerated from this store — never the
 source of truth. Lessons feed ONLY the veto/downsize judgment layer
 (conservative-only invariant); nothing here touches sizing or signals.
 """
-import json
 import os
 import re
 import uuid

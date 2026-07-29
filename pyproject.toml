@@ -1,0 +1,79 @@
+# Tooling config. This repo is not a distributable package — there is no
+# [project] table and nothing here builds a wheel. It exists so `ruff` and
+# `mypy` read the same settings on a laptop and in CI.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = [".venv", ".site", "data", "backups"]
+
+[tool.ruff.lint]
+# NARROW BY DESIGN, AND RATCHETING (W4-2, 2026-07-29).
+#
+# The first full sweep of this repo — nobody had ever run one — found **372
+# findings across E,F,W,I,B,UP**. Turning all of that on at once would have
+# meant hundreds of mechanical edits inside risk.py, main.py and backtest.py:
+# the live order path, with the test suite as the only control. That trade is
+# not worth making for a linter.
+#
+# So only the families that catch REAL DEFECTS are enforced, they are at zero
+# today, and CI fails on any regression. Everything else is listed below with
+# its measured count, to be cleared in later passes — recorded, not dropped.
+#
+#   F   pyflakes: undefined names, unused imports, unused locals, f-strings
+#       with no placeholders. 40 findings fixed to reach zero, of which 18 were
+#       genuinely dead code in src/ and scripts/ (unused `json`, `os`,
+#       `subprocess`, `timezone` imports).
+#   E9  syntax and runtime errors. Zero today; a pure regression guard.
+select = ["F", "E9"]
+
+# DEFERRED, WITH COUNTS MEASURED 2026-07-29 AFTER THE F CLEANUP.
+# Each line is a promise to come back, not a decision that the rule is wrong.
+#
+#   UP017  100  datetime.timezone.utc -> datetime.UTC. Mechanical, but it edits
+#               datetime handling across the trading core and the backtester.
+#               Exactly the "touches trading logic to satisfy a linter" case
+#               this wave refuses. Needs its own PR with the suite as control.
+#   I001    95  unsorted imports. Autofixable and confined to import blocks,
+#               but reordering 95 files' imports in THIS PR would bury the
+#               dependency-pinning diff it is meant to be reviewed alongside.
+#               Zero defect value; deferred purely to keep the diff honest.
+#   E501    68  line too long. Cosmetic.
+#   E741    17  ambiguous variable name (l, I, O). Renaming locals in the
+#               trading core for a style rule is not worth the risk today.
+#   B007    11  unused loop control variable.
+#   UP031   10  printf-style formatting.
+#   B905     8  zip() without explicit strict=. Worth revisiting — a silent
+#               length mismatch in a zip over bars WOULD be a real defect. It
+#               is deferred only because the eight sites need reading, not
+#               autofixing.
+#   E402     6  module import not at top of file. Several are deliberate lazy
+#               imports (backtest.py imports alpaca only inside fetch_bars) and
+#               would need per-line noqa rather than a fix.
+#   E401     3  multiple imports on one line.
+#   E702     1  multiple statements on one line.
+
+[tool.ruff.lint.per-file-ignores]
+# F811 in tests/ is the pytest fixture idiom, not a defect: a fixture defined
+# in one test module must be IMPORTED into another to be visible to pytest,
+# and is then named again as a test parameter. Ruff reads the parameter as a
+# redefinition of the import. All 7 occurrences are exactly this shape
+# (`from test_main_cycle import cycle_env`), and "fixing" them would break the
+# fixtures. Ignored deliberately rather than silenced with 7 scattered noqa.
+"tests/*" = ["F811"]
+
+[tool.mypy]
+python_version = "3.11"
+# ADVISORY AND SCOPED (W4-3). Run in CI with continue-on-error, over the
+# pure-logic modules only — see .github/workflows/ci.yml.
+#
+# Not repo-wide and not blocking, on purpose. Most of this codebase talks to
+# alpaca-py, yfinance and anthropic, whose surfaces are largely untyped; a
+# checker that fails the build on third-party stubs teaches people to bypass
+# CI, which is how `pip-audit` ended up continue-on-error in the first place.
+#
+# The four modules it does cover are the ones where a type error would corrupt
+# a NUMBER rather than crash a cycle: risk.py (the rails), gatespec.py (the
+# freeze), judge_model.py (the haircut), significance.py (the statistics).
+ignore_missing_imports = true
+warn_unused_ignores = false

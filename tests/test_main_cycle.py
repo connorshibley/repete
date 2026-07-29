@@ -429,7 +429,7 @@ def test_llm_outage_is_ledgered_as_degradation(cycle_env, monkeypatch):
     disabled' and was recorded as a genuine approve — crediting the judge for a
     decision it never made and hiding the outage from the degradation SLO."""
     cfg, install = cycle_env
-    broker = install(FakeCycleBroker(make_bars(BUY_CLOSES)))
+    install(FakeCycleBroker(make_bars(BUY_CLOSES)))
 
     def _boom(*a, **k):
         raise RuntimeError("anthropic 503")

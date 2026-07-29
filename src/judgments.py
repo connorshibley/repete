@@ -10,8 +10,6 @@ kind="llm" (approve/downsize/veto) and kind="rails" (risk-rejections) are
 bucketed separately: rails rejections calibrate the deterministic rails, not
 the judge, and mixing them would corrupt veto precision.
 """
-import json
-import os
 import uuid
 from datetime import datetime, timezone
 

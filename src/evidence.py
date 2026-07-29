@@ -251,10 +251,10 @@ def build_pack(cfg: dict, records: list[dict], now: datetime,
         f"- Trading go-live gate: "
         f"{'PASS' if all(g.get('pass') for g in gates['trading_go_live'].values() if g.get('pass') is not None) else 'NOT MET'}"
         f" (benchmark leg needs market data — run src/review.py)",
-        f"- Revenue gate: "
+        "- Revenue gate: "
         + ("OPEN" if gates["revenue"]["open"]
            else "CLOSED — " + "; ".join(gates["revenue"]["reasons"])),
-        f"- Invariant checks: "
+        "- Invariant checks: "
         + ("ALL PASS" if inv["all_pass"]
            else "FAILED: " + ", ".join(inv["failed"])),
         "",
