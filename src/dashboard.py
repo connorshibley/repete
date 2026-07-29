@@ -1313,8 +1313,6 @@ def render(cfg: dict | None = None, out_path: str | None = None,
 <div class=wrap>
 <h1>trading-agent <span class=small>[PAPER] — generated
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>
-&nbsp; <a class=x href="https://x.com/Repete2026" target="_blank"
-rel="noopener">@Repete2026 on X ↗</a>
 &nbsp; <a class=x href="journal.html">trade journal →</a>
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
 <p class=small><span class=livedot></span>live paper account · rebuilt
@@ -1340,9 +1338,9 @@ own closed trades</summary>{_lessons_rows(states)}</details>
 <p class=small>{_esc(calib)}</p>
 <p class=small>Paper trading. Generated from memory/ledger.jsonl — the
 append-only audit trail is the source of truth, this page is a view.
-The bot narrates its trades and reasoning at
-<a class=x href="https://x.com/Repete2026" target="_blank"
-rel="noopener">x.com/Repete2026</a>.</p>
+The bot narrates every trade and its reasoning on its own
+<a class=x href="blog.html">blog</a> and
+<a class=x href="journal.html">trade journal</a>.</p>
 <p class=small>{_esc(disclaimer.DISCLAIMER)}</p>
 </div><script>{JS}</script><script>{live_js}</script></body></html>"""
     with open(out_path, "w") as f:

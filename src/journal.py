@@ -142,8 +142,7 @@ def render(cfg: dict, out_path: str | None = None,
 strategy's logic, the AI judge's view, and the risk plan. Paper trading —
 nothing here is financial advice.
 <a href="index.html">← dashboard</a> ·
-<a href="blog.html">blog</a> ·
-<a href="https://x.com/Repete2026">@Repete2026 on X ↗</a></p>
+<a href="blog.html">blog</a></p>
 {body}
 <p class=small>{html.escape(disclaimer.DISCLAIMER)}</p>
 </div></body></html>"""

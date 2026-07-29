@@ -34,18 +34,35 @@ ran"*, not *"trading went well"*. Trading problems are already loud (ledger
 events, HALT, log lines). The heartbeat catches the one problem that can't
 log itself — total absence.
 
-### 2. The watchdog (checks the heartbeat)
+### 2. The watchdog (checks the heartbeat *and* that the cycle finished)
 
 `src/watchdog.py` runs on its own launchd job
 (`scripts/com.trading-agent.watchdog.plist`, weekdays **4:15 PM** local —
-30 minutes after the 3:45 PM cycle should have finished). It checks:
+30 minutes after the 3:45 PM cycle should have finished). It checks **three**
+things:
 
-1. **Heartbeat freshness** — on a weekday, the timestamp in
-   `memory/heartbeat` must be from *today* (local time). Missing, unreadable,
-   or dated yesterday ⇒ today's cycle did not run.
-2. **HALT** — if the kill-switch `HALT` file exists, it nags daily until a
+1. **Heartbeat freshness — did the process RUN?** On a weekday, the timestamp
+   in `memory/heartbeat` must be from *today* (local time). Missing,
+   unreadable, or dated yesterday ⇒ today's cycle did not start.
+2. **`cycle_complete` — did the cycle FINISH?** A `cycle_complete` event dated
+   today must exist in `memory/ledger.jsonl`. A fresh heartbeat with no
+   completion means the process ran and got nowhere.
+3. **HALT** — if the kill-switch `HALT` file exists, it nags daily until a
    human reviews and deletes it. (HALT also blocks trading, so an engaged
    kill switch with a distracted owner is dead-bot-with-extra-steps.)
+
+> **Check 2 was added 2026-07-26, and this document omitted it until
+> 2026-07-29.** It exists because check 1 alone is blind to the failure that
+> actually happened: `write_heartbeat()` runs in a `finally:`, so the crashed
+> 15:45 cycle on Friday 2026-07-24 stamped a **fresh** heartbeat on its way out
+> and read as perfectly healthy. `catchup` used the same test, so the crash
+> silenced its own recovery, and the EOD post read like a quiet market. One
+> trading day lost, unnoticed for two.
+>
+> Listing two checks here was therefore not a cosmetic omission — it described
+> the version of the watchdog that missed the incident this file exists to
+> explain. `tests/test_cycle_completion.py` is the assertion that keeps it
+> honest.
 
 On any problem the watchdog fires, in order:
 

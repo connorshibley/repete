@@ -567,7 +567,24 @@ x_posting:                # despite the name, this section is the BLOG + JOURNAL
                        # delivers). Turning this back on needs the four X_* values
                        # in .env; they were empty from ~2026-07-24, which is what
                        # started all of this.
-  dry_run: false       # LIVE posting (owner-authorized 2026-07-16). true = print instead.
+  dry_run: true        # PRINT, never deliver (W5-2, 2026-07-29). Was `false`.
+                       #
+                       # TWO FLAGS, BOTH MUST BE TURNED OVER DELIBERATELY.
+                       # Until today `enabled: false` was the ONLY thing between
+                       # this bot and a real public post, and it sits in a
+                       # section whose name says "x_posting" while actually
+                       # governing the BLOG and JOURNAL. Someone flipping
+                       # `enabled` to get the blog working — not realising X
+                       # rides the same block — would have started tweeting.
+                       #
+                       # Costs nothing: X delivery is already off, and the blog
+                       # and journal are decoupled from it by design
+                       # (src/x_poster.py archives before it delivers, so every
+                       # composed post reaches posts_log_path as `x_disabled`).
+                       #
+                       # `disclose_paper: true` below stays true whatever these
+                       # two do. Posting paper results as real is what the FTC
+                       # fined Warrior Trading $3M for.
   post_style: recap    # recap = per-trade post with reasoning
   hashtags: "#papertrading #tradingbot"
   disclose_paper: true # always disclose paper trading in posts (keep this true — honesty matters)
@@ -576,7 +593,10 @@ x_posting:                # despite the name, this section is the BLOG + JOURNAL
                                        # writes -> rendered into the public blog,
                                        # whatever became of it on X
   journal_url_base: https://connorshibley.github.io/trading-agent-dashboard/journal.html
-                       # public journal page; trade tweets link to #<trade_id>
+                       # public journal page. Each trade's write-up is anchored
+                       # at #<trade_id>, which is what a post links to when X
+                       # is on. Said "trade tweets link to" until 2026-07-29 —
+                       # true when written, stale since X went off.
 
 publish:                # WHERE the public artifacts are written. One answer, so
                         # nothing can write them by accident.
