@@ -376,6 +376,12 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 
+        # §41 / divergence #10: ratchet the peak EVERY bar, not only on bars
+        # where a buy was attempted. A high-water mark sampled only when the
+        # book happens to transact is not a high-water mark. See the identical
+        # hoist in simulate_ensemble().
+        sim_peak = max(sim_peak, acct.equity(last_close))
+
         # 1. Fill orders queued on the previous bar, at this bar's open.
         still_pending = []
         for sym, action in pending:
@@ -415,7 +421,9 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                     # file, the sim cannot. The ARITHMETIC is shared
                     # (risk.drawdown_pct), so the two cannot disagree about
                     # what a drawdown is, only about where the peak came from.
-                    sim_peak = max(sim_peak, acct.equity(last_close))
+                    # §41: the ratchet itself moved to the top of the bar loop
+                    # (divergence #10) — it used to sit HERE, inside the buy
+                    # branch, so a bar that only sold never updated the peak.
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
@@ -741,6 +749,20 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         for sym, bar in today.items():
             last_close[sym] = bar["close"]
 
+        # §41 / DIVERGENCE #10. This ratchet used to live inside the buy branch
+        # below, so the peak advanced only on bars where an entry was attempted.
+        # Live ratchets inside pre_trade_checks, which runs for sells too
+        # (src/risk.py:828-834, and the comment there says exactly why: "the
+        # peak must keep tracking even while entries are blocked"). Live
+        # therefore sampled the peak on strictly more occasions than the
+        # simulator, which means the §40 latch bit HARDER in production than in
+        # any backtest that measured it.
+        #
+        # Fixed by making both correct rather than by making one match the
+        # other's artifact: a high-water mark sampled only when the book happens
+        # to transact is not a high-water mark. Every bar, unconditionally.
+        sim_peak = max(sim_peak, acct.equity(last_close))
+
         # 1. Fill orders queued on the previous bar, at this bar's open.
         still_pending = []
         for sym, action, owner in pending:
@@ -782,7 +804,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     # the global ceiling inside pure_checks sees all of them.
                     strategy_open = sum(1 for p in acct.positions.values()
                                         if p["owner"] == owner)
-                    sim_peak = max(sim_peak, acct.equity(last_close))   # §31
+                    # §41: ratchet hoisted to the top of the bar loop —
+                    # divergence #10. See the comment there.
                     risk.pure_checks("buy", sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
