@@ -170,6 +170,21 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
         elif rule == "min_trades":
             ok = cand_summary["n_trades"] >= clause["n"]
             detail = f"{cand_summary['n_trades']} vs {clause['n']}"
+        elif rule == "beats_buy_hold":
+            bh = cand_summary["buy_hold_return_pct"]
+            ok = cand_summary["total_return_pct"] >= bh
+            detail = f"{cand_summary['total_return_pct']:+.2f}% vs B&H {bh:+.2f}%"
+        elif rule == "beats_exposure_matched":
+            # backtest.enablement_gate's own formula, reproduced rather than
+            # reinvented: buy-and-hold scaled to the average exposure the arm
+            # actually carried. A bot sitting 90% in cash cannot fairly race a
+            # 100%-deployed index, and this is the fair bar for it.
+            bh = cand_summary["buy_hold_return_pct"]
+            deploy = cand_summary.get("avg_deployment_pct", 100.0) / 100.0
+            bar = bh * deploy
+            ok = cand_summary["total_return_pct"] >= bar
+            detail = (f"{cand_summary['total_return_pct']:+.2f}% vs {bar:+.2f}% "
+                      f"(B&H {bh:+.2f}% x {deploy:.1%} deployment)")
         elif rule in ("significantly_better", "not_worse"):
             if not base_pnls or not cand_pnls:
                 # An arm with no closed trades cannot be compared. Recording

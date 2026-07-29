@@ -3600,3 +3600,41 @@ registered claim.
 the incumbent rather than any candidate: *does the live ensemble have any edge
 over a matched-exposure benchmark on periods it was not tuned on?* It should be
 pre-registered and answered before another candidate strategy is tested.
+
+---
+
+## ALREADY-SEEN OBSERVATION (2026-07-28) — the incumbent against its own exposure
+
+**Not a result. Not a claim. Arithmetic on numbers already in this file**, written
+down before §39 is registered so that §39 cannot later be read as discovering it.
+
+`enablement_gate` defines the fair bar for a bot whose rails keep it mostly in
+cash: `buy_hold_return_pct × (avg_deployment_pct / 100)`. Applied to the
+incumbent ensemble's own baseline runs:
+
+| period | incumbent | B&H | deploy | exposure-matched bar | |
+|---|---|---|---|---|---|
+| 2007-2013 (§37) | +0.78% | +92.48% | 10.44% | **+9.65%** | fails |
+| 2014-2019 (§35) | +64.36% | +90.41% | 69.59% | +62.92% | passes by 1.44pp |
+| 2022-2026 (§38) | −11.62% | +45.11% | 8.31% | **+3.75%** | fails |
+
+Roughly **one in three**, and the single pass is a 1.44pp margin at 70%
+deployment — the one period where the bot was mostly invested.
+
+### Why this is not §39
+
+Every one of these numbers was produced as a *baseline* for someone else's
+claim. Reading them now is legitimate — they exist — but a "test" whose answer
+can be looked up is not a test. §38 is the standing lesson: a result from data
+already read is a re-description of spent evidence.
+
+So §39 runs on **2000-2006**, which this repository has never scored. What the
+table above does is make the prior honest: §39's registration can say *"the
+incumbent probably fails"* and mean it, with the reason on the page rather than
+in someone's head.
+
+### The uncomfortable framing
+
+`enablement_gate` is this repository's standard for **"may a strategy be enabled
+live?"** It has rejected nine candidates. It has never once been pointed at the
+strategies that are already running.

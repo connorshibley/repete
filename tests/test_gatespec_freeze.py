@@ -271,3 +271,53 @@ def test_the_base_config_is_never_mutated():
     for arm in spec["arms"]:
         gs.apply_overlay(base, spec, arm)
     assert base == before
+
+
+# ---- one arm is legal only when nothing is being compared ----
+
+def _one_arm(clauses):
+    return {"id": "t", "claim": "EDGE", "title": "t",
+            "snapshot": {"path": "b.gz", "sha256": "a" * 64},
+            "arms": [{"name": "baseline"}], "clauses": clauses,
+            "prior": "The incumbent probably fails its own enablement gate.",
+            "failure_modes": ["survivorship flatters any long strategy"]}
+
+
+def test_a_single_arm_spec_is_legal_when_no_clause_compares():
+    """§39 puts the INCUMBENT on trial against benchmarks from its own run.
+    There is no second arm by design, and the old blanket rule would have
+    blocked it."""
+    gs.validate(_one_arm([{"id": "a", "rule": "enablement_gate"},
+                          {"id": "b", "rule": "beats_exposure_matched"},
+                          {"id": "c", "rule": "beats_buy_hold"},
+                          {"id": "d", "rule": "min_trades", "n": 30}]))
+
+
+@pytest.mark.parametrize("rule", ["pf_gt_baseline", "significantly_better",
+                                  "not_worse"])
+def test_a_single_arm_spec_with_a_comparative_clause_is_still_rejected(rule):
+    """The relaxation must not become a hole. Anything measured against the
+    `baseline` ARM still needs a second arm to be one."""
+    with pytest.raises(gs.SpecError, match="at least two arms"):
+        gs.validate(_one_arm([{"id": "x", "rule": rule}]))
+
+
+def test_the_rejection_names_the_offending_clauses():
+    with pytest.raises(gs.SpecError) as e:
+        gs.validate(_one_arm([{"id": "a", "rule": "enablement_gate"},
+                              {"id": "x", "rule": "pf_gt_baseline"}]))
+    assert "pf_gt_baseline" in str(e.value)
+    assert "enablement_gate" not in str(e.value)   # only the ones at fault
+
+
+def test_maxdd_within_counts_as_comparative():
+    """It reads baseline's drawdown, so it needs a baseline to read."""
+    with pytest.raises(gs.SpecError, match="at least two arms"):
+        gs.validate(_one_arm([{"id": "c", "rule": "maxdd_within", "pp": 1.0}]))
+
+
+@pytest.mark.parametrize("spec_id", ["s35", "s37", "s38"])
+def test_existing_registered_specs_still_validate(spec_id):
+    """The relaxation must not disturb a spec already frozen and scored."""
+    gs.validate(gs.load(os.path.join(ROOT, "research", "specs",
+                                     f"{spec_id}.yaml")))

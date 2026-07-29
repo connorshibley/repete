@@ -53,14 +53,28 @@ CLAIM_TYPES = ("EDGE", "CAPACITY", "METHOD", "DIAGNOSTIC")
 # Clause rules the runner can execute. The pass mark is EXECUTED, never
 # paraphrased — prose in the registration and a different threshold in the
 # runner is exactly the drift this format exists to prevent.
-CLAUSE_RULES = (
-    "enablement_gate",      # candidate clears backtest.enablement_gate() in full
+
+# COMPARATIVE rules measure an arm against the `baseline` ARM, so a spec using
+# any of them needs at least two arms.
+COMPARATIVE_RULES = (
     "pf_gt_baseline",       # profit factor strictly greater than the baseline arm
     "maxdd_within",         # maxDD <= baseline maxDD + `pp` percentage points
-    "min_trades",           # n_trades >= `n`
     "significantly_better",  # significance.compare(...).significant   [EDGE]
     "not_worse",            # significance.compare(...).not_worse      [CAPACITY]
 )
+
+# SELF-REFERENTIAL rules measure an arm against benchmarks derived from its OWN
+# run — the market it traded, the exposure it actually carried. They need no
+# second arm, which is what lets §39 put the incumbent on trial with nothing to
+# compare it to except the market.
+SELF_RULES = (
+    "enablement_gate",         # clears backtest.enablement_gate() in full
+    "min_trades",              # n_trades >= `n`
+    "beats_buy_hold",          # return >= buy_hold_return_pct
+    "beats_exposure_matched",  # return >= buy_hold_return_pct * deployment
+)
+
+CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES
 
 REQUIRED = ("id", "claim", "title", "snapshot", "arms", "clauses",
             "prior", "failure_modes")
@@ -105,15 +119,27 @@ def validate(spec: dict) -> None:
               f"aux.{name} needs both `path` and `sha256`")
 
     arms = spec["arms"]
-    _need(isinstance(arms, list) and len(arms) >= 2,
-          "a gate needs at least two arms — a candidate with nothing to beat "
-          "is a measurement, not a claim")
+    _need(isinstance(arms, list) and arms, "a gate needs at least one arm")
     names = [a.get("name") for a in arms]
     _need(all(names), "every arm needs a `name`")
     _need(len(set(names)) == len(names), f"duplicate arm names: {names}")
     _need(names[0] == "baseline",
-          "the first arm must be named `baseline` — every clause is expressed "
-          "relative to it")
+          "the first arm must be named `baseline` — every comparative clause is "
+          "expressed relative to it")
+
+    # Two arms are required only when something is actually being compared to
+    # the baseline arm. The original blanket rule read "a candidate with nothing
+    # to beat is a measurement, not a claim", which is true of `pf_gt_baseline`
+    # and false of `beats_buy_hold` — there the thing to beat is the market.
+    # §39 puts the INCUMBENT on trial against benchmarks derived from its own
+    # run, and has no second arm by design.
+    used = {c.get("rule") for c in spec["clauses"]}
+    comparative = sorted(used & set(COMPARATIVE_RULES))
+    if comparative:
+        _need(len(arms) >= 2,
+              f"clauses {comparative} compare against the `baseline` arm, so "
+              f"this spec needs at least two arms — a candidate with nothing "
+              f"to beat is a measurement, not a claim")
 
     for clause in spec["clauses"]:
         _need(isinstance(clause, dict) and clause.get("id") and clause.get("rule"),
