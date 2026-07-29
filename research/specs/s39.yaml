@@ -1,0 +1,93 @@
+# §39 — THE INCUMBENT FACES ITS OWN GATE.
+#
+# `backtest.enablement_gate` is this repository's standard for "may a strategy
+# be enabled live?". It has rejected nine candidates. It has never been pointed
+# at the strategies that are already running with real (paper) money.
+#
+# This spec points it at them, unchanged, on a period this repository has never
+# scored.
+#
+# ONE ARM, and that is the design. There is no candidate and no challenger —
+# every clause measures the incumbent against benchmarks derived from its own
+# run. The two-arm rule was relaxed for exactly this shape: the thing to beat
+# here is the market, not another configuration.
+#
+# NOTHING IS BEING TUNED. A failure is a finding to act on deliberately, not a
+# licence to start fitting parameters to 2000-2006 — that would manufacture the
+# overfit §33 and §34 spent this entire programme establishing we cannot detect.
+id: s39
+claim: EDGE
+title: "Does the live ensemble clear its own enablement gate on 2000-2006?"
+
+snapshot:
+  path: data/snapshots/bars_wide_2000-01-01_2006-12-31.json.gz
+  sha256: 432cec564ccee6abcf690d365b51cfd107b8b734c2375b8638ff4cadb5251cc8
+
+cash: 100000.0
+
+# K=10. Nine EDGE claims precede this one.
+bonferroni_k: 10
+
+# NO `shared` block and NO overlay. §35, §37 and §38 all imposed a common risk
+# profile so their arms were comparable; here the subject IS the shipped
+# configuration, so config.yaml is used exactly as production runs it. Changing
+# a single risk parameter would mean measuring something the bot is not.
+arms:
+  - name: baseline
+
+clauses:
+  # The same function, unmodified, that rejected nine candidates.
+  - {id: a, rule: enablement_gate}
+
+  # The fair bar for a bot whose rails keep it mostly in cash: buy-and-hold
+  # scaled to the exposure it actually carried.
+  - {id: b, rule: beats_exposure_matched}
+
+  # The harsher bar, reported because it is the owner's real alternative. Not
+  # clearing (c) while clearing (b) would mean: the stock selection adds value
+  # per unit of exposure, but the bot deploys too little capital to beat simply
+  # holding the index.
+  - {id: c, rule: beats_buy_hold}
+
+  # Without this, a bot that never invested would clear (b) trivially: its
+  # exposure-matched bar would be 0% and any non-negative return would pass.
+  - {id: d, rule: min_trades, n: 30}
+
+prior: >-
+  The incumbent probably fails, and the reason is already written into this
+  file rather than being a hunch. The ALREADY-SEEN OBSERVATION recorded before
+  this registration shows the same test applied to three periods whose numbers
+  were produced as baselines for other claims: 2007-2013 fails (+0.78% against
+  a +9.65% bar), 2022-2026 fails (-11.62% against +3.75%), and 2014-2019 passes
+  by 1.44pp at 70% deployment. Roughly one in three. 2000-2006 has never been
+  scored here, so this is the first honest test of the question, and the honest
+  expectation is failure. What makes it worth running anyway is that nine
+  candidate rejections say less about whether this bot should be trading than
+  one clean answer about the incumbent.
+
+failure_modes:
+  - >-
+    SURVIVORSHIP, severe. The universe is today's S&P 1500 membership screened
+    on 2000 liquidity, so the dot-com casualties are absent by construction —
+    the companies that went to zero between 2000 and 2002 were never fetched.
+    This flatters ANY long strategy including the incumbent, so a FAIL here is
+    strong evidence and a PASS is weak. Same direction as §37, same asymmetry.
+  - >-
+    The strategies were tuned on 2020-2026 38-symbol data (§14-§29). Running
+    them on a 500-symbol universe from a different era changes two things at
+    once, so a poor result cannot be attributed to the period alone — the
+    breadth of the universe is a confound and is not being controlled here.
+  - >-
+    Low deployment makes `beats_exposure_matched` easy in a way that is
+    arithmetically correct and substantively hollow: a bot 92% in cash faces a
+    bar of 8% of the market's return. Clause (d) stops the degenerate case, but
+    a marginal PASS at very low deployment should be read as "it barely
+    invested", not as "it has edge".
+  - >-
+    2000-2006 contains a crash and a full recovery, which is a favourable shape
+    for a long-only rules engine measured on total return. A single period
+    cannot separate skill from having been pointed at a rising 2003-2006.
+  - >-
+    A PASS would NOT mean the live bot is working. It would mean one
+    configuration cleared one gate on one unseen period, and it would still owe
+    the live 30-trade evidence gate before anything changed.

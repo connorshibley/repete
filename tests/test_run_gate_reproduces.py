@@ -354,3 +354,27 @@ def test_beats_buy_hold_is_the_harsher_bar():
     # …while the exposure-matched bar (90.41 x 69.59% = 62.92) is cleared.
     assert run_gate.evaluate(_self_spec(), arms, "baseline",
                              50)["clauses"][0]["pass"] is True
+
+
+# ---- which arm the clauses land on ----
+
+def test_default_candidate_is_the_second_arm_when_there_are_two():
+    assert run_gate.default_candidate(_spec()) == "cand"
+
+
+def test_default_candidate_is_the_only_arm_when_there_is_one():
+    """§39 puts the BASELINE itself on trial. The inline version of this was
+    `spec["arms"][1]`, which raised IndexError AFTER a 388-second run had
+    computed every number — validation had been relaxed to allow one arm and
+    this line was not updated.
+
+    Nothing caught it because `evaluate()` is always called with an explicit
+    candidate in tests, so the bug lived in the gap between a tested function
+    and its caller. That gap is what this test closes."""
+    assert run_gate.default_candidate(_self_spec()) == "baseline"
+
+
+def test_an_explicit_candidate_wins_over_both_defaults():
+    spec = _spec(candidate="cand", arms=[{"name": "baseline"},
+                                         {"name": "other"}, {"name": "cand"}])
+    assert run_gate.default_candidate(spec) == "cand"
