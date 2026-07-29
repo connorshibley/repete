@@ -100,6 +100,7 @@ class Result:
     n_fill_fallback: int = 0    # §25: fills that had no intraday bar and
                                 # reverted to the daily open (never silent)
     census: dict = field(default_factory=dict)   # §40: signal -> outcome census
+    exits: dict = field(default_factory=dict)    # §45: trade -> exit-reason census
     deployment_zero_pct: float = 0.0   # § 40: share of bars fully in cash
     deployment_median_pct: float = 0.0
     deployment_max_pct: float = 0.0
@@ -1026,6 +1027,49 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         print(f"  !! block census does not balance: {census['signals']} "
               f"signals, {_seen} accounted for", file=sys.stderr)
 
+    # §45 EXIT CENSUS — the mirror of §40's entry census, same must-sum rule.
+    #
+    # §40 asked how capital gets IN. Nothing had ever asked how it gets OUT,
+    # even though every closed trade has carried an `exit_reason` since the
+    # simulator was written; it was aggregated nowhere. The live book turns over
+    # at 0.27 closes/day, which puts Invariant 10's >=30 closed trades ~98 days
+    # out — later than the >=60-day clock — so the close rate, not the calendar,
+    # is what gates revenue, and it had never been measured.
+    #
+    # `end_of_data` is the bucket that matters. It is a FORCED close at run end,
+    # not a decision, and live has no equivalent — nothing force-closes a real
+    # position. Every trade in that bucket is one the strategies never chose to
+    # sell, so a backtest's closed-trade count is inflated by run truncation to
+    # exactly that extent.
+    #
+    # Observation only: this reads `closed` after the run and cannot change it.
+    # The frozen gates must reproduce byte-identically, s43d included.
+    exits: dict = {"closed": len(closed), "by_reason": {},
+                   "holding_days": {}, "guard_skipped_exits": guard_skips}
+    _holds = []
+    for t in closed:
+        exits["by_reason"][t.exit_reason or "unset"] = \
+            exits["by_reason"].get(t.exit_reason or "unset", 0) + 1
+        d = _cal_days(t.entry_ts, t.exit_ts) if t.exit_ts else None
+        if d is not None:
+            _holds.append(d)
+    if _holds:
+        _holds.sort()
+        _h = len(_holds)
+        exits["holding_days"] = {
+            "min": _holds[0], "max": _holds[-1],
+            "median": _holds[_h // 2],
+            "mean": round(sum(_holds) / _h, 1),
+            "p90": _holds[min(_h - 1, int(_h * 0.9))],
+        }
+    _acc = sum(exits["by_reason"].values())
+    if _acc != len(closed):
+        # Same rule as §40: an exit reason that goes unrecorded means a close
+        # path nobody counts. Fail loudly rather than balance quietly.
+        exits["by_reason"]["unaccounted"] = len(closed) - _acc
+        print(f"  !! exit census does not balance: {len(closed)} closed, "
+              f"{_acc} accounted for", file=sys.stderr)
+
     _dep = sorted(deployment)
     _n = len(_dep)
 
@@ -1045,6 +1089,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         n_trades=len(closed), n_guard_skipped_exits=guard_skips,
         n_heat_blocked=n_heat_blocked, n_corr_blocked=n_corr_blocked,
         census=census,
+        exits=exits,
         deployment_zero_pct=round(
             100 * sum(1 for d in _dep if d < 1e-9) / _n, 2) if _n else 0.0,
         deployment_median_pct=round(100 * _dep[_n // 2], 2) if _n else 0.0,

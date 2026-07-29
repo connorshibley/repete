@@ -187,3 +187,40 @@ a commit message.
    flattered it.
 3. Name the test that closes it. If there is no test, the status is OPEN
    regardless of what the code does today.
+
+## #13 — live is trading in a state the backtest says is rare
+
+**Found** 2026-07-29 (§45). **OPEN.**
+
+The `max_drawdown_pct: 10.0` rail latches trading off on a peak-to-trough
+drawdown. In the 2022-2026 snapshot — the period closest to the current regime —
+that rail blocked **96.86% of every buy signal the strategies emitted** (237,522
+of 245,212). It is the single dominant constraint on the backtest, and it is
+similarly dominant in 2000-2006 (74.5%) and 2007-2013 (93.8%).
+
+Live has been running since 2026-07-14. Its equity drawdown reached **1.05%
+today** and had never exceeded **0.10%** before that. The latch has never been
+close to engaging.
+
+So live's 14 open positions and 4 closed round-trips were all generated in the
+~3% of conditions where the backtest's dominant rail is quiet. **The live record
+and the backtest are not samples from the same distribution**, and a comparison
+between them right now is comparing the calmest stretch of one against the
+average of the other.
+
+This is not a code defect — nothing is wired wrongly, and W2-2 already closed the
+peak-sampling divergence (#11) that would have been. It is a *sampling* fact
+about the live record, and it is recorded here because the natural next step
+after ≥30 closed trades is exactly the comparison it invalidates.
+
+### What would close this
+
+A live record that spans at least one period in which the drawdown rail actually
+engages, so that the live sample includes the state the backtest spends most of
+its time in. Concretely: a `risk_rejection` with rail `drawdown` in the live
+ledger, and the closed-trade count measured separately either side of it.
+
+Until then, any statement of the form "live is tracking / beating / lagging the
+backtest" is comparing unlike things, and **§45's table plus this entry are the
+citation that says so.**
+

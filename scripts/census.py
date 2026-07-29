@@ -98,6 +98,27 @@ def main() -> int:
                   file=sys.stderr)
         for reason, n in sorted(c["blocked"].items(), key=lambda kv: -kv[1])[:args.top]:
             print(f"      {reason:<22} {n:>8,}  ({100 * n / sig:5.2f}%)")
+
+        # §45: and how does it get OUT? `end_of_data` is flagged rather than
+        # buried in a list because it is a FORCED close at run end with no live
+        # counterpart — a book that only closes because the data ran out is not
+        # a book that closes.
+        e = r.exits or {}
+        n_closed = e.get("closed", 0)
+        print(f"  EXITS — {n_closed:,} closed, "
+              f"{e.get('guard_skipped_exits', 0):,} sells blocked by "
+              f"min_holding_days")
+        for reason, n in sorted((e.get("by_reason") or {}).items(),
+                                key=lambda kv: -kv[1]):
+            share = (100 * n / n_closed) if n_closed else 0.0
+            flag = "  <- FORCED, no live equivalent" \
+                if reason == "end_of_data" else ""
+            print(f"      {reason:<22} {n:>8,}  ({share:5.2f}%){flag}")
+        h = e.get("holding_days") or {}
+        if h:
+            print(f"  HOLD (calendar days) — median {h['median']}  "
+                  f"mean {h['mean']}  p90 {h['p90']}  "
+                  f"min {h['min']}  max {h['max']}")
         print()
     return 0
 
