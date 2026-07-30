@@ -40,9 +40,20 @@ printf 'The URL is not echoed and is not written to your shell history.\n\n'
 printf 'ntfy: https://ntfy.sh/<your-topic>\n'
 printf 'URL: '
 
+# The trap is not decoration. Without it, Ctrl+C between these two lines leaves
+# the terminal with echo OFF — the operator's shell then silently swallows
+# everything they type, in every command, with no clue why and nothing on
+# screen to read. That happened on 2026-07-30, to the owner, on the first run.
+# `stty sane` is the manual fix; this makes it unnecessary.
+# EXIT restores echo however we leave. INT/TERM/HUP additionally ABORT: a
+# caught interrupt otherwise falls through to validation with an empty URL,
+# which is a confusing "REFUSED: empty" for someone who just pressed Ctrl+C.
+trap 'stty echo 2>/dev/null || true' EXIT
+trap 'stty echo 2>/dev/null || true; printf "\naborted\n"; exit 130' INT TERM HUP
 stty -echo 2>/dev/null || true
 read -r URL
 stty echo 2>/dev/null || true
+trap - EXIT INT TERM HUP
 printf '\n'
 
 # ---- validate ---------------------------------------------------------------
