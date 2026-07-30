@@ -1,8 +1,8 @@
 """Dead-man watchdog — the bot must fail LOUDLY when it runs unattended.
 
 Scheduled ~30 min after the daily cycle (see scripts/
-com.trading-agent.watchdog.plist). Checks THREE things and alerts via a macOS
-notification + log + ledger event when any of them fails:
+com.trading-agent.watchdog.plist). Checks FOUR things and alerts via an
+operator notification + log + ledger event when any of them fails:
 
   1. HEARTBEAT — did the PROCESS run? memory/heartbeat (written on every
      run_cycle exit path) must be from today (local). Missing/old on a weekday
@@ -10,7 +10,12 @@ notification + log + ledger event when any of them fails:
      machine slept through it.
   2. CYCLE_COMPLETE — did the cycle FINISH? A `cycle_complete` record dated
      today must exist in the ledger.
-  3. HALT: if the kill-switch HALT file exists, keep reminding the owner
+  3. MARKET_CONTEXT — did it KNOW anything? Added 2026-07-29 (W6-A3), after the
+     10:34 ET news refresh lost all eleven RSS feeds and the Alpaca wire to DNS
+     failure and said so in one INFO line nobody reads. Checked only once the
+     cycle completed, so a broken cycle reports its root cause rather than two
+     symptoms. ALERT ONLY — news is fail-soft and never gates trading.
+  4. HALT: if the kill-switch HALT file exists, keep reminding the owner
      every day until they deal with it.
 
 Check 2 exists because check 1 cannot see a cycle that started and died.
@@ -85,14 +90,9 @@ def heartbeat_date(path: str = HEARTBEAT_FILE) -> date | None:
 _UNREADABLE = object()          # distinct from "read it, found nothing"
 
 
-def completed_on(day: date, records=None) -> bool | None:
-    """Did a cycle reach `cycle_complete` on `day`?
-
-    True / False / None, where None means the ledger could not be read at all.
-    The three-way answer matters: a monitor that cannot see its input must say
-    so rather than report all-clear, which is the failure this whole module is
-    being corrected for.
-    """
+def _all_records(records=None):
+    """The ledger, or None when it cannot be read at all. Shared by every check
+    so `_UNREADABLE` and a genuine read failure behave identically."""
     if records is _UNREADABLE:
         return None
     if records is None:
@@ -101,11 +101,19 @@ def completed_on(day: date, records=None) -> bool | None:
             from ledger import Ledger
             with open("config.yaml") as f:
                 cfg = yaml.safe_load(f)
-            records = Ledger(cfg["memory"]["ledger_path"]).all_records()
+            return Ledger(cfg["memory"]["ledger_path"]).all_records()
         except Exception:  # noqa: BLE001 — reported by the caller, not swallowed
             return None
+    return records
+
+
+def _event_on(day: date, event: str, records=None) -> bool | None:
+    """Did `event` occur on `day`? True / False / None (ledger unreadable)."""
+    records = _all_records(records)
+    if records is None:
+        return None
     for r in records:
-        if r.get("event") != "cycle_complete":
+        if r.get("event") != event:
             continue
         ts = r.get("ts") or r.get("timestamp") or ""
         try:
@@ -116,22 +124,47 @@ def completed_on(day: date, records=None) -> bool | None:
     return False
 
 
+def completed_on(day: date, records=None) -> bool | None:
+    """Did a cycle reach `cycle_complete` on `day`?
+
+    True / False / None, where None means the ledger could not be read at all.
+    The three-way answer matters: a monitor that cannot see its input must say
+    so rather than report all-clear, which is the failure this whole module is
+    being corrected for.
+    """
+    return _event_on(day, "cycle_complete", records)
+
+
+def news_on(day: date, records=None) -> bool | None:
+    """Did the news brain produce a market context on `day`? Same three-way
+    answer, same reason."""
+    return _event_on(day, "market_context", records)
+
+
 def check(today: date | None = None,
           heartbeat_path: str = HEARTBEAT_FILE,
           halt_path: str = HALT_FILE,
           records=None) -> list[str]:
     """Return the list of problems found (empty = all clear).
 
-    Two different questions, deliberately kept apart:
+    Three different questions, deliberately kept apart:
 
       * did the PROCESS run?    -> the heartbeat file
       * did the CYCLE finish?   -> a `cycle_complete` record in the ledger
+      * did it KNOW anything?   -> a `market_context` record in the ledger
 
     Until 2026-07-26 only the first was asked, and `write_heartbeat()` runs in
     a `finally:` — so a cycle that crashed six seconds in still stamped a
     fresh heartbeat and read as healthy. That is exactly what happened on
     2026-07-24: no decisions, no abort record, no alert. `docs/slo.md` had
     claimed completion was measured all along; it never was.
+
+    The third question was added 2026-07-29 (W6-A3). On that day the 10:34 ET
+    news refresh lost all eleven RSS feeds AND the Alpaca wire to DNS failure
+    and reported it as a single INFO line, because news is fail-soft by design.
+    Fail-soft is right — news must never gate trading — but "the bot traded
+    today with no market awareness at all" is worth one alert. This check only
+    ever ALERTS; nothing here can block a cycle.
     """
     today = today or date.today()
     problems = []
@@ -153,6 +186,16 @@ def check(today: date | None = None,
                 problems.append("the cycle process ran today but never "
                                 "reached cycle_complete — it died or aborted "
                                 "part-way; check for a cycle_crashed record")
+            else:
+                # It ran and finished. Did it know anything while doing so?
+                # Only asked when the cycle completed, so a broken cycle
+                # reports one root cause instead of two symptoms.
+                if news_on(today, records) is False:
+                    problems.append(
+                        "no market_context today — the bot traded with no "
+                        "news awareness; check the news_sources ledger event "
+                        "for which feeds failed (news is fail-soft, so this "
+                        "never blocked the cycle)")
     if os.path.exists(halt_path):
         problems.append("HALT file present — trading is disabled until you "
                         "review and delete it")

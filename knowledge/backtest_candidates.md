@@ -4151,3 +4151,169 @@ is now supported by four periods spanning 26 years rather than one.
 
 **Nothing enabled. `mode: paper` unchanged. `drawdown_decay` still absent from
 `config.yaml`. EDGE 0 for 11.**
+
+---
+
+## §45 — WHY DOESN'T THE BOOK TURN OVER? (DIAGNOSTIC, 2026-07-29)
+
+**Numbering.** §44 is reserved a few sections above for the deferred
+decay-plus-sizing claim, and that reservation stands. This diagnostic takes §45
+and runs first. Reassigning a written reservation would make §44 refer to two
+different things across this file's history, which is the quiet rewrite W5 spent
+a day undoing; a gap the document explains is fine.
+
+### Why this and why now
+
+The live book barely turns over, and that is now the binding constraint on every
+revenue gate:
+
+| | measured 2026-07-29 |
+|---|---|
+| closed round-trips | **4** (+16.78, +10.67, +6.40, −8.59%) |
+| open positions | **14** |
+| paper history | **15 days** (Jul 14 → Jul 29) |
+| observed close rate | **0.27 / day** |
+
+Invariant 10 requires ≥30 closed trades. At the observed rate that is **~98 more
+days — early November**, roughly seven weeks *later* than the ≥60-day clock
+(~Sep 12). So the close rate, not the calendar, is what gates revenue, and
+nothing has ever measured why it is what it is.
+
+§40 built an ENTRY census — of every buy signal, what executed and what each rail
+blocked. There is no equivalent for exits. Every closed trade carries an
+`exit_reason` and the simulator has always known it; nothing has ever aggregated
+it.
+
+### THE PRIOR — written and committed before the census exists
+
+DIAGNOSTIC, not EDGE. Nothing is adopted, no gate is registered, no config value
+moves. But §43's forty-for-forty prediction match was recorded as *weaker
+evidence than it looks* precisely because its inputs were already known, so these
+predictions are timestamped ahead of the measurement.
+
+Shipped config, the relevant parts: `min_holding_days: 2`,
+`take_profit_atr_mult: 0` (stop-only — "every walk-forward winner chose no
+take-profit"), `trailing_atr_mult: 3.0` gated to `tsmom` only, no re-entry
+cooldown.
+
+The four exit reasons the simulator can emit are `strategy_sell`, `stop_loss`,
+`take_profit`, and `end_of_data`.
+
+1. **`take_profit` will be 0 in all four periods.** `take_profit_atr_mult: 0`
+   means `tp` is None for every position; `tsmom`'s chandelier ratchets the STOP
+   and so fires as `stop_loss`. This one is near-certain and is stated to make
+   the census falsifiable rather than to be impressive: if `take_profit` is
+   non-zero, the bracket wiring is not what the config says.
+2. **`end_of_data` will be the largest single bucket in at least three of the
+   four periods, and ≥ 40% of closed trades in each.** This is the load-bearing
+   prediction. `end_of_data` is a forced close at run end, not a decision — if it
+   dominates, the strategies essentially never sell, every backtest closed-trade
+   count is inflated by run truncation, and **live has nothing that force-closes**,
+   which would explain the whole observation.
+3. **Median holding period > 30 calendar days** in every period.
+4. **`n_guard_skipped_exits` > 0 in every period** — `min_holding_days` is
+   demonstrably biting on sells, not merely present.
+5. **Live is not anomalous.** If 2–4 hold, then 4 closes in 15 days is the design
+   working as specified rather than a defect, and the ≥30-trade gate is
+   unreachable on this configuration in any useful timeframe. That would make it
+   a *config* question — which is the owner's, and is NOT decided here.
+
+**Prediction 2 is the one that can embarrass me.** If `end_of_data` is small and
+`strategy_sell` dominates, the simulator turns the book over far faster than live
+does, and the finding flips from "slow by design" to a sim/live divergence
+(#13) — the opposite conclusion from the same measurement.
+
+*(Measured results follow below, written after the run.)*
+
+### THE MEASUREMENT (2026-07-29, judge ON, shipped config, four snapshots)
+
+`python scripts/census.py --judge-model` — full output in
+`research/census_2026-07-29_exits.txt`. `s43d` was re-run first and reproduced
+**byte-identically** (−7.71%, PF 0.367, maxDD 10.99%, 54 trades, judge sized
+244,673 / cut 138,709 / vetoed 6,031), so the exit census is observation-only and
+no frozen verdict moved.
+
+| period | closed | stop_loss | strategy_sell | take_profit | end_of_data | median hold | sells blocked by min_holding |
+|---|---|---|---|---|---|---|---|
+| 2000-2006 | 753 | **534 (70.9%)** | 219 (29.1%) | 0 | **0** | 14d | 103 |
+| 2007-2013 | 269 | **158 (58.7%)** | 111 (41.3%) | 0 | **0** | 13d | 21 |
+| 2014-2019 | 3,057 | **2,201 (72.0%)** | 856 (28.0%) | 0 | **0** | 15d | 428 |
+| 2022-2026 | 54 | **27 (50.0%)** | 27 (50.0%) | 0 | **0** | 21d | 2 |
+
+### Scoring the prior: 2 of 5, and the load-bearing one was wrong
+
+| # | prediction | measured | |
+|---|---|---|---|
+| 1 | `take_profit` = 0 everywhere | absent in all four | **✓** |
+| 2 | `end_of_data` ≥40% and largest bucket in ≥3 of 4 | **0 in all four** | **✗** |
+| 3 | median hold > 30 days | 14 / 13 / 15 / 21 | **✗** |
+| 4 | `guard_skips` > 0 everywhere | 103 / 21 / 428 / 2 | **✓** |
+| 5 | live is slow by design; ≥30 unreachable | live is on schedule — see below | **✗** |
+
+The prior said prediction 2 was the one that could embarrass me, and that if
+`end_of_data` came back small the conclusion would invert from "slow by design"
+to something else entirely. It came back at **zero**, which is further from the
+prediction than the miss case I imagined.
+
+### THE FINDING: there was never a close-rate problem
+
+The premise of this whole diagnostic was an artifact of the measurement window.
+
+**0.27 closes/day was computed over 15 days. The median holding period is 13–21
+days in the simulator and 12 days across the four live closes.** Over a window
+shorter than one holding period, almost nothing *can* have closed yet — only
+trades stopped out early, which is precisely what the live record shows: three of
+the four live closes are `stop_loss`, and the fourth was a 5-day `strategy_sell`.
+
+The live book is not failing to turn over. It has not yet reached the age at
+which it turns over:
+
+| live, 2026-07-29 | |
+|---|---|
+| open positions | 14, entered Jul 16–22 |
+| median age of an open position | **13 days** |
+| median hold of the 4 closes | 12 days |
+| simulator's median hold | 13–21 days |
+
+Every open position is sitting right at the age where the simulator closes it.
+
+**The ~98-day projection to Invariant 10's ≥30 closed trades was wrong**, and it
+was wrong in the ordinary way: a startup transient extrapolated as a steady-state
+rate. It is retracted. No replacement projection is offered here — one holding
+period of live data is not enough to estimate a rate from, and putting a
+confident new number next to a retracted one would repeat the error.
+
+### What the exit census did find
+
+1. **The bot does not sell; it gets stopped out.** `stop_loss` is the largest
+   exit bucket in all four periods (50–72%). `strategy_sell` never exceeds 41%.
+   Whatever the strategies believe they are doing, the ATR stop is making most of
+   the exit decisions.
+2. **`end_of_data` is zero everywhere**, which is a clean result for the whole
+   research record: the book fully empties before the data runs out in every
+   period, so **no closed-trade count in §35–§43 is inflated by run truncation.**
+   That was worth checking and is now checked.
+3. **`min_holding_days` demonstrably bites** — 103 / 21 / 428 / 2 sells blocked.
+   Invariant 3's swing guard is a real constraint, not a documented one.
+4. **The constraint is the ENTRY side, not the exit side.** `drawdown` blocked
+   74.5% / 93.8% / 96.9% of all signals in three periods. §40 said capital
+   struggles to get in; §45 confirms that once in, it leaves promptly.
+
+### The divergence this exposed instead (#13)
+
+Live's equity drawdown is **1.05%** against a 10% rail, and it has never exceeded
+0.10% before today. In 2022-2026 — the period closest to the current regime — the
+drawdown rail blocked **96.86% of every buy signal the strategies emitted.**
+
+So the live bot is currently trading in a state that the backtest says is rare:
+the ~3% of the time the drawdown latch is quiet. **The live track record is not
+being drawn from the same distribution as the backtest.** Its first fifteen days
+are the honeymoon before the latch engages, and any live-versus-backtest
+comparison made now is comparing the calmest part of one against the average of
+the other.
+
+That is not an argument that live will do worse. It is an argument that **n=4,
+already too small to decide anything, is also unrepresentative** — and the second
+problem does not go away by waiting for the first to shrink.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 11.**

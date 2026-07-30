@@ -38,7 +38,7 @@ log itself — total absence.
 
 `src/watchdog.py` runs on its own launchd job
 (`scripts/com.trading-agent.watchdog.plist`, weekdays **4:15 PM** local —
-30 minutes after the 3:45 PM cycle should have finished). It checks **three**
+30 minutes after the 3:45 PM cycle should have finished). It checks **four**
 things:
 
 1. **Heartbeat freshness — did the process RUN?** On a weekday, the timestamp
@@ -47,7 +47,11 @@ things:
 2. **`cycle_complete` — did the cycle FINISH?** A `cycle_complete` event dated
    today must exist in `memory/ledger.jsonl`. A fresh heartbeat with no
    completion means the process ran and got nowhere.
-3. **HALT** — if the kill-switch `HALT` file exists, it nags daily until a
+3. **`market_context` — did it KNOW anything?** A `market_context` event dated
+   today must exist. Checked *only when check 2 passed*, so a broken cycle
+   reports one root cause instead of two symptoms. **Alert only** — news is
+   fail-soft by design and can never gate a trade.
+4. **HALT** — if the kill-switch `HALT` file exists, it nags daily until a
    human reviews and deletes it. (HALT also blocks trading, so an engaged
    kill switch with a distracted owner is dead-bot-with-extra-steps.)
 
@@ -63,6 +67,18 @@ things:
 > the version of the watchdog that missed the incident this file exists to
 > explain. `tests/test_cycle_completion.py` is the assertion that keeps it
 > honest.
+
+> **Check 3 was added 2026-07-29 (W6-A3)** for the same class of reason. That
+> morning the 10:34 ET news refresh lost **all eleven RSS feeds and the Alpaca
+> wire** to DNS failure and recorded it as a single INFO line, `no headlines
+> this morning`. The cycle ran, completed, traded, and the watchdog said
+> all-clear — correctly, on the three questions it was asking. Nobody was asking
+> whether the bot knew anything.
+>
+> The pattern across all three additions is the same: **the monitor could only
+> fail on the questions it already asked, and every real incident arrived as a
+> question nobody had written down.** The fix each time was a new question plus
+> a test that fails if the answer stops being checked.
 
 On any problem the watchdog fires, in order:
 

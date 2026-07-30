@@ -1,0 +1,67 @@
+JUDGE MODEL ON — n=164 (2026-07-16..2026-07-28), veto 2.4%, downsize 58.1%, mean scale 0.729
+SHIPPED config, unmodified: risk_per_trade_pct=8.0 max_position_pct=10.0 max_portfolio_heat_pct=4.0 max_open_positions=0  judge=ON
+
+=== 2000-2006 — 500 symbols (147s) ===
+  return +9.45%  B&H +138.54%  PF 1.122
+  deployment: mean 20.95%  median 0.00%  max 100.00%  FULLY IN CASH on 65.7% of bars
+  signals 414,840  ->  executed 753  (0.18%)
+      drawdown                308,865  (74.45%)
+      regime_exposure          62,145  (14.98%)
+      zero_qty                 31,908  ( 7.69%)
+      heat                     10,637  ( 2.56%)
+      expired_unfilled            346  ( 0.08%)
+      daily_cap                   177  ( 0.04%)
+      cooldown                      9  ( 0.00%)
+  EXITS — 753 closed, 103 sells blocked by min_holding_days
+      stop_loss                   534  (70.92%)
+      strategy_sell               219  (29.08%)
+  HOLD (calendar days) — median 14  mean 21.4  p90 52  min 0  max 145
+
+=== 2007-2013 — 500 symbols (182s) ===
+  return +2.42%  B&H +92.48%  PF 1.082
+  deployment: mean 10.92%  median 0.00%  max 100.00%  FULLY IN CASH on 83.5% of bars
+  signals 423,147  ->  executed 269  (0.06%)
+      drawdown                396,747  (93.76%)
+      zero_qty                 13,583  ( 3.21%)
+      regime_exposure           9,922  ( 2.34%)
+      heat                      2,163  ( 0.51%)
+      expired_unfilled            401  ( 0.09%)
+      daily_cap                    61  ( 0.01%)
+      cooldown                      1  ( 0.00%)
+  EXITS — 269 closed, 21 sells blocked by min_holding_days
+      stop_loss                   158  (58.74%)
+      strategy_sell               111  (41.26%)
+  HOLD (calendar days) — median 13  mean 24.4  p90 64  min 0  max 218
+
+=== 2014-2019 — 500 symbols (200s) ===
+  return +56.71%  B&H +90.41%  PF 1.396
+  deployment: mean 69.25%  median 91.97%  max 100.00%  FULLY IN CASH on 19.0% of bars
+  signals 319,295  ->  executed 3,057  (0.96%)
+      zero_qty                193,594  (60.63%)
+      drawdown                 66,966  (20.97%)
+      regime_exposure          51,442  (16.11%)
+      heat                      3,541  ( 1.11%)
+      expired_unfilled            360  ( 0.11%)
+      daily_cap                   248  ( 0.08%)
+      correlation                  70  ( 0.02%)
+      cooldown                     17  ( 0.01%)
+  EXITS — 3,057 closed, 428 sells blocked by min_holding_days
+      stop_loss                 2,201  (72.00%)
+      strategy_sell               856  (28.00%)
+  HOLD (calendar days) — median 15  mean 22.9  p90 55  min 0  max 175
+
+=== 2022-2026 — 500 symbols (63s) ===
+  return -7.71%  B&H +45.11%  PF 0.367
+  deployment: mean 4.72%  median 0.00%  max 81.96%  FULLY IN CASH on 89.9% of bars
+  signals 245,212  ->  executed 54  (0.02%)
+      drawdown                237,522  (96.86%)
+      zero_qty                  6,524  ( 2.66%)
+      heat                        410  ( 0.17%)
+      regime_exposure             409  ( 0.17%)
+      expired_unfilled            278  ( 0.11%)
+      unprotectable_entry          15  ( 0.01%)
+  EXITS — 54 closed, 2 sells blocked by min_holding_days
+      stop_loss                    27  (50.00%)
+      strategy_sell                27  (50.00%)
+  HOLD (calendar days) — median 21  mean 27.0  p90 58  min 1  max 88
+
