@@ -13,8 +13,11 @@ Two directions, and both are needed
 -----------------------------------
 **PUSH OUT (`send`)** — the agent noticed something and wants to say so:
 a missed cycle, a preflight failure, an SLO breach. `ALERT_WEBHOOK_URL` gets a
-JSON POST; the macOS banner stays as a fallback when the webhook is unset, so
-laptop behaviour is unchanged.
+JSON POST, **shaped to whatever that destination accepts** (`_shape()`) — the
+one-size body this used to send is rejected outright by Slack and Discord. The
+macOS banner stays as a fallback when the webhook is unset, so laptop behaviour
+is unchanged. `channel()` answers which one would carry an alert without
+sending one.
 
 **PUSH ALIVE (`heartbeat_ping`)** — nobody noticed anything, which is the
 dangerous case. Every check here is *pull-based*: something running on the host
@@ -38,7 +41,9 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 log = logging.getLogger("alerting")
@@ -46,6 +51,80 @@ log = logging.getLogger("alerting")
 WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 PING_ENV = "HEARTBEAT_PING_URL"
 TIMEOUT = 10
+
+# Which bot this is. The three forks share one alert channel, so this is the
+# only thing that tells them apart in a notification. repete2 shipped with
+# "repete1" here from the fork until 2026-07-30 — an alert that lies about who
+# raised it is worse than no alert, because it sends you to the wrong machine.
+SOURCE = "repete"
+
+
+def _shape(url: str, title: str, message: str) -> tuple[str, dict]:
+    """Where to POST, and what body that destination will actually accept.
+
+    Added 2026-07-30. `send()` used to post `{title, message, source}` to
+    whatever URL it was given, and `.env.example` told the owner that "any
+    Slack/Discord/n8n-style incoming webhook works". Two of the three named
+    services **reject that body**: Slack requires `text`, Discord requires
+    `content`, and both answer a missing field with 400. `send()` then falls
+    back to a macOS banner and returns "desktop" — which on the owner's laptop
+    is indistinguishable from success. The docs described a delivery that could
+    not happen.
+
+    ntfy is the case worth explaining. Its JSON publishing format wants the
+    topic IN THE BODY and the request sent to the SERVER ROOT; POST the same
+    JSON to `https://ntfy.sh/<topic>` and ntfy takes the raw bytes as the
+    message text, so the notification reads as a wall of JSON. Hence the URL
+    rewrite here rather than a body-only change.
+
+    The default is deliberately a passthrough: an unrecognised host keeps the
+    original `{title, message, source}` contract, so n8n / Zapier / Pipedream
+    catch-hooks and every existing test keep working unchanged.
+
+    Self-hosted ntfy on a custom domain is NOT detected and falls through to
+    the generic shape. That degrades to an ugly notification, not a silent
+    failure, which is the right way round.
+    """
+    parts = urllib.parse.urlsplit(url)
+    host = parts.netloc.lower()
+
+    if host == "ntfy.sh" or host.endswith(".ntfy.sh"):
+        root = urllib.parse.urlunsplit((parts.scheme, parts.netloc, "/", "", ""))
+        return root, {"topic": parts.path.strip("/"), "title": title,
+                      "message": message, "tags": [SOURCE]}
+
+    if "/api/webhooks/" in parts.path and host in (
+            "discord.com", "discordapp.com", "ptb.discord.com",
+            "canary.discord.com"):
+        return url, {"content": f"**{title}**\n{message}\n_{SOURCE}_"}
+
+    if host == "hooks.slack.com":
+        return url, {"text": f"*{title}*\n{message}\n_{SOURCE}_"}
+
+    return url, {"title": title, "message": message, "source": SOURCE}
+
+
+def channel() -> str:
+    """Which channel WOULD carry an alert right now, without sending one.
+
+    Ported from repete1 (§24). `send()` already returned this, but only as a
+    side effect of alerting — so the one moment you could discover the channel
+    reached nobody was during an incident, via a notification you were not
+    going to receive. This makes it a question that can be asked in advance.
+
+    Deliberately does NOT probe: no webhook request, no banner. A health check
+    that fired a real alert to test alerting would page the operator every time
+    anything asked whether alerting worked.
+
+    The consequence worth stating: **"desktop" is honest on this laptop and a
+    lie on a server.** It is also a lie on a sleeping laptop, which is the case
+    that actually applies here.
+    """
+    if os.environ.get(WEBHOOK_ENV, "").strip():
+        return "webhook"
+    if sys.platform == "darwin":
+        return "desktop"
+    return "log-only"
 
 
 def _post_json(url: str, payload: dict) -> bool:
@@ -71,8 +150,7 @@ def send(title: str, message: str) -> str:
     url = os.environ.get(WEBHOOK_ENV, "").strip()
     if url:
         try:
-            if _post_json(url, {"title": title, "message": message,
-                                "source": "repete"}):
+            if _post_json(*_shape(url, title, message)):
                 return "webhook"
             log.warning("alert webhook returned a non-2xx status")
         except (urllib.error.URLError, OSError, ValueError) as e:

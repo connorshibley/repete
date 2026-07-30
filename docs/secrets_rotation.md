@@ -71,8 +71,41 @@ As of **2026-07-28**, measured (not asserted):
 | `ANTHROPIC_API_KEY` | 2026-07-27 | none — 0 hits across 86 transcripts | **none. Do not ask again.** |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | 2026-07-28 (twice) | 1 transcript — **accepted risk, see below** | **none. Do not ask again.** |
 | `HEARTBEAT_PING_URL` | never | 1 transcript, 6 occurrences | low severity — see below |
-| `ALERT_WEBHOOK_URL` | n/a | empty, never set | set it; nothing to rotate |
+| `ALERT_WEBHOOK_URL` | 2026-07-30 (twice) | none — 0 hits, re-verified after rotation | **none** — see the handoff note below |
 | `X_*` | n/a | all four empty | none — X disabled 2026-07-28, keys unused |
+
+### ALERT_WEBHOOK_URL: how the first one leaked, and how to hand over the next
+
+Set 2026-07-30 to an ntfy topic, shared by all three bots (`alerting.SOURCE`
+tells them apart). The topic **is** the access control — ntfy has no other —
+so anyone holding it reads every alert and can publish fakes. Blast radius is
+still small: alerts carry operational status ("today's cycle did not run",
+"HALT present"), never keys, order details or account numbers.
+
+It was generated straight into `scripts/set_alert_webhook.sh` on stdin so the
+assistant never saw it, and the checker confirmed **0 hits**. Then it leaked
+anyway: the owner was given a command to reveal it on screen for typing into
+the phone, screenshotted the terminal, and sent the screenshot to the
+assistant. **The avoidance worked and the handoff around it did not** — which
+is the part worth remembering, because the handoff is the step that repeats
+every time this is rotated.
+
+Rotated immediately; the replacement measured clean.
+
+Handing the topic to a phone, without leaking it:
+
+```
+grep '^ALERT_WEBHOOK_URL=' .env | cut -d/ -f4
+```
+
+Read it off the screen and type it into the app. **Do not screenshot it, and
+do not paste it into a chat.** The `^` is load-bearing: without it the grep
+also matches the explanatory comment in `.env` and prints a confusing junk
+line first, which is exactly what happened on 2026-07-30.
+
+A QR handoff would remove the retyping, but neither `qrencode` nor a Python QR
+module is installed and adding a pinned dependency for a once-a-year
+convenience is not worth it.
 
 ### Alpaca: the checker will say EXPOSED, and that is expected
 

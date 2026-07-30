@@ -253,6 +253,45 @@ def main():
         log.warning("ledger ops_alert write failed: %s", e)
 
 
+def load_env() -> None:
+    """Read .env. Called from __main__ only, for the same reason as
+    configure_logging().
+
+    Added 2026-07-30. This file was the ONLY launchd entrypoint without it, and
+    launchd hands a process a bare environment — no shell profile, no .env. So
+    every `os.environ.get()` in this process tree returned nothing, and two
+    things depended on that:
+
+      * `alerting.send()` never saw ALERT_WEBHOOK_URL, so the watchdog — the
+        PRIMARY alerter, owner of all four checks above — would have kept
+        firing macOS banners no matter what the .env file said. Setting the
+        variable would have looked like it worked.
+      * `catchup()` calls `main.run_cycle()` in-process, which builds a Broker
+        from ALPACA_API_KEY / ALPACA_SECRET_KEY. Under launchd that raised
+        "keys missing". The catch-up has fired twice (2026-07-28, -07-29) and
+        both times returned early at "cycle already ran today", so the broken
+        branch was never exercised — the rescue path for a missed trading day
+        was latently dead.
+
+    Proved with `env -i HOME=$HOME PATH=/usr/bin:/bin`, not by reading the
+    code. `tests/test_alert_delivery.py` asserts it the same way: a subprocess
+    in a cleared environment, because a grep for `load_dotenv` would pass on a
+    call that never runs.
+    """
+    from dotenv import load_dotenv
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # cwd first — every run_*.sh cds to the repo root, so in production the two
+    # candidates are the same file. The fallback keeps a hand-run from an odd
+    # directory working, and the cwd branch is what makes this testable against
+    # a temporary .env instead of the operator's real one.
+    for candidate in (os.path.join(os.getcwd(), ".env"),
+                      os.path.join(repo, ".env")):
+        if os.path.isfile(candidate):
+            load_dotenv(candidate)
+            return
+
+
 if __name__ == "__main__":
     configure_logging()
+    load_env()
     main()
