@@ -537,6 +537,36 @@ news:                  # market awareness (Alpaca News API + LLM distill),
                        # skepticism, outside backtested universe) + all rails.
   max_news_entries_per_cycle: 1   # hard cap on executed news-nominated entries
   context_path: memory/market_context.json  # today-only; stale context ignored
+
+  # W7 (2026-07-30). Until now every refresh OVERWROTE context_path and nothing
+  # remembered anything: the judge could not tell a symbol in the headlines for
+  # the fourth day running from one mentioned once, and no record existed of
+  # whether attending to news ever helped a trade.
+  #
+  # The ONLY consumer is memory.context_for_llm() -> the judge. Under invariant
+  # #2 the judge may veto or shrink and may NEVER enlarge, so this can stop a
+  # trade and cannot create one. Nominations are deliberately NOT influenced —
+  # that path does create trades and was left alone.
+  #
+  # UNGATED, and honest about it: EDGE is 0 for 12 and this is not attempt 13.
+  # It is the instrumentation that makes a §46 possible, because the outcome
+  # records give a future gate its two populations (entered-with-news vs
+  # without). It also creates sim/live divergence #14 ON PURPOSE — the live
+  # judge sees this block, the backtest's judge_model cannot, and there is no
+  # historical news archive to replay. See docs/divergences.md #14.
+  #
+  # `enabled: false` must restore byte-identical judge context. That is asserted
+  # in tests/test_news_memory.py, not merely intended.
+  memory:
+    enabled: true
+    path: memory/news_memory.jsonl
+    retention_days: 30      # older mentions drop out of the judge's view
+    max_context_chars: 600  # OWN budget — a block without one silently eats
+                            # the tail of learning.max_context_chars and
+                            # truncates whatever sorts after it
+    max_rows: 6             # most recent mentions shown per symbol
+    min_mentions_to_show: 1
+
   rss_sources:           # FREE PUBLIC RSS feeds (headline + 1-2 sentence summary
                          # only). NO login, NO scraping, NO credentials — merged
                          # into the news brain alongside Alpaca. Each source is a
