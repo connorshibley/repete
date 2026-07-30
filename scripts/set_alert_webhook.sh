@@ -29,7 +29,10 @@ cd "${AGENT_ROOT:-$(dirname "$0")/..}"
 ROOT="$(pwd)"
 
 # All three bots share one channel; `alerting.SOURCE` is what tells them apart.
-TARGETS="$ROOT $HOME/bots/repete1 $HOME/bots/repete2"
+# ALERT_TARGETS exists so the write path can be exercised against a sandbox.
+# A setup script whose only untested branch is the one that writes secrets is
+# not a script anyone should run.
+TARGETS="${ALERT_TARGETS:-$ROOT $HOME/bots/repete1 $HOME/bots/repete2}"
 
 printf '\n'
 printf 'Alert webhook -> the .env of every bot that has one.\n'
@@ -52,6 +55,11 @@ fi
 
 case "$URL" in
   https://*) ;;
+  # Loopback never leaves the machine, so there is nothing to intercept. This
+  # is also the only way the SUCCESS path of this script is testable without a
+  # real topic, and an untested success path in a script that writes secrets is
+  # not something to ship.
+  http://127.0.0.1[:/]*|http://localhost[:/]*) ;;
   http://*)
     printf 'REFUSED: plain http. The URL is a credential and every alert body\n'
     printf 'would cross the network in clear text. Use https. Nothing written.\n'
@@ -63,8 +71,13 @@ case "$URL" in
     exit 2 ;;
 esac
 
-HOST=$(printf '%s' "$URL" | sed -E 's#^https://([^/]+).*#\1#')
-PATH_PART=$(printf '%s' "$URL" | sed -E 's#^https://[^/]+##')
+# Match ANY scheme when splitting. These read `^https://` once, which was fine
+# until the loopback exception above allowed http — then the substitution did
+# not apply, HOST silently became the WHOLE URL, and the "Recognised: ..." line
+# below printed the secret it exists to avoid printing. Caught by a test that
+# greps this script's own stdout for the value it was given.
+HOST=$(printf '%s' "$URL" | sed -E 's#^[a-zA-Z]+://([^/]+).*#\1#')
+PATH_PART=$(printf '%s' "$URL" | sed -E 's#^[a-zA-Z]+://[^/]+##')
 
 if [ "$HOST" = "ntfy.sh" ]; then
   TOPIC=$(printf '%s' "$PATH_PART" | sed 's#^/##; s#/$##')
@@ -129,12 +142,22 @@ done
 # ---- prove it ---------------------------------------------------------------
 # The only check that counts. A write that "succeeded" into a URL that rejects
 # the body is exactly the failure this whole change exists to remove.
+#
+# Read back from a .env FILE rather than reusing $URL from memory. The value in
+# memory is known good; the thing that can be wrong is what landed on disk, and
+# that is what every process will read from here on.
+PROVE_DIR=$(printf '%s' "$WROTE" | tr ' ' '\n' | grep -x "$ROOT" || \
+            printf '%s' "$WROTE" | tr ' ' '\n' | grep -v '^$' | head -1)
+
 printf '\nSending one real alert. Watch your phone.\n'
 CHANNEL=$("$ROOT/.venv/bin/python" -c "
-import sys
-sys.path.insert(0, 'src')
+import os, sys
+sys.path.insert(0, os.path.join('$ROOT', 'src'))
 from dotenv import load_dotenv
-load_dotenv('.env')
+load_dotenv(os.path.join('$PROVE_DIR', '.env'))
+if not os.environ.get('ALERT_WEBHOOK_URL', '').strip():
+    print('empty-on-disk')
+    raise SystemExit
 import alerting
 print(alerting.send('Repete: alert setup',
                     'If you are reading this on your phone, alerting works.'))
