@@ -212,6 +212,7 @@ class Memory:
 
         knowledge = self.knowledge_block()
         news = self.market_context_block(symbol)
+        recall = self.news_memory_block(symbol)
         book = self.book_block(positions, account)
         ctx = ((f"{book}\n\n" if book else "")
                + f"{header}\n"
@@ -220,7 +221,31 @@ class Memory:
                f"{lesson_block}\n\n"
                + (f"{knowledge}\n\n" if knowledge else "")
                + (f"{news}\n\n" if news else "")
+               + (f"{recall}\n\n" if recall else "")
                + (f"{scoreboard}\n\n" if scoreboard else "")
                + f"{calib}\n"
                f"CURRENT REGIME: {regime_mod.describe(regime)}")
         return ctx[:self.lcfg.get("max_context_chars", 4000)]
+
+    def news_memory_block(self, symbol: str | None = None) -> str:
+        """Accumulated news history for this symbol (W7), distinct from
+        `market_context_block()` which shows only TODAY's flag.
+
+        Carries its OWN budget (`news.memory.max_context_chars`) rather than
+        sharing the learning cap. A new block without a budget of its own eats
+        the tail of `max_context_chars` and silently truncates whatever sorts
+        after it — a regression that would never show up in a diff, only in
+        worse judgments. `tests/test_news_memory.py` asserts the lesson block
+        does not shrink when this one is present.
+
+        Empty string when disabled, absent, or unreadable. Never raises: this
+        sits on the path to every judge call.
+        """
+        try:
+            import news_memory
+            # `self.cfg` is the MEMORY sub-config, not the whole config — the
+            # same shape `market_context_block()` re-wraps above.
+            return news_memory.format_block(symbol or "",
+                                            {"news": self.news_cfg})
+        except Exception:  # noqa: BLE001 — memory never breaks a review
+            return ""

@@ -224,3 +224,61 @@ Until then, any statement of the form "live is tracking / beating / lagging the
 backtest" is comparing unlike things, and **§45's table plus this entry are the
 citation that says so.**
 
+
+## #14 — the live judge reads news memory; the backtest's judge model cannot
+
+**Opened 2026-07-30 (W7). Deliberate, not a defect — and open by construction.**
+
+`memory.context_for_llm()` now includes a NEWS MEMORY block: a symbol's
+accumulated news mentions over `news.memory.retention_days`, plus the realised
+P&L of any prior news-linked closed trades. Every live judge call sees it.
+
+`backtest.py` drives `judge_model`, which cannot. There is no archive of what
+the newswire and eleven RSS feeds said on an arbitrary day in 2007, and the
+snapshots hold prices, not headlines. Reconstructing one from a modern LLM's
+knowledge of how those years turned out would not be a news feed — it would be
+hindsight wearing a timestamp, and it would inflate every backtest it touched.
+
+So the two judges see different inputs, on purpose.
+
+### What this invalidates, precisely
+
+Every backtest number produced from 2026-07-30 onward describes a judge with
+**strictly less context** than the live one. That direction matters:
+
+- the sim judge cannot veto on news, so the sim will approve trades live may
+  refuse — backtests are, if anything, **optimistic** relative to live;
+- it is not symmetric. Under invariant #2 the judge may only veto or shrink, so
+  news memory can subtract live trades and can never add one. There is no
+  mechanism here by which live outperforms sim *because of* this block.
+
+That asymmetry is the reason this ships without a gate: the worst case is a
+live bot that trades less than its backtest, which is the safe direction to be
+wrong in.
+
+### What would close this
+
+Either of:
+
+1. **A real point-in-time news archive** covering a snapshot period, replayed
+   into `judge_model` so both judges read the same thing. Nothing short of
+   genuinely contemporaneous text qualifies — see the hindsight problem above.
+2. **`news.memory.enabled: false`**, which restores byte-identical judge
+   context. That is asserted by
+   `tests/test_news_memory.py::test_disabled_gives_byte_identical_context`, not
+   merely intended, and it is the rollback path if a future §46 rejects this.
+
+### The test that would fail if this silently closed
+
+`test_disabled_gives_byte_identical_context` fails if the block stops being
+suppressible, and `test_the_lesson_block_does_not_shrink_when_news_is_present`
+fails if it starts displacing other context. Neither can detect a sim that
+*claims* to model news memory without doing so — which is why closing this
+requires the archive in (1), not a code change.
+
+### Not a claim of value
+
+**EDGE remains 0 for 12.** Nothing here has been gated. The outcome half exists
+to produce the two populations a §46 would compare — trades entered with news
+present versus without — and there are currently **4 closed trades**. A gate
+scored on 4 trades is theatre, so no gate is registered.

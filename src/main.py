@@ -120,6 +120,19 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
                  "=> alpha %+.2f%%", trade_id, exit_reason, pnl, pnl_pct,
                  bench_pct, pnl_pct - bench_pct)
 
+    # W7: write the realised result back against the news that preceded this
+    # symbol. This is the half that makes news memory evidence rather than a
+    # notepad — it produces the two populations a future §46 would compare
+    # (entered with news present vs without). Best-effort, like the benchmark
+    # above: bookkeeping never blocks recording the trade that happened.
+    try:
+        import news_memory
+        news_memory.record_outcome(open_rec.get("symbol") or "", trade_id,
+                                   pnl_pct, cfg)
+    except Exception as e:  # noqa: BLE001
+        log.warning("news outcome for %s skipped: %s", trade_id,
+                    type(e).__name__)
+
     closed = {**open_rec, "exit_price": exit_price, "pnl": round(pnl, 2),
               "pnl_pct": round(pnl_pct, 2), "result": "win" if pnl > 0 else "loss",
               "exit_reason": exit_reason}

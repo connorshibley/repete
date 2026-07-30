@@ -470,6 +470,15 @@ def refresh(cfg: dict, broker, ledger=None) -> dict | None:
                          f" | sources: {source_line()}")
         ledger.log_event("news_sources", json.dumps(
             {"headlines": len(headlines), **stats()})[:1800])
+    # W7: accumulate what was said, so tomorrow's judge can see that a symbol
+    # has been in the headlines four days running rather than only today's
+    # flag. Wrapped because news is fail-soft by contract — a memory failure
+    # must not cost the context that was just successfully distilled.
+    try:
+        import news_memory
+        news_memory.record_context(ctx, cfg, ledger=ledger)
+    except Exception as e:  # noqa: BLE001
+        log.warning("news memory skipped: %s", type(e).__name__)
     log.info("market context: %s | nominations: %s", ctx["summary"],
              [n["symbol"] for n in ctx["nominations"]])
     return ctx
