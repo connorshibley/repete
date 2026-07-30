@@ -1,0 +1,209 @@
+# §44 — DOES THE DRAWDOWN DECAY PAY FOR ITSELF AT REDUCED SIZING? (2007-2013)
+#
+# ONE CLAIM IN FOUR FILES. s44a, s44b, s44c and s44d were written and frozen
+# TOGETHER, before any of them ran. CONJUNCTION: all four must pass. Running one
+# period and reporting it would be period selection, which §34 retired.
+#
+# WHERE THIS CLAIM COMES FROM. §41 tested `risk.drawdown_decay` at UNCHANGED
+# sizing and was REJECTED: `maxdd_within pp 3.0` failed in three periods of four,
+# drawdown roughly doubling (+6.16pp, +9.11pp, +4.95pp). §41's own write-up named
+# the confound in its closing section:
+#
+#     "§41 tested the decay at unchanged sizing, which confounds 'the bot trades
+#     more' with 'the bot risks more': deployment rose roughly eightfold in three
+#     periods, so of course drawdown grew. A [follow-up] could pair the decay
+#     with reduced per-trade sizing and ask whether return improves AT MATCHED
+#     DRAWDOWN. That is a new hypothesis, requiring a fresh registration citing
+#     this rejection in its prior."
+#
+# This is that registration. §41's rejection is cited above and its pass mark is
+# reused UNWIDENED — `pp: 3.0` is the same number, because §41 said in terms that
+# it would not be widened and §44 re-scored. The bar has not moved; the candidate
+# has changed.
+#
+# THE SIZING CUT IS ONE ROUND NUMBER, FIXED BEFORE ANY RUN.
+# `risk.risk_per_trade_pct: 8.0 -> 4.0`. A halving, chosen for roundness, not
+# fitted. It is the only knob touched: at 4.0 the `max_position_pct: 10.0` clamp
+# does not bind (`risk.py:339`), so the change is clean rather than partly
+# absorbed by another rail. NO SWEEP. Trying 2.0, 3.0 and 4.0 and reporting the
+# best is the move §34 retired, and it is not being made here.
+#
+# WHY `maxdd_within` IS THE MATCHED-DRAWDOWN CONDITION. "At matched drawdown"
+# cannot be arranged by choosing the sizing that produces matched drawdown —
+# that is selection on the outcome. Instead the clause does the work: if the
+# halved arm lands within 3.0pp of baseline, drawdown IS matched by the same
+# standard §41 was judged against, and clause (b) then asks whether return
+# improved. If it lands outside, the claim fails and no return number matters.
+#
+# THREE ARMS, ONE SCORED. `decay` at unchanged sizing is a CONTROL and is
+# reported, not scored — the candidate is `decay_half`, named explicitly below.
+# Without the control an improvement could not be attributed: §41 ran judge-OFF,
+# and W2-1 has since turned the judge on, which §42 measured as worth 1.7x-7.5x
+# more executions and a LOWER profit factor in all four periods. The control
+# separates "the sizing cut helped" from "the simulator changed underneath us".
+#
+# SATISFIABILITY PROBED FIRST (scripts/probe_s44_satisfiability.py). §28 was
+# written and then never registered because a probe showed its mechanism could
+# not move the metric its clauses scored. The worry here was concrete: with
+# `max_open_positions: 0` the book is uncapped and signals are abundant once the
+# latch lifts, so halving sizing might simply buy twice as many half-sized
+# positions and leave drawdown untouched. The probe measured deployment, trade
+# count and max drawdown ONLY — return was suppressed in code, because return is
+# clause (b) and seeing it before registration would be choosing the experiment
+# on its outcome.
+#
+# NOTHING IS ADOPTED BY PASSING. `risk.drawdown_decay` is absent from
+# config.yaml, so `risk.decayed_peak()` is the identity in production and
+# `risk_per_trade_pct` stays 8.0. A PASS makes adoption a decision the owner may
+# take; it does not take it.
+
+id: s44b
+claim: EDGE
+title: "Drawdown decay at halved sizing: better return at matched drawdown? (2007-2013)"
+
+snapshot:
+  path: data/snapshots/bars_wide_2007-01-01_2013-12-31.json.gz
+  sha256: 2ba815e1b0d2ca5db7b1e1778a65ab4126f9526e1347299464573ea16d7591d5
+
+cash: 100000.0
+
+# K=13. Eleven EDGE claims and one CAPACITY claim (§41) precede this one. The
+# four specs are ONE claim, so K rises by one rather than four. §42 and §45 were
+# DIAGNOSTICs and consume no K — they carry no pass mark to be gamed.
+bonferroni_k: 13
+
+# W2-1: mandatory since 2026-07-29. §41 ran judge-OFF; this does not.
+judge_model: true
+
+candidate: decay_half
+
+arms:
+  - name: baseline
+
+  # CONTROL, reported and NOT scored: §41's arm on the corrected simulator.
+  - name: decay
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+
+  # THE CANDIDATE. Same decay, half the per-trade sizing.
+  - name: decay_half
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+      risk.risk_per_trade_pct: 4.0
+
+clauses:
+  # §41'S BAR, UNWIDENED. This is the matched-drawdown condition.
+  - {id: a, rule: maxdd_within, pp: 3.0}
+
+  # THE QUESTION §41 DEFERRED. Exposure-matched because more deployment means
+  # more exposure to the market's own direction — §41's failure_modes said any
+  # write-up quoting the raw return difference was misreading the spec, and an
+  # unmatched return clause would have built that error into the pass mark.
+  - {id: b, rule: beats_exposure_matched}
+
+  # Without this an arm with a handful of closed trades clears the rest on noise.
+  - {id: c, rule: min_trades, n: 30}
+
+  # §41'S CLAUSE, SAME 25.0. Makes the claim falsifiable from the other side: a
+  # bot that responds to smaller sizing by investing less would trivially avoid
+  # extra drawdown, and must not be allowed to pass by not trading.
+  - {id: d, rule: deployment_at_least, pct: 25.0}
+
+prior: >-
+  THIS PRIOR WAS REVISED AFTER THE SATISFIABILITY PROBE AND BEFORE
+  REGISTRATION, and the revision is recorded rather than hidden because it
+  reverses the predicted verdict. What did NOT change is the pass mark: the
+  clauses, the candidate and the 4.0 were fixed before the probe ran and are
+  untouched by it. Only the prediction moved, which is what a prediction is for.
+  THE ORIGINAL PREDICTION WAS "REJECTED", on linear scaling. §41 published
+  baseline and decay-arm maximum drawdown for every period (judge OFF):
+  11.51/17.67, 12.04/21.15, 11.59/11.59, 10.78/15.73. If drawdown scales
+  linearly with per-trade size, halving sizing puts the candidate at baseline
+  plus half the decay arm's excess — 14.59, 16.59, 11.59, 13.25 against bars of
+  14.51, 15.04, 14.59, 13.78 — failing clause (a) on 2000-2006 by 0.08pp and on
+  2007-2013 by 1.55pp, sinking the conjunction.
+  THE PROBE FALSIFIED THAT MODEL. On 2022-2026, judge ON, measured: baseline
+  maxDD 10.99% / 4.72% deployed / 54 trades; decay 15.72% / 75.06% / 3,056;
+  decay_half 11.31% / 76.35% / 4,121. The linear model predicted 13.25% for the
+  candidate and it came in at 11.31%, OVERESTIMATING by 1.94pp. The mechanism is
+  visible in the same three rows and is not what I expected: halving the sizing
+  did not reduce deployment at all — it ROSE, 75.06% to 76.35% — because the
+  freed capital went into more and smaller names, 3,056 trades becoming 4,121.
+  That is diversification rather than de-risking, and it cuts drawdown harder
+  than proportional scaling predicts. It is also, precisely, the outcome the
+  probe was written to look for as a FAILURE mode ("the bot may simply open twice
+  as many half-sized positions, leaving deployment and drawdown unchanged"): the
+  first half happened and the second half did not.
+  THE REVISED PREDICTION IS THAT CLAUSE (a) PASSES IN ALL FOUR. Applying the
+  same 1.94pp correction to the two cells the linear model failed gives ~12.65%
+  against 14.51% and ~14.65% against 15.04%. That correction is a single-period
+  extrapolation and deserves little confidence, but it points the same way in
+  both cells, and 2007-2013 — the deepest drawdown in the set and the cell most
+  likely to sink this — is the one to watch.
+  CLAUSE (b) IS NOW THE WHOLE CLAIM, and it is genuinely unknown: return was
+  suppressed in the probe's code precisely so it would stay that way. §43
+  established the incumbent fails beats_exposure_matched in ALL FOUR periods, so
+  the candidate does not have to be good to beat the incumbent — but it is not
+  scored against the incumbent, it is scored against its own exposure-matched
+  benchmark, and deploying 76% instead of 4.7% raises that bar roughly sixteen
+  fold. §41's decay arm cleared the exposure-matched bar on three periods of four
+  at full sizing on the OLD simulator; whether that survives both the judge and
+  the sizing cut is not computable from anything published.
+  A PASS ON ALL FOUR IS NOW THE OUTCOME I EXPECT ON (a) AND DO NOT EXPECT ON (b),
+  which makes the conjunction likely to be REJECTED ON RETURN rather than on
+  risk — the opposite of §41, and a more interesting failure if it happens.
+
+failure_modes:
+  - >-
+    CONTAMINATION, DECLARED, AND WORSE THAN A FOOTNOTE ON s44d. The
+    satisfiability probe ran on 2022-2026 before registration, so for that period
+    clauses (a), (c) and (d) are ALREADY KNOWN to pass — maxDD 11.31% against a
+    13.99% bar, 4,121 trades against 30, 76.35% deployed against 25%. Three of
+    s44d's four clauses are therefore not being tested by running it; only (b) is
+    live there, because return was suppressed in the probe's code. s44d
+    contributes almost nothing as evidence and its PASS on (a), (c) and (d) must
+    not be read as three confirmations. The other three periods are unseen for
+    the candidate arm entirely and carry the claim.
+  - >-
+    THE PRIOR WAS REVISED ON PROBE DATA, from "predicted REJECTED" to "predicted
+    to pass (a) and fail (b)". The clauses did not move and the 4.0 did not move,
+    so this is not the pass mark being fitted — but a prior revised toward the
+    data is weaker than one written blind, and a result matching it is
+    correspondingly weaker evidence. The genuinely blind quantity in this
+    registration is clause (b) in all four periods, plus clause (a) in the three
+    unprobed ones.
+  - >-
+    SURVIVORSHIP, severe, and it flatters the candidate MORE than the baseline
+    for the same reason it flattered §41's decay arm: the universe is today's
+    index membership screened on then-current liquidity, so companies that failed
+    are absent, and an arm that holds more names for longer collects more of that
+    bias. A FAIL is strong evidence here; a PASS is weak.
+  - >-
+    HALVING SIZING IS NOT THE ONLY WAY TO BUY DRAWDOWN BACK, and a FAIL does not
+    establish that no sizing works. It establishes that ONE round, pre-specified
+    setting does not. Responding to a failure by trying 2.0 and reporting that
+    instead is precisely the sweep this spec refuses; a different setting is a
+    different claim and needs its own registration.
+  - >-
+    The decay parameters (grace 10, half-life 20) are inherited unchanged from
+    §41, where they were chosen for roundness by someone who had already read
+    §40's census. They are not innocent of that knowledge. This spec adds a
+    second such number — the 4.0 — chosen the same way, and the two together
+    make the configuration less arbitrary-looking than it is.
+  - >-
+    Clause (b) can be passed hollowly at LOW deployment: a bot mostly in cash
+    faces a bar of a small fraction of the market's return. Clause (d) blocks the
+    degenerate case at 25%, but a marginal (b) pass near that floor must be read
+    as "it barely invested", never as evidence of edge.
+  - >-
+    A PASS ON ALL FOUR WOULD NOT MEAN THE BOT SHOULD TRADE LIVE AT THESE
+    SETTINGS. §43 established that the shipped configuration fails its own
+    enablement gate on all four periods; a candidate that beats a failing
+    incumbent has cleared a low bar. The live evidence gate — 30 closed trades,
+    3 months, attorney review — is untouched, the paper ledger holds FOUR closed
+    round-trips, and divergence #13 records that even those four were generated
+    in conditions the backtest says are rare.
