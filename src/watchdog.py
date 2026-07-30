@@ -224,7 +224,7 @@ def catchup(now: datetime | None = None, records=None) -> str:
         return "cycle already ran today — no action"
     log.warning("catch-up: no completed cycle today at %s ET — running it late",
                 now.strftime("%H:%M"))
-    notify("Trading agent: late catch-up",
+    notify("trading-agent: late catch-up",
            "3:45 cycle was missed; running it now before the close")
     import main as main_mod
     main_mod.run_cycle()
@@ -241,7 +241,7 @@ def main():
         return
     for p in problems:
         log.critical("watchdog: %s", p)
-        notify("Trading agent needs attention", p)
+        notify("trading-agent: needs attention", p)
     try:  # ledger event is best-effort — ops alerts must not depend on it
         import yaml
         from ledger import Ledger
