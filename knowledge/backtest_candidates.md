@@ -4317,3 +4317,126 @@ already too small to decide anything, is also unrepresentative** — and the sec
 problem does not go away by waiting for the first to shrink.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 11.**
+
+---
+
+## §44 — DECAY AT HALVED SIZING: REJECTED, 2 OF 4
+
+**VERDICT: REJECTED.** Specs `s44a`–`s44d`, frozen together 2026-07-30T01:18 as
+one conjunction, EDGE, K=13, judge ON. Two periods passed all four clauses and
+two failed clause (a), so the claim does not move. `risk.drawdown_decay` stays
+absent from `config.yaml` and `risk_per_trade_pct` stays 8.0.
+
+**EDGE claims are now 0 for 12.**
+
+| spec | period | frozen sha |
+|---|---|---|
+| s44a | 2000-2006 | `6d45fb4bc6d74d64…` |
+| s44b | 2007-2013 | `667521686c407ff4…` |
+| s44c | 2014-2019 | `6f84db0cbc7d7646…` |
+| s44d | 2022-2026 | `8cf041ede2d7b4fd…` |
+
+### Results — three arms, the middle one a control
+
+| period | arm | return | PF | maxDD | trades | deploy |
+|---|---|---|---|---|---|---|
+| 2000-2006 | baseline | +9.45% | 1.122 | 11.52% | 753 | 20.95% |
+| | decay | +96.11% | 1.454 | 16.51% | 3,772 | 68.23% |
+| | **decay_half** | **+111.88%** | 1.536 | **15.68%** | 5,013 | 67.87% |
+| 2007-2013 | baseline | +2.42% | 1.082 | 11.45% | 269 | 10.92% |
+| | decay | +75.17% | 1.419 | 17.33% | 3,447 | 69.49% |
+| | **decay_half** | **+28.13%** | 1.194 | **27.33%** | 4,233 | 60.18% |
+| 2014-2019 | baseline | +56.71% | 1.396 | 10.72% | 3,057 | 69.25% |
+| | decay | +73.63% | 1.406 | 10.72% | 3,858 | 83.50% |
+| | **decay_half** | **+90.04%** | 1.479 | **9.86%** | 5,476 | 83.99% |
+| 2022-2026 | baseline | −7.71% | 0.367 | 10.99% | 54 | 4.72% |
+| | decay | +66.44% | 1.447 | 15.72% | 3,056 | 75.06% |
+| | **decay_half** | **+64.39%** | 1.443 | **11.31%** | 4,121 | 76.35% |
+
+| clause | s44a | s44b | s44c | s44d |
+|---|---|---|---|---|
+| (a) maxdd_within pp 3.0 | **FAIL** 15.68 vs 14.52 | **FAIL** 27.33 vs 14.45 | PASS 9.86 vs 13.72 | PASS 11.31 vs 13.99 |
+| (b) beats_exposure_matched | PASS +111.88 vs +94.03 | **FAIL** +28.13 vs +55.66 | PASS +90.04 vs +75.94 | PASS +64.39 vs +34.44 |
+| (c) min_trades 30 | PASS | PASS | PASS | PASS |
+| (d) deployment_at_least 25.0 | PASS | PASS | PASS | PASS |
+
+### The finding: the mechanism that helps is the mechanism that fails in a crisis
+
+In three periods, halving per-trade size **lowered** drawdown — by 0.83pp, 0.86pp
+and 4.41pp — while deployment stayed flat or rose. The freed capital went into
+more and smaller names, and that is diversification rather than de-risking.
+2014-2019 is the cleanest case: the candidate's drawdown (9.86%) is below the
+**baseline's** (10.72%) while returning +90.04%.
+
+**2007-2013 does the exact opposite, and it is not close.** Halving the sizing
+took maximum drawdown from 17.33% to **27.33%** — ten points WORSE — and return
+from +75.17% down to +28.13%. It is also the only period where deployment
+*fell* (69.49% → 60.18%).
+
+That inversion is the result. Spreading capital across 500 names lowers drawdown
+only while those names fall independently. Through 2008 they did not: correlations
+converge in a crisis, so the "diversified" book is one position wearing 500
+tickers, and holding more of it for longer is strictly worse. The mechanism that
+produced three passes is the same mechanism that produces the worst drawdown in
+the set.
+
+A configuration whose risk profile depends on the absence of a crisis has not
+been shown to control risk. It has been shown to control risk **in calm markets**,
+which is where risk control is not the binding question.
+
+### Scoring the prior — and the revision that made it worse
+
+The registered prior was revised on the satisfiability probe, from "predicted
+REJECTED" to "predicted (a) passes everywhere, (b) fails". Both halves were
+wrong: (a) failed twice and (b) passed three times.
+
+Worse, the revision **degraded** the prediction:
+
+| period | measured maxDD | original linear model | probe-revised model |
+|---|---|---|---|
+| 2000-2006 | 15.68% | 14.59% (−1.09) | 12.65% (−3.03) |
+| 2007-2013 | 27.33% | 16.59% (−10.74) | 14.65% (−12.68) |
+| 2014-2019 | 9.86% | 11.59% (+1.73) | 11.59% (+1.73) |
+| 2022-2026 | 11.31% | 13.25% (+1.94) | **11.31% (0.00)** |
+| | **mean abs error** | **3.87pp** | **4.36pp** |
+
+The revised model is exact on 2022-2026 — the one period it was fitted to — and
+worse than the model it replaced on both periods that decided the verdict. **The
+original linear model also named the correct two failing cells.** I replaced a
+prediction that was right about the important thing with one that was right about
+the thing I had just measured.
+
+The spec's own `failure_modes` anticipated this in terms: *"that correction is a
+single-period extrapolation and deserves little confidence."* It was written and
+then not believed strongly enough. Recorded here rather than edited away, in the
+same spirit as §33 Run 1 and §41's corrected commentary.
+
+**The probe was still worth running** — it established the knob could move the
+metric, which is what stopped §44 becoming another §28. What it could not do, and
+what I asked it to do anyway, was generalise.
+
+### What must not happen next
+
+**`pp: 3.0` will not be widened, and 4.0 will not become 2.0 because 4.0 failed.**
+§44's own header forbids the second move by name: *"Responding to a failure by
+trying 2.0 and reporting that instead is precisely the sweep this spec refuses."*
+A different sizing is a different claim needing its own registration, and it would
+have to explain why 2007-2013 should behave differently rather than hoping it does.
+
+The honest next question is not a sizing sweep. It is whether the drawdown latch
+can be released in a way that survives a correlated selloff — and §44 says the
+obvious candidate does not.
+
+### Two things this does NOT establish
+
+**The returns are not the finding and are not a clause outcome.** +111.88% on
+2000-2006 sits against a +138.54% buy-and-hold; the exposure-matched clause is
+what (b) scored, and quoting the raw figure would repeat the error §41's
+failure_modes warned about.
+
+**Survivorship flatters the candidate more than the incumbent**, exactly as
+registered: an arm holding 500 names for longer collects more of a universe built
+from survivors. Both PASSes are therefore weak evidence, and both FAILs are
+strong — the asymmetry runs against the candidate on the periods that decided it.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**

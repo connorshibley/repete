@@ -1,0 +1,126 @@
+########## s44d ##########
+s44d — Drawdown decay at halved sizing: better return at matched drawdown? (2022-2026)
+claim EDGE | K=13 | frozen 2026-07-30T01:18:18 | sha 8cf041ede2d7b4fd… | judge ON
+
+prior: THIS PRIOR WAS REVISED AFTER THE SATISFIABILITY PROBE AND BEFORE REGISTRATION, and the revision is recorded rather than hidden because it reverses the predicted verdict. What did NOT change is the pass mark: the clauses, the candidate and the 4.0 were fixed before the probe ran and are untouched by it. Only the prediction moved, which is what a prediction is for. THE ORIGINAL PREDICTION WAS "REJECTED", on linear scaling. §41 published baseline and decay-arm maximum drawdown for every period (judge OFF): 11.51/17.67, 12.04/21.15, 11.59/11.59, 10.78/15.73. If drawdown scales linearly with per-trade size, halving sizing puts the candidate at baseline plus half the decay arm's excess — 14.59, 16.59, 11.59, 13.25 against bars of 14.51, 15.04, 14.59, 13.78 — failing clause (a) on 2000-2006 by 0.08pp and on 2007-2013 by 1.55pp, sinking the conjunction. THE PROBE FALSIFIED THAT MODEL. On 2022-2026, judge ON, measured: baseline maxDD 10.99% / 4.72% deployed / 54 trades; decay 15.72% / 75.06% / 3,056; decay_half 11.31% / 76.35% / 4,121. The linear model predicted 13.25% for the candidate and it came in at 11.31%, OVERESTIMATING by 1.94pp. The mechanism is visible in the same three rows and is not what I expected: halving the sizing did not reduce deployment at all — it ROSE, 75.06% to 76.35% — because the freed capital went into more and smaller names, 3,056 trades becoming 4,121. That is diversification rather than de-risking, and it cuts drawdown harder than proportional scaling predicts. It is also, precisely, the outcome the probe was written to look for as a FAILURE mode ("the bot may simply open twice as many half-sized positions, leaving deployment and drawdown unchanged"): the first half happened and the second half did not. THE REVISED PREDICTION IS THAT CLAUSE (a) PASSES IN ALL FOUR. Applying the same 1.94pp correction to the two cells the linear model failed gives ~12.65% against 14.51% and ~14.65% against 15.04%. That correction is a single-period extrapolation and deserves little confidence, but it points the same way in both cells, and 2007-2013 — the deepest drawdown in the set and the cell most likely to sink this — is the one to watch. CLAUSE (b) IS NOW THE WHOLE CLAIM, and it is genuinely unknown: return was suppressed in the probe's code precisely so it would stay that way. §43 established the incumbent fails beats_exposure_matched in ALL FOUR periods, so the candidate does not have to be good to beat the incumbent — but it is not scored against the incumbent, it is scored against its own exposure-matched benchmark, and deploying 76% instead of 4.7% raises that bar roughly sixteen fold. §41's decay arm cleared the exposure-matched bar on three periods of four at full sizing on the OLD simulator; whether that survives both the judge and the sizing cut is not computable from anything published. A PASS ON ALL FOUR IS NOW THE OUTCOME I EXPECT ON (a) AND DO NOT EXPECT ON (b), which makes the conjunction likely to be REJECTED ON RETURN rather than on risk — the opposite of §41, and a more interesting failure if it happens.
+
+  verified bars_wide_2022-01-01_2026-07-24.json.gz  sha256 081dc08727a8cd8e…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 3 arms | 3 worker(s)
+
+  baseline                 ret   -7.71%  PF 0.367  maxDD 10.99%  trades    54  symbols  49  deploy   4.72%  (155s)
+  decay                    ret  +66.44%  PF 1.447  maxDD 15.72%  trades  3056  symbols 492  deploy  75.06%  (316s)
+  decay_half               ret  +64.39%  PF 1.443  maxDD 11.31%  trades  4121  symbols 498  deploy  76.35%  (363s)
+
+  judge on baseline               sized 244673  cut 138709  vetoed  6031  truncated to 0   247
+  judge on decay                  sized  62757  cut  35537  vetoed  1519  truncated to 0  1363
+  judge on decay_half             sized  61328  cut  34640  vetoed  1490  truncated to 0  1364
+
+  buy-and-hold on this universe: +45.11%
+
+-- PRE-REGISTERED PASS MARK (decay_half) --
+  [PASS] (a) maxdd_within  11.31% vs 13.99%
+  [PASS] (b) beats_exposure_matched  +64.39% vs +34.44% (B&H +45.11% x 76.3% deployment)
+  [PASS] (c) min_trades  4121 vs 30
+  [PASS] (d) deployment_at_least  76.35% deployed vs 25.0% required
+
+VERDICT: PASS  (365s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+########## s44c ##########
+s44c — Drawdown decay at halved sizing: better return at matched drawdown? (2014-2019)
+claim EDGE | K=13 | frozen 2026-07-30T01:18:18 | sha 6f84db0cbc7d7646… | judge ON
+
+prior: THIS PRIOR WAS REVISED AFTER THE SATISFIABILITY PROBE AND BEFORE REGISTRATION, and the revision is recorded rather than hidden because it reverses the predicted verdict. What did NOT change is the pass mark: the clauses, the candidate and the 4.0 were fixed before the probe ran and are untouched by it. Only the prediction moved, which is what a prediction is for. THE ORIGINAL PREDICTION WAS "REJECTED", on linear scaling. §41 published baseline and decay-arm maximum drawdown for every period (judge OFF): 11.51/17.67, 12.04/21.15, 11.59/11.59, 10.78/15.73. If drawdown scales linearly with per-trade size, halving sizing puts the candidate at baseline plus half the decay arm's excess — 14.59, 16.59, 11.59, 13.25 against bars of 14.51, 15.04, 14.59, 13.78 — failing clause (a) on 2000-2006 by 0.08pp and on 2007-2013 by 1.55pp, sinking the conjunction. THE PROBE FALSIFIED THAT MODEL. On 2022-2026, judge ON, measured: baseline maxDD 10.99% / 4.72% deployed / 54 trades; decay 15.72% / 75.06% / 3,056; decay_half 11.31% / 76.35% / 4,121. The linear model predicted 13.25% for the candidate and it came in at 11.31%, OVERESTIMATING by 1.94pp. The mechanism is visible in the same three rows and is not what I expected: halving the sizing did not reduce deployment at all — it ROSE, 75.06% to 76.35% — because the freed capital went into more and smaller names, 3,056 trades becoming 4,121. That is diversification rather than de-risking, and it cuts drawdown harder than proportional scaling predicts. It is also, precisely, the outcome the probe was written to look for as a FAILURE mode ("the bot may simply open twice as many half-sized positions, leaving deployment and drawdown unchanged"): the first half happened and the second half did not. THE REVISED PREDICTION IS THAT CLAUSE (a) PASSES IN ALL FOUR. Applying the same 1.94pp correction to the two cells the linear model failed gives ~12.65% against 14.51% and ~14.65% against 15.04%. That correction is a single-period extrapolation and deserves little confidence, but it points the same way in both cells, and 2007-2013 — the deepest drawdown in the set and the cell most likely to sink this — is the one to watch. CLAUSE (b) IS NOW THE WHOLE CLAIM, and it is genuinely unknown: return was suppressed in the probe's code precisely so it would stay that way. §43 established the incumbent fails beats_exposure_matched in ALL FOUR periods, so the candidate does not have to be good to beat the incumbent — but it is not scored against the incumbent, it is scored against its own exposure-matched benchmark, and deploying 76% instead of 4.7% raises that bar roughly sixteen fold. §41's decay arm cleared the exposure-matched bar on three periods of four at full sizing on the OLD simulator; whether that survives both the judge and the sizing cut is not computable from anything published. A PASS ON ALL FOUR IS NOW THE OUTCOME I EXPECT ON (a) AND DO NOT EXPECT ON (b), which makes the conjunction likely to be REJECTED ON RETURN rather than on risk — the opposite of §41, and a more interesting failure if it happens.
+
+  verified bars_wide_2014-01-01_2019-12-31.json.gz  sha256 dca8dc85b8770f74…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 3 arms | 3 worker(s)
+
+  baseline                 ret  +56.71%  PF 1.396  maxDD 10.72%  trades  3057  symbols 498  deploy  69.25%  (388s)
+  decay                    ret  +73.63%  PF 1.406  maxDD 10.72%  trades  3858  symbols 498  deploy  83.50%  (439s)
+  decay_half               ret  +90.04%  PF 1.479  maxDD  9.86%  trades  5476  symbols 500  deploy  83.99%  (551s)
+
+  judge on baseline               sized 129179  cut  72932  vetoed  3123  truncated to 0   980
+  judge on decay                  sized  73017  cut  41294  vetoed  1773  truncated to 0  1259
+  judge on decay_half             sized  72206  cut  40787  vetoed  1755  truncated to 0  1474
+
+  buy-and-hold on this universe: +90.41%
+
+-- PRE-REGISTERED PASS MARK (decay_half) --
+  [PASS] (a) maxdd_within  9.86% vs 13.72%
+  [PASS] (b) beats_exposure_matched  +90.04% vs +75.94% (B&H +90.41% x 84.0% deployment)
+  [PASS] (c) min_trades  5476 vs 30
+  [PASS] (d) deployment_at_least  83.99% deployed vs 25.0% required
+
+VERDICT: PASS  (555s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+########## s44a ##########
+s44a — Drawdown decay at halved sizing: better return at matched drawdown? (2000-2006)
+claim EDGE | K=13 | frozen 2026-07-30T01:18:18 | sha 6d45fb4bc6d74d64… | judge ON
+
+prior: THIS PRIOR WAS REVISED AFTER THE SATISFIABILITY PROBE AND BEFORE REGISTRATION, and the revision is recorded rather than hidden because it reverses the predicted verdict. What did NOT change is the pass mark: the clauses, the candidate and the 4.0 were fixed before the probe ran and are untouched by it. Only the prediction moved, which is what a prediction is for. THE ORIGINAL PREDICTION WAS "REJECTED", on linear scaling. §41 published baseline and decay-arm maximum drawdown for every period (judge OFF): 11.51/17.67, 12.04/21.15, 11.59/11.59, 10.78/15.73. If drawdown scales linearly with per-trade size, halving sizing puts the candidate at baseline plus half the decay arm's excess — 14.59, 16.59, 11.59, 13.25 against bars of 14.51, 15.04, 14.59, 13.78 — failing clause (a) on 2000-2006 by 0.08pp and on 2007-2013 by 1.55pp, sinking the conjunction. THE PROBE FALSIFIED THAT MODEL. On 2022-2026, judge ON, measured: baseline maxDD 10.99% / 4.72% deployed / 54 trades; decay 15.72% / 75.06% / 3,056; decay_half 11.31% / 76.35% / 4,121. The linear model predicted 13.25% for the candidate and it came in at 11.31%, OVERESTIMATING by 1.94pp. The mechanism is visible in the same three rows and is not what I expected: halving the sizing did not reduce deployment at all — it ROSE, 75.06% to 76.35% — because the freed capital went into more and smaller names, 3,056 trades becoming 4,121. That is diversification rather than de-risking, and it cuts drawdown harder than proportional scaling predicts. It is also, precisely, the outcome the probe was written to look for as a FAILURE mode ("the bot may simply open twice as many half-sized positions, leaving deployment and drawdown unchanged"): the first half happened and the second half did not. THE REVISED PREDICTION IS THAT CLAUSE (a) PASSES IN ALL FOUR. Applying the same 1.94pp correction to the two cells the linear model failed gives ~12.65% against 14.51% and ~14.65% against 15.04%. That correction is a single-period extrapolation and deserves little confidence, but it points the same way in both cells, and 2007-2013 — the deepest drawdown in the set and the cell most likely to sink this — is the one to watch. CLAUSE (b) IS NOW THE WHOLE CLAIM, and it is genuinely unknown: return was suppressed in the probe's code precisely so it would stay that way. §43 established the incumbent fails beats_exposure_matched in ALL FOUR periods, so the candidate does not have to be good to beat the incumbent — but it is not scored against the incumbent, it is scored against its own exposure-matched benchmark, and deploying 76% instead of 4.7% raises that bar roughly sixteen fold. §41's decay arm cleared the exposure-matched bar on three periods of four at full sizing on the OLD simulator; whether that survives both the judge and the sizing cut is not computable from anything published. A PASS ON ALL FOUR IS NOW THE OUTCOME I EXPECT ON (a) AND DO NOT EXPECT ON (b), which makes the conjunction likely to be REJECTED ON RETURN rather than on risk — the opposite of §41, and a more interesting failure if it happens.
+
+  verified bars_wide_2000-01-01_2006-12-31.json.gz  sha256 432cec564ccee6ab…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 3 arms | 3 worker(s)
+
+  baseline                 ret   +9.45%  PF 1.122  maxDD 11.52%  trades   753  symbols 367  deploy  20.95%  (504s)
+  decay                    ret  +96.11%  PF 1.454  maxDD 16.51%  trades  3772  symbols 498  deploy  68.23%  (912s)
+  decay_half               ret +111.88%  PF 1.536  maxDD 15.68%  trades  5013  symbols 500  deploy  67.87%  (1060s)
+
+  judge on baseline               sized 392081  cut 222526  vetoed  9572  truncated to 0   109
+  judge on decay                  sized 164391  cut  93237  vetoed  3991  truncated to 0  1120
+  judge on decay_half             sized 160997  cut  91370  vetoed  3934  truncated to 0   935
+
+  buy-and-hold on this universe: +138.54%
+
+-- PRE-REGISTERED PASS MARK (decay_half) --
+  [FAIL] (a) maxdd_within  15.68% vs 14.52%
+  [PASS] (b) beats_exposure_matched  +111.88% vs +94.03% (B&H +138.54% x 67.9% deployment)
+  [PASS] (c) min_trades  5013 vs 30
+  [PASS] (d) deployment_at_least  67.87% deployed vs 25.0% required
+
+VERDICT: REJECTED  (1064s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+########## s44b ##########
+s44b — Drawdown decay at halved sizing: better return at matched drawdown? (2007-2013)
+claim EDGE | K=13 | frozen 2026-07-30T01:18:18 | sha 667521686c407ff4… | judge ON
+
+prior: THIS PRIOR WAS REVISED AFTER THE SATISFIABILITY PROBE AND BEFORE REGISTRATION, and the revision is recorded rather than hidden because it reverses the predicted verdict. What did NOT change is the pass mark: the clauses, the candidate and the 4.0 were fixed before the probe ran and are untouched by it. Only the prediction moved, which is what a prediction is for. THE ORIGINAL PREDICTION WAS "REJECTED", on linear scaling. §41 published baseline and decay-arm maximum drawdown for every period (judge OFF): 11.51/17.67, 12.04/21.15, 11.59/11.59, 10.78/15.73. If drawdown scales linearly with per-trade size, halving sizing puts the candidate at baseline plus half the decay arm's excess — 14.59, 16.59, 11.59, 13.25 against bars of 14.51, 15.04, 14.59, 13.78 — failing clause (a) on 2000-2006 by 0.08pp and on 2007-2013 by 1.55pp, sinking the conjunction. THE PROBE FALSIFIED THAT MODEL. On 2022-2026, judge ON, measured: baseline maxDD 10.99% / 4.72% deployed / 54 trades; decay 15.72% / 75.06% / 3,056; decay_half 11.31% / 76.35% / 4,121. The linear model predicted 13.25% for the candidate and it came in at 11.31%, OVERESTIMATING by 1.94pp. The mechanism is visible in the same three rows and is not what I expected: halving the sizing did not reduce deployment at all — it ROSE, 75.06% to 76.35% — because the freed capital went into more and smaller names, 3,056 trades becoming 4,121. That is diversification rather than de-risking, and it cuts drawdown harder than proportional scaling predicts. It is also, precisely, the outcome the probe was written to look for as a FAILURE mode ("the bot may simply open twice as many half-sized positions, leaving deployment and drawdown unchanged"): the first half happened and the second half did not. THE REVISED PREDICTION IS THAT CLAUSE (a) PASSES IN ALL FOUR. Applying the same 1.94pp correction to the two cells the linear model failed gives ~12.65% against 14.51% and ~14.65% against 15.04%. That correction is a single-period extrapolation and deserves little confidence, but it points the same way in both cells, and 2007-2013 — the deepest drawdown in the set and the cell most likely to sink this — is the one to watch. CLAUSE (b) IS NOW THE WHOLE CLAIM, and it is genuinely unknown: return was suppressed in the probe's code precisely so it would stay that way. §43 established the incumbent fails beats_exposure_matched in ALL FOUR periods, so the candidate does not have to be good to beat the incumbent — but it is not scored against the incumbent, it is scored against its own exposure-matched benchmark, and deploying 76% instead of 4.7% raises that bar roughly sixteen fold. §41's decay arm cleared the exposure-matched bar on three periods of four at full sizing on the OLD simulator; whether that survives both the judge and the sizing cut is not computable from anything published. A PASS ON ALL FOUR IS NOW THE OUTCOME I EXPECT ON (a) AND DO NOT EXPECT ON (b), which makes the conjunction likely to be REJECTED ON RETURN rather than on risk — the opposite of §41, and a more interesting failure if it happens.
+
+  verified bars_wide_2007-01-01_2013-12-31.json.gz  sha256 2ba815e1b0d2ca5d…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 3 arms | 3 worker(s)
+
+  baseline                 ret   +2.42%  PF 1.082  maxDD 11.45%  trades   269  symbols 177  deploy  10.92%  (280s)
+  decay                    ret  +75.17%  PF 1.419  maxDD 17.33%  trades  3447  symbols 499  deploy  69.49%  (453s)
+  decay_half               ret  +28.13%  PF 1.194  maxDD 27.33%  trades  4233  symbols 500  deploy  60.18%  (519s)
+
+  judge on baseline               sized 419540  cut 237450  vetoed 10384  truncated to 0    55
+  judge on decay                  sized 134757  cut  76129  vetoed  3365  truncated to 0  1037
+  judge on decay_half             sized 190481  cut 107816  vetoed  4774  truncated to 0   859
+
+  buy-and-hold on this universe: +92.48%
+
+-- PRE-REGISTERED PASS MARK (decay_half) --
+  [FAIL] (a) maxdd_within  27.33% vs 14.45%
+  [FAIL] (b) beats_exposure_matched  +28.13% vs +55.66% (B&H +92.48% x 60.2% deployment)
+  [PASS] (c) min_trades  4233 vs 30
+  [PASS] (d) deployment_at_least  60.18% deployed vs 25.0% required
+
+VERDICT: REJECTED  (522s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
