@@ -47,7 +47,7 @@ cost attention, but it must not be mistaken for a conservative test of edge.
 No network, no I/O, deterministic seed — callers pass bars in. Same shape as
 `scorecard.py` and `significance.py`.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import random
 
 # Frozen defaults. Changing these changes what counts as decay, so they live

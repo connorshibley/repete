@@ -1,8 +1,6 @@
 """The decay monitor's wiring: alert-only, read-only, and honest exit codes."""
 import json
 
-import pytest
-
 import decaycheck
 import randombaseline as rb
 
