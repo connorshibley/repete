@@ -52,6 +52,7 @@ WATCHED = (
     "ALERT_WEBHOOK_URL", "HEARTBEAT_PING_URL",
     "PUBLISHER_SESSION_SECRET", "RESEND_API_KEY",
     "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
+    "FMP_API_KEY",
 )
 
 # Below this length a "secret" is more likely a placeholder, and short strings

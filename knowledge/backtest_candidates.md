@@ -4317,3 +4317,60 @@ already too small to decide anything, is also unrepresentative** — and the sec
 problem does not go away by waiting for the first to shrink.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 11.**
+
+---
+
+## §46 CANDIDATE (not registered) — fundamentals, blocked on a lookahead probe
+
+**2026-07-30.** Source: Miles Deutscher, *"I Replaced My Financial Advisor With
+Claude Opus 5"* (23:44). The video builds a human-in-the-loop research assistant
+the author double-checks before every manual trade — the opposite posture to
+this bot — and most of it is already covered here or forbidden outright. Two
+things in it are explicitly NOT being adopted:
+
+- the market screener at [18:35] ("flag the 3-5 trading furthest below price
+  targets, give me the bull case") is unregistered discretionary selection, the
+  exact thing §32/§33 existed to test;
+- "Claude can adjust your strategy over time" at [07:50] is a strategy change
+  adopted by enabling it and watching.
+
+**The real finding is an absence.** `grep -rl "price_target|free_cash_flow|
+analyst|pe_ratio|fundamental|insider" src/` returns **nothing**.
+`memory/earnings_cache.json` holds earnings *dates* for blackout logic, not
+figures. All five strategies are pure price/technical. Fundamentals are an input
+class no claim in this file has ever been able to reference.
+
+### Why nothing is registered yet
+
+A fundamentals claim is only worth writing if the data can be backtested without
+lookahead, and there are three ways it can fail:
+
+| risk | why it is fatal |
+|---|---|
+| **restatement** | figures restated later already embed what happened next |
+| **filing lag** | period-end dating trades on numbers nobody had for ~45 days |
+| **survivorship** | a survivor-only universe excludes everyone who went bankrupt |
+
+Any one of them makes a gate inflated and **indistinguishable from a real edge**
+— the worst possible outcome for a record that is honestly 0 for 12.
+
+`scripts/probe_fmp_lookahead.py` measures all three and **exits non-zero with a
+refusal** if any fails, on the §28 precedent: that gate was fully drafted and
+never registered because a probe showed its mechanism could not move its metric.
+Finding this out after registering would be strictly worse.
+
+### The two outcomes, decided in advance
+
+- **all three pass** → a §46 may be pre-registered and backtested on fundamentals;
+- **any one fails** → fundamentals are **live judge context only** — the W7
+  shape: judge-only, so under invariant #2 they can veto or shrink and can never
+  create a trade; ungated; recorded as a divergence.
+
+Deciding this before seeing any result is the point. Choosing the shape after
+looking would be selecting the experiment on its outcome, which is how §44's
+prior got revised into being worse than the one it replaced.
+
+**Blocked on the owner:** a free FMP key, installed via
+`./scripts/set_fmp_key.sh` (never pasted into a chat).
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
