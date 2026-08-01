@@ -241,3 +241,44 @@ docker compose run --rm agent python src/health.py # verify
 ```
 State lives in the `./memory` volume mount, so rebuilds are always safe.
 Never bake state into the image.
+
+---
+
+## Decay alert (strategy may have fallen to random-entry levels)
+
+**Symptoms:** alert titled "Repete: strategy may have decayed";
+`scripts/run_decay_check.sh` logged a `WORSE_THAN_RANDOM` verdict in
+`logs/cron.log`. Trading is **still running** — this monitor is alert-only and
+never halts (§47).
+
+**Diagnose:**
+```bash
+.venv/bin/python src/decaycheck.py --json        # full verdict + percentile
+.venv/bin/python src/decaycheck.py --strategy tsmom   # per-strategy breakdown
+grep 'decaycheck' logs/cron.log | tail -10       # is this new, or a trend?
+```
+
+Read the percentile, not just the verdict. One reading below the 5th percentile
+on ~20 trades is weak evidence; the same reading falling week over week is the
+signal. The monitor is deliberately **lenient** (§47: the null carries no stops,
+which flatters the strategy), so a fire is more meaningful than a pass.
+
+**Fix:** This is a research trigger, not an incident. Nothing auto-changes.
+Options, in the order the repo's own discipline prefers:
+1. Confirm it isn't a data problem first — `python src/datacheck.py`, and check
+   the trades in the window aren't dominated by one symbol or one week.
+2. If the decay looks real, the response is a **new pre-registration**, not a
+   parameter tweak. A strategy that stopped working is not fixed by re-tuning it
+   on the data that showed it stopped — that is curve-fitting the failure.
+3. To stop trading meanwhile, that is a human decision: set the strategy's
+   `max_open_positions: 0` in `config.yaml`, or write a `HALT` file. The monitor
+   will not do either for you.
+
+**Verify:** `.venv/bin/python src/decaycheck.py` reports the expected verdict,
+and `git diff config.yaml` shows exactly what you intended to change (probably
+nothing).
+
+**Note:** exit code 2 means the check **could not run** — a missing config, no
+bars, a broker failure. That is *not* a pass. `INSUFFICIENT_DATA` (exit 0) is
+also not a pass: it means there were fewer than 20 closed trades, so no claim
+was made in either direction.
