@@ -4154,6 +4154,126 @@ is now supported by four periods spanning 26 years rather than one.
 
 ---
 
+## §44 — DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? (EDGE, K=13, 2026-08-02)
+
+**VERDICT: REJECTED.** Conjunction of four periods — one clause failure in one
+period sinks the whole claim. `risk.drawdown_decay` stays absent from
+`config.yaml` and `risk_per_trade_pct` stays at 8.0.
+
+This is the follow-up §41 itself named as the legitimate next step and refused
+to take on its own authority: "pair the decay with reduced per-trade sizing and
+ask whether return improves at matched drawdown... requiring a fresh
+registration citing this rejection in its prior... the owner's decision to
+make." Registered only after that decision was made, 2026-08-02.
+
+| spec | period | frozen sha |
+|---|---|---|
+| s44a | 2000-2006 | `e0c6e976a7c94017…` |
+| s44b | 2007-2013 | `077fa7ff2a3419cb…` |
+| s44c | 2014-2019 | `5306ab4d50617635…` |
+| s44d | 2022-2026 | `2418e96e4a11bdde…` |
+
+### The sizing value, derived not tuned
+
+`risk_per_trade_pct: 5.0`, from 8.0 scaled by the average of §41's own three
+non-anomalous maxDD ratios (baseline/decay): 11.51/17.67=0.651,
+12.04/21.15=0.569, 10.78/15.73=0.685, mean 0.635 → 8.0×0.635=5.08, rounded to
+5.0. Derived entirely from numbers §41 had already published before this spec
+existed — no candidate run informed the choice. One arm, not a sweep: §34
+already showed selecting the best of several settings after seeing results
+does not predict anything on this data.
+
+### Judge ON — a deliberate improvement over §41, not a comparable baseline
+
+§41 was scored judge-less; §45 later named this as an open gap ("whether the
+decay arm still roughly doubles maxDD with the judge on is unmeasured"). §44
+closes that gap. **This means §44's numbers are NOT directly comparable to
+§41's own table** — different simulator fidelity, not just a different arm.
+Judge calibration for all four periods: n=164, veto 2.4%, downsize 58.1%, mean
+scale 0.729 (2026-07-16..2026-07-28).
+
+### Results
+
+| period | arm | return | PF | maxDD | trades | deploy |
+|---|---|---|---|---|---|---|
+| 2000-2006 | baseline | +9.45% | 1.122 | 11.52% | 753 | 20.95% |
+| | decay+5.0 | +125.48% | 1.560 | 14.47% | 4,586 | 69.63% |
+| 2007-2013 | baseline | +2.42% | 1.082 | 11.45% | 269 | 10.92% |
+| | decay+5.0 | +33.42% | 1.257 | **28.03%** | 3,544 | 57.69% |
+| 2014-2019 | baseline | +56.71% | 1.396 | 10.72% | 3,057 | 69.25% |
+| | decay+5.0 | +75.87% | 1.409 | 11.15% | 4,895 | 83.66% |
+| 2022-2026 | baseline | −7.71% | 0.367 | 10.99% | 54 | 4.72% |
+| | decay+5.0 | +73.47% | 1.476 | 10.64% | 3,694 | 77.78% |
+
+| clause | s44a | s44b | s44c | s44d |
+|---|---|---|---|---|
+| (a) maxdd_within pp 3.0 | PASS 14.47 vs 14.52 | **FAIL** 28.03 vs 14.45 | PASS 11.15 vs 13.72 | PASS 10.64 vs 13.99 |
+| (b) beats_exposure_matched | PASS +125.48 vs +96.46 | **FAIL** +33.42 vs +53.35 | PASS +75.87 vs +75.64 | PASS +73.47 vs +35.08 |
+| (c) min_trades 30 | PASS | PASS | PASS | PASS |
+| (d) not_worse | INCONCLUSIVE | INCONCLUSIVE | INCONCLUSIVE | INCONCLUSIVE |
+
+### What is established
+
+**Three of four periods individually cleared every registered clause,**
+including the return-versus-exposure test the prior thought least likely to
+pass. That is a materially closer result than the prior predicted — the honest
+prior said REJECTED was the base rate on all four, most likely via clause (b)
+on structural grounds (reduced sizing shrinking the very deployment needed to
+beat the exposure-matched benchmark). That reasoning was wrong for three of
+four periods and right for the fourth, for a different, more specific reason.
+
+**The rejection is isolated to the period containing the 2008 crisis, and it
+failed in exactly the way the prior specifically named for that period before
+the run:** *"if decay lets the bot back in DURING 2008 rather than only after,
+clause (a) is the more likely failure point here than in the other three
+periods."* maxDD came in at 28.03% against a 14.45% allowance — not a near
+miss. This is the same mechanism-consistent failure §41 found at unchanged
+sizing, now confirmed to survive a sizing reduction that was sufficient
+everywhere else.
+
+**Clause (d) carried no information in any period**, same pattern §41 found for
+its own capacity clause: every confidence interval is wide enough to exclude
+nothing (e.g. s44a: `[$-60.17, $+74.29]`), and point estimates move in both
+directions across periods (s44c candidate *worse* per-trade, s44a/b/d candidate
+*better*). Read as absence of evidence, not evidence of parity.
+
+### Two things that must not be over-read
+
+**A REJECTED conjunction is not "close to a PASS."** Three individually-passing
+periods do not partially satisfy a claim that was pre-registered as a
+four-period AND. The clause structure exists precisely so that a result like
+this — strong everywhere except the one period markets actually broke — reads
+as REJECTED, not as 75% adopted. A mechanism that works except during a crisis
+is a mechanism that is absent exactly when a circuit breaker exists to matter.
+
+**§44's own numbers cannot be diffed against §41's table as if it were a
+tighter replication.** The judge is ON here and was OFF in §41; some of the
+difference between "§41's decay arm roughly doubled maxDD everywhere" and
+"§44's decay+reduced-sizing arm only blew through the allowance in one period"
+is the sizing reduction working as intended, and some of it is two different
+simulators. This spec cannot separate the two, and no claim here rests on
+being able to.
+
+### What happens next — and what must not
+
+**The pass marks are not loosened and s44b is not re-scored.** Same rule §41
+stated for itself: re-scoring a rejected candidate against a bar chosen after
+seeing the result is the exact failure this apparatus exists to prevent.
+
+The visible next question — does the same mechanism hold if sizing is reduced
+*specifically enough to survive the crisis period*, rather than by a single
+value averaged across three calmer ones — is a **different claim**, requiring
+a fresh registration that cites this rejection in its prior, same as this one
+cited §41. It is not registered here, and it is the owner's decision whether
+it is worth running, not an automatic next step.
+
+**EDGE claims: 0 for 13.** Nothing enabled. No threshold moved. `mode: paper`
+unchanged. `risk.drawdown_decay` and the reduced `risk_per_trade_pct` are both
+absent from the shipped `config.yaml` — verified: neither this registration nor
+its run touched the file.
+
+---
+
 ## §45 — WHY DOESN'T THE BOOK TURN OVER? (DIAGNOSTIC, 2026-07-29)
 
 **Numbering.** §44 is reserved a few sections above for the deferred

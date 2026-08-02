@@ -1,0 +1,53 @@
+# §44d — DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? (2022-2026)
+# One of four periods in the s44a-d conjunction. Full rationale in s44a.yaml.
+# This is the regime closest to the current live book (§45's divergence #13
+# measured live's first 15 days against this exact period's backtest).
+id: s44d
+claim: EDGE
+title: "Decay + reduced sizing: does return improve at matched drawdown? (2022-2026)"
+
+# judge ON — see s44a.yaml for why. §44's numbers are not directly comparable
+# to §41's own table (§41 was judge-less); read this on its own clauses.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2022-01-01_2026-07-24.json.gz
+  sha256: 081dc08727a8cd8e1dc4726625b1fab02cb3b7d8c1489849a69327950c4adc8d
+
+cash: 100000.0
+bonferroni_k: 13
+
+arms:
+  - name: baseline
+
+  - name: decay_reduced_sizing
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+      risk.risk_per_trade_pct: 5.0
+
+clauses:
+  - {id: a, rule: maxdd_within, pp: 3.0}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: min_trades, n: 30}
+  - {id: d, rule: not_worse}
+
+prior: >-
+  Same base-rate prior as s44a: REJECTED, most likely on (b), for the same
+  structural reason. This period is the regime closest to the live book, and
+  §45 already established that live's own drawdown rail is quiet in an
+  unrepresentative fraction of this period's history (96.86% of buy signals
+  here were blocked by the drawdown rail at baseline). If this period is the
+  one where the claim is most likely to matter for live decisions, it is also
+  the one where §41's own decay arm showed the largest drawdown increase in
+  relative terms (10.78->15.73%, +46%) — a reason for caution, not optimism,
+  about this specific period clearing matched drawdown at the derived sizing.
+
+failure_modes:
+  - >-
+    All five failure modes in s44a.yaml apply unchanged. Additionally: §45's
+    divergence #13 means this backtest period and the live book's first 15
+    days are not drawn from a comparable slice of history — a result here,
+    whichever way it lands, describes the full 2022-2026 backtest regime, not
+    the unusually calm stretch live has experienced so far.

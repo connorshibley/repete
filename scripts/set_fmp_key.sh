@@ -97,7 +97,7 @@ load_dotenv(os.path.join('$ROOT', '.env'))
 key = os.environ.get('FMP_API_KEY', '').strip()
 if not key:
     print('empty-on-disk'); raise SystemExit
-url = ('https://financialmodelingprep.com/api/v3/quote-short/AAPL?apikey=' + key)
+url = ('https://financialmodelingprep.com/stable/quote?symbol=AAPL&apikey=' + key)
 try:
     with urllib.request.urlopen(url, timeout=20) as r:
         body = r.read(400).decode('utf-8', 'replace')

@@ -73,7 +73,8 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     priority: 1        # §20a demoted this to 3; §22 REVERTED that — see below.
     fast_period: 10
     slow_period: 30
-    max_open_positions: 0   # 0 = disabled (§29 2026-07-26). Was 5 — §13 held it
+    max_open_positions: 0   # 0 = ceiling disabled, UNCAPPED, not "no positions"
+                            # (§29 2026-07-26). Was 5 — §13 held it
                             # at status quo so it could not absorb meanrev's
                             # headroom. With the global ceiling gone there is no
                             # headroom to compete over: heat and concentration
@@ -83,7 +84,8 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     priority: 2        # (exposure-matched benchmark; see memory/backtest_trials.jsonl)
     momentum_bars: 63  # in-sample grid winner — never re-picked after OOS
     skip_bars: 0
-    max_open_positions: 0   # 0 = disabled (§29, owner decision 2026-07-26).
+    max_open_positions: 0   # 0 = ceiling disabled, UNCAPPED, not "no positions"
+                            # (§29, owner decision 2026-07-26).
                             # THIS IS THE ONE WITH COUNTER-EVIDENCE AGAINST IT.
                             # Was 5, held there by §13 clause (b) because §12
                             # measured tsmom's PF COLLAPSING as slots rise
@@ -143,7 +145,8 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     trend_sma_period: 200
     exit_sma_period: 5
     max_hold_days: 7
-    max_open_positions: 0   # 0 = disabled (§29 2026-07-26). Was 8, and §20b had
+    max_open_positions: 0   # 0 = ceiling disabled, UNCAPPED, not "no positions"
+                            # (§29 2026-07-26). Was 8, and §20b had
                             # already found it INERT. Prior note kept below —
                             # it documents exactly why a count cap was never
                             # doing the work it appeared to do:
@@ -293,7 +296,8 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # The backtester enforces the same rail against
                                  # its own running peak via risk.drawdown_pct —
                                  # a live-only rail would be divergence #9.
-  max_open_positions: 0          # 0 = DISABLED (§29, owner decision 2026-07-26):
+  max_open_positions: 0          # 0 = ceiling disabled, UNCAPPED, not "no
+                                 # positions" (§29, owner decision 2026-07-26):
                                  # "if there's more to hold onto then hold onto
                                  # it". Was 8.
                                  # Position COUNT was never a risk measure —

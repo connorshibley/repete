@@ -45,7 +45,7 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime
 
-BASE = "https://financialmodelingprep.com/api/v3"
+BASE = "https://financialmodelingprep.com/stable"
 CALL_BUDGET = 40          # free tier is 250/day; this stays far inside it
 _CALLS = 0
 
@@ -112,8 +112,8 @@ def check_restatement(out: list) -> bool | None:
     verdicts = []
     for sym, why in RESTATED:
         out.append(f"\n  {sym}: {why}")
-        std = get(f"income-statement/{sym}", period="quarter", limit=40)
-        asrep = get(f"income-statement-as-reported/{sym}", period="quarter",
+        std = get("income-statement", symbol=sym, period="quarter", limit=40)
+        asrep = get("income-statement-as-reported", symbol=sym, period="quarter",
                     limit=40)
         if not isinstance(std, list) or not std:
             out.append("    standard series unavailable (plan-gated or empty)")
@@ -176,7 +176,7 @@ def check_filing_lag(out: list) -> bool | None:
     out.append("\n== 2. FILING LAG ==")
     lags, missing = [], 0
     for sym in LAG_SYMBOLS:
-        rows = get(f"income-statement/{sym}", period="quarter", limit=8)
+        rows = get("income-statement", symbol=sym, period="quarter", limit=8)
         if not isinstance(rows, list) or not rows:
             out.append(f"  {sym}: unavailable")
             continue
@@ -225,8 +225,8 @@ def check_survivorship(out: list) -> bool | None:
     out.append("\n== 3. SURVIVORSHIP ==")
     found = 0
     for sym, why in DELISTED:
-        rows = get(f"historical-price-full/{sym}", serietype="line")
-        n = len((rows or {}).get("historical", [])) if isinstance(rows, dict) else 0
+        rows = get("historical-price-eod/full", symbol=sym)
+        n = len(rows) if isinstance(rows, list) else 0
         out.append(f"  {sym} ({why}): {n} historical bars")
         if n:
             found += 1
