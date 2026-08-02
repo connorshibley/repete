@@ -11,6 +11,7 @@ Run once per bar via cron/Task Scheduler (see GUIDE.md §6), e.g. daily:
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 import yaml
@@ -25,6 +26,7 @@ import journal
 import learn
 import llm
 import datacheck
+import flatten_recovery
 import trade_plan
 import modelver
 import postexit
@@ -605,6 +607,19 @@ def _bootstrap_cycle():
     halted = False
     mode = risk.halt_mode()
     if mode == risk.HALT_MODE_FREEZE:
+        # One free recovery attempt per cycle, on top of the dedicated
+        # flatten-retry job. Costs nothing when nothing is pending (a substring
+        # check on a file that does not exist), and covers the 09:35 open —
+        # which the retry job deliberately does not, because a market order
+        # before the bell would be rejected and would burn an attempt on
+        # something that is not the outage.
+        if risk.flatten_pending():
+            try:
+                outcome = flatten_recovery.run(Broker(cfg), ledger, cfg)
+                log.critical("HALT (freeze) with a pending flatten — "
+                             "recovery: %s", outcome)
+            except Exception as e:  # noqa: BLE001 — never block the halt itself
+                log.critical("flatten recovery raised: %s", e)
         log.critical("HALT (freeze) — refusing to trade. Delete HALT to resume.")
         ledger.log_event("halted_cycle_skipped")
         return None
@@ -622,6 +637,15 @@ def _bootstrap_cycle():
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
     return cfg, ledger, memory, broker, account, positions, halted
+
+
+# In-cycle flatten retries, and the pause between them. Small and fixed rather
+# than configurable: this runs inside a trading cycle, so the total worst-case
+# delay it can add (2 x 2s) has to stay well under anything that could push a
+# fill past the close. Sustained outages are the scheduled job's problem, not
+# this loop's.
+_KILL_SWITCH_INCYCLE_TRIES = 3
+_KILL_SWITCH_BACKOFF_SEC = 2.0
 
 
 def _kill_switch_fired(broker, ledger: Ledger, account: dict, cfg: dict) -> bool:
@@ -650,12 +674,45 @@ def _kill_switch_fired(broker, ledger: Ledger, account: dict, cfg: dict) -> bool
                      mode=risk.HALT_MODE_FREEZE)
     ledger.log_event("kill_switch",
                      "daily loss limit breached; HALT engaged; flattening")
-    try:
-        broker.flatten_all()
-    except Exception as e:  # noqa: BLE001 — HALT already set; report + stop
-        log.critical("flatten_all failed after kill switch: %s", e)
+
+    # Retry in-cycle before giving up on this run. The overwhelmingly common
+    # failure is a transient API blip, and the whole point of a kill switch is
+    # that you want out NOW — waiting 15 minutes for the scheduled retry when a
+    # second call would have worked is exposure bought for nothing.
+    #
+    # Success is decided by RE-READING THE BOOK, not by the absence of an
+    # exception. flatten_all() is cancel_orders() + close_all_positions(), and
+    # Alpaca's close-all reports per-position results rather than raising when
+    # only some of them close — so until 2026-08-02 a flatten that closed 3 of 5
+    # positions was recorded as complete and the two still open were invisible.
+    # See flatten_recovery.flatten_and_verify.
+    remaining = {}
+    for attempt in range(1, _KILL_SWITCH_INCYCLE_TRIES + 1):
+        remaining = flatten_recovery.flatten_and_verify(broker)
+        if not remaining:
+            break
+        log.critical("flatten attempt %d left %d position(s) open: %s",
+                     attempt, len(remaining), ", ".join(sorted(remaining)))
+        if attempt < _KILL_SWITCH_INCYCLE_TRIES:
+            time.sleep(_KILL_SWITCH_BACKOFF_SEC)
+
+    if remaining:
+        names = ", ".join(sorted(remaining))
+        # `kill_switch_flatten_failed` KEEPS ITS NAME. docs/runbooks.md tells the
+        # operator to grep for exactly this string, and renaming it would
+        # silently break a documented incident command — the test_runbook_
+        # accuracy.py lesson: a documented check that is not a check.
         ledger.log_event("kill_switch_flatten_failed",
-                         f"{e} — positions may remain open; HALT engaged")
+                         f"positions still open after "
+                         f"{_KILL_SWITCH_INCYCLE_TRIES} attempts: {names}")
+        risk.mark_flatten_pending(f"still open: {names}")
+        # Until now the most dangerous state in the system wrote one ledger line
+        # and paged nobody.
+        flatten_recovery.alert(
+            "Repete: KILL SWITCH could not flatten",
+            f"The daily-loss kill switch fired and these positions are STILL "
+            f"OPEN:\n\n  {names}\n\nAutomatic retries continue on the "
+            f"flatten-retry schedule. Clearing HALT cancels them.")
     return True
 
 

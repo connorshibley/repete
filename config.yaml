@@ -280,6 +280,30 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # Half the total tolerance is the reasoning — a
                                  # single day consuming half the drawdown budget
                                  # is a genuine emergency, not a bad Tuesday.
+  kill_switch:                   # what happens when the flatten above FAILS
+                                 # (2026-08-02). Until now: nothing. The halt is
+                                 # `freeze`, so no later cycle ran, so nothing
+                                 # ever retried — the book sat open after a 5%
+                                 # loss with only its broker-side bracket legs
+                                 # managing it, until a human noticed.
+    auto_retry_flatten: true     # retry until the BROKER says the book is flat.
+                                 # false restores the old behaviour: mark it,
+                                 # alert, wait for a human. This only ever
+                                 # FINISHES a liquidation the daily-loss rail
+                                 # already started — not a new reason to sell,
+                                 # and it cannot run unless the kill switch
+                                 # itself left a pending marker.
+    max_attempts: 8              # ~2 hours at the 15-minute retry cadence, then
+                                 # STOP and escalate rather than hammer a broker
+                                 # that is clearly not taking orders. Eight
+                                 # failed scheduled attempts is not transient,
+                                 # and an alert repeating every 15 minutes
+                                 # forever is one an operator learns to ignore.
+                                 # NOTE: clearing HALT cancels a pending
+                                 # flatten. The marker lives IN the HALT file
+                                 # precisely so `rm HALT` cannot leave a
+                                 # liquidation armed against a book you have
+                                 # just decided to keep.
   max_drawdown_pct: 10.0         # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26).
                                  # Peak-to-trough from the equity high-water mark.
                                  # This is the SOFT brake: it blocks new ENTRIES

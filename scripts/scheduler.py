@@ -38,6 +38,10 @@ _PUBLISH = "sh scripts/publish_dashboard.sh"
 # 09:35 open cycle has just marked, ends at 15 because the 15:45 cycle marks
 # again — six extra read-only broker calls per session, no gaps over an hour.
 MARK_HOURS = range(10, 16)
+# flatten-retry: every quarter hour across the session. Both must be defined
+# BEFORE JOBS, which references them in its literal.
+RETRY_HOURS = range(9, 16)
+RETRY_MINUTES = (0, 15, 30, 45)
 JOBS = [
     ("news-brain",   range(0, 5), None, 25, [PY, "src/market_context.py"]),
     ("plan-post",    range(0, 5), 9,    35,
@@ -93,6 +97,14 @@ JOBS = [
     # (tests/test_decaycheck.py walks the AST to keep it that way), so the
     # worst a spurious fire costs is one notification.
     ("decaycheck",   [6],         11,   30, [PY, "src/decaycheck.py", "--alert"]),
+    # Retry a kill-switch flatten that did not complete (2026-08-02). Fires
+    # every 15 minutes through the session; the WINDOW ITSELF lives in
+    # flatten_recovery.within_retry_window, not here, so this scheduler and the
+    # launchd plist cannot drift from each other or from the code. A run with
+    # nothing pending is one substring check on a file that usually does not
+    # exist, which is why it can afford to fire this often.
+    ("flatten-retry", range(0, 5), RETRY_HOURS, RETRY_MINUTES,
+     [PY, "src/flatten_recovery.py"]),
 ]
 # news-brain runs hourly at :25 between these ET hours (market-day awareness)
 NEWS_HOURS = range(9, 16)
@@ -100,7 +112,15 @@ NEWS_HOURS = range(9, 16)
 
 def due(job, now: datetime) -> bool:
     name, weekdays, hour, minute, _ = job
-    if now.weekday() not in weekdays or now.minute != minute:
+    if now.weekday() not in weekdays:
+        return False
+    # `minute` accepts a collection as well as an int, exactly as `hour` below
+    # already did (MARK_HOURS). Added for flatten-retry, which is the first job
+    # that needs to fire more than once an hour.
+    if isinstance(minute, int):
+        if now.minute != minute:
+            return False
+    elif now.minute not in minute:
         return False
     if hour is None:                      # hourly window job (news-brain)
         return now.hour in NEWS_HOURS

@@ -133,6 +133,107 @@ def engage_halt(reason: str, mode: str = HALT_MODE_FREEZE):
     log.critical("HALT ENGAGED (%s): %s", mode, reason)
 
 
+# ---- a flatten the kill switch started and could not finish -----------------
+#
+# State lives IN THE HALT FILE, not in memory/, and that placement is the whole
+# safety interlock rather than a convenience.
+#
+# The documented recovery for a kill-switch trip is `rm HALT` (docs/runbooks.md),
+# and `halt.py --clear` does the same. If "a flatten is pending" lived in its own
+# file it would SURVIVE that, and the next scheduled run would liquidate a book
+# the operator had just decided to keep — an automatic sell nobody asked for, at
+# the worst imaginable moment. Keeping it here makes "clear the halt" and "cancel
+# the pending flatten" the same physical act, which is a guarantee rather than a
+# convention. §29's rule again: one definition, one reader, no second file to
+# fall out of sync.
+_FLATTEN_MARK = "flatten: pending"
+_ATTEMPT_MARK = "flatten_attempts:"
+
+
+def _halt_body() -> str | None:
+    try:
+        with open(HALT_FILE) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def flatten_pending() -> bool:
+    """Did the kill switch fail to flatten, leaving positions open?
+
+    NOTE THE POLARITY, which is the opposite of `halt_mode()` and deliberately
+    so. There, an unreadable file means "we do not know, so STOP" — inaction is
+    the safe side. Here the pending flag AUTHORISES AN AUTOMATIC LIQUIDATION, so
+    an unreadable file must mean "do not act". Both resolve the same way
+    underneath: when in doubt, take no risky action. Selling the book because a
+    file failed to parse would be the worst possible reading of it.
+    """
+    body = _halt_body()
+    return bool(body) and _FLATTEN_MARK in body
+
+
+def flatten_attempts() -> int:
+    """How many recovery attempts have already been spent."""
+    for line in (_halt_body() or "").splitlines():
+        if line.startswith(_ATTEMPT_MARK):
+            try:
+                return int(line.split(":", 1)[1].strip())
+            except ValueError:
+                return 0
+    return 0
+
+
+def _rewrite_halt(transform) -> bool:
+    """Apply `transform` to the HALT file's lines. False if there is no HALT.
+
+    Never CREATES the file: every one of these markers is meaningless without an
+    engaged halt, and a marker able to conjure its own HALT would be a way to
+    start an automatic liquidation from nothing at all.
+    """
+    body = _halt_body()
+    if body is None:
+        return False
+    lines = transform(body.splitlines())
+    with open(HALT_FILE, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
+
+
+def mark_flatten_pending(detail: str) -> bool:
+    """Record that positions remain open after the kill switch tried to flatten."""
+    def _add(lines):
+        if not any(ln.startswith(_FLATTEN_MARK) for ln in lines):
+            lines.insert(1, f"{_FLATTEN_MARK} — {detail}")
+            lines.insert(2, f"{_ATTEMPT_MARK} 0")
+        return lines
+    ok = _rewrite_halt(_add)
+    if ok:
+        log.critical("FLATTEN PENDING: %s", detail)
+    return ok
+
+
+def record_flatten_attempt() -> int:
+    """Spend one attempt from the budget. Returns the new total."""
+    n = flatten_attempts() + 1
+
+    def _bump(lines):
+        out = [ln for ln in lines if not ln.startswith(_ATTEMPT_MARK)]
+        out.insert(1, f"{_ATTEMPT_MARK} {n}")
+        return out
+    _rewrite_halt(_bump)
+    return n
+
+
+def clear_flatten_pending() -> bool:
+    """The book is flat. Drops the markers and LEAVES THE HALT ENGAGED — the
+    daily-loss breach that caused all this is still a human's to clear."""
+    def _drop(lines):
+        return [ln for ln in lines
+                if not ln.startswith(_FLATTEN_MARK)
+                and not ln.startswith(_ATTEMPT_MARK)]
+    return _rewrite_halt(_drop)
+
+
 # A corrupt counter must not silently un-cap the day's trading. Absent file =
 # genuinely no trades yet (fine); unparseable file = we do not know, so the
 # rail assumes the worst. Same polarity as preflight: state integrity fails SAFE.

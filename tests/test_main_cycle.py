@@ -381,7 +381,15 @@ def test_kill_switch_engages_halt_even_when_flatten_fails(cycle_env):
         def flatten_all(self):
             raise RuntimeError("broker timeout closing positions")
 
-    broker = install(BreachedFlattenFailsBroker(make_bars(BUY_CLOSES)))
+    # The position PERSISTS across flatten_all, which is what makes this a real
+    # failure. Updated 2026-08-02: success is now decided by RE-READING THE BOOK
+    # rather than by the absence of an exception, so a broker that raises while
+    # reporting an empty book has correctly succeeded (companion test below).
+    # Without a surviving position this would assert a failure that no longer
+    # exists — the test tracked forward, not relaxed.
+    broker = install(BreachedFlattenFailsBroker(
+        make_bars(BUY_CLOSES),
+        positions={"SPY": {"qty": 50, "market_value": 1000.0}}))
 
     main.run_cycle()  # must NOT raise, despite flatten_all throwing
 
@@ -390,7 +398,41 @@ def test_kill_switch_engages_halt_even_when_flatten_fails(cycle_env):
     events = [r["event"] for r in led.all_records() if r["type"] == "event"]
     assert "kill_switch" in events
     assert "kill_switch_flatten_failed" in events
+    assert risk.flatten_pending(), (
+        "a flatten that left positions open must be marked pending, or nothing "
+        "will ever retry it")
     assert broker.submitted == []  # no entries after a kill switch
+
+
+def test_a_raising_flatten_on_an_empty_book_is_NOT_a_failure(cycle_env):
+    """The other half, and the reason the test above needed a real position.
+
+    `flatten_all()` is cancel_orders() + close_all_positions(); either can raise
+    after the book is already flat — a timeout reading the response, say. What
+    the kill switch cares about is EXPOSURE, and the broker reporting no
+    positions is the only evidence of that this repo accepts (invariant #4).
+    Recording a failure here would arm a pending liquidation against an empty
+    book and page an operator about an incident that is already over.
+    """
+    cfg, install = cycle_env
+
+    class BreachedEmptyBook(FakeCycleBroker):
+        def account(self):
+            return {"equity": 95_000.0, "cash": 95_000.0,
+                    "last_equity": 100_000.0, "buying_power": 95_000.0}
+
+        def flatten_all(self):
+            raise RuntimeError("timeout reading the close-all response")
+
+    install(BreachedEmptyBook(make_bars(BUY_CLOSES)))     # no positions
+
+    main.run_cycle()
+
+    led = Ledger(cfg["memory"]["ledger_path"])
+    events = [r["event"] for r in led.all_records() if r["type"] == "event"]
+    assert "kill_switch" in events
+    assert "kill_switch_flatten_failed" not in events
+    assert not risk.flatten_pending()
 
 
 def test_executed_order_carries_idempotency_key(cycle_env):

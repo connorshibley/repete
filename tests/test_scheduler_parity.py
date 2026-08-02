@@ -73,6 +73,7 @@ PLIST_COVERS = {
     "newsbrain": {"news-brain"},
     "catchup": {"catch-up"},
     "learn": {"weekly-learn"},
+    "flattenretry": {"flatten-retry"},
 }
 
 
