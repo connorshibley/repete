@@ -149,6 +149,83 @@ def test_survivorship_FAILS_on_partial_coverage(monkeypatch):
     assert probe.check_survivorship(out) is False
 
 
+# ---------------- plan-gating is not a measurement (2026-08-02) ----------------
+#
+# Measured on the free tier: historical-price-eod/full served AAPL and MSFT 251
+# rows each for 2022 and answered SIVB and FRC with http 402. The probe reported
+# "0 historical bars ... no history for failed companies" — a decisive claim
+# about the DATA, resting on a question the subscription never let it ask.
+#
+# The refusal was still the right call, so the bug is invisible in the verdict
+# and only shows in the REASON. That is the dangerous kind: the reason is what
+# gets carried into the next decision (here, whether upgrading the plan is worth
+# it, and what to expect if it happens).
+
+def test_survivorship_is_UNDETERMINED_when_delisted_names_are_plan_gated(
+        monkeypatch):
+    """402 is not 'no history'. It is 'not allowed to look'."""
+    _router(monkeypatch, {"historical-price-eod/full": probe.PLAN_GATED})
+    out = []
+    assert probe.check_survivorship(out) is None
+    joined = "\n".join(out)
+    assert "SUBSCRIPTION" in joined
+    # It must NOT keep asserting the thing it cannot know.
+    assert "went bankrupt" not in joined
+    assert "0 historical bars" not in joined
+
+
+def test_survivorship_still_FAILS_on_a_genuine_empty_answer(monkeypatch):
+    """The fix must not launder a real absence into 'undetermined' — an empty
+    200 is still a measurement, and still a failure."""
+    _router(monkeypatch, {"historical-price-eod/full": []})
+    out = []
+    assert probe.check_survivorship(out) is False
+
+
+def test_filing_lag_is_UNDETERMINED_when_every_symbol_is_plan_gated(monkeypatch):
+    """No row was read, so nothing was learned about whether dates exist."""
+    _router(monkeypatch, {"income-statement": probe.PLAN_GATED})
+    out = []
+    assert probe.check_filing_lag(out) is None
+    joined = "\n".join(out)
+    assert "UNDETERMINED" in joined
+    # The FAIL verdict must not be RENDERED. (Asserting on the sentence itself
+    # would be a trap: the undetermined text quotes it to explain what it is
+    # declining to say.)
+    assert "VERDICT: FAIL" not in joined
+
+
+def test_filing_lag_still_FAILS_when_rows_were_read_but_carry_no_date(
+        monkeypatch):
+    """Rows READ and dateless is a genuine FAIL; only 'read nothing' is
+    undetermined. Without this the gating branch could swallow the real bug."""
+    _router(monkeypatch, {"income-statement": [_stmt("2026-03-31", 1e9)]})
+    out = []
+    assert probe.check_filing_lag(out) is False
+    assert "cannot be corrected" in "\n".join(out)
+
+
+def test_get_returns_PLAN_GATED_on_402_and_None_on_other_http_errors(
+        monkeypatch):
+    """The sentinel must come from the transport layer, not be inferred later —
+    by the time a check sees `[]` the status code is gone."""
+    import urllib.error
+
+    def raise_http(code):
+        def _open(*a, **kw):
+            raise urllib.error.HTTPError("u", code, "m", {}, None)
+        return _open
+
+    monkeypatch.setattr(probe, "_key", lambda: "k")
+    monkeypatch.setattr(probe, "_CALLS", 0, raising=False)
+    monkeypatch.setattr(probe.urllib.request, "urlopen", raise_http(402))
+    assert probe.get("anything") is probe.PLAN_GATED
+
+    monkeypatch.setattr(probe, "_CALLS", 0, raising=False)
+    monkeypatch.setattr(probe.urllib.request, "urlopen", raise_http(403))
+    assert probe.get("anything") is None
+
+
 # ---------------- the verdict ----------------
 
 def test_main_exits_nonzero_and_REFUSES_when_a_check_fails(monkeypatch, tmp_path,
@@ -177,6 +254,38 @@ def test_main_exits_nonzero_on_UNDETERMINED_too(monkeypatch, tmp_path, capsys):
     assert "REFUSING" in capsys.readouterr().out
 
 
+def test_an_all_undetermined_run_does_not_claim_the_data_carries_lookahead(
+        monkeypatch, tmp_path, capsys):
+    """The refusal stands, but its REASON must match its evidence.
+
+    This is the shape of the 2026-08-02 bug: every check was refused with http
+    402 and the report still announced 'FMP data carries lookahead' — a verdict
+    about the vendor drawn from a fact about the subscription. Same exit code,
+    wrong conclusion, and the conclusion is what gets carried forward.
+    """
+    monkeypatch.chdir(tmp_path)
+    for name in ("check_restatement", "check_filing_lag", "check_survivorship"):
+        monkeypatch.setattr(probe, name, lambda out: None)
+    assert probe.main() == 1
+    text = " ".join(capsys.readouterr().out.split())
+    assert "REFUSING" in text
+    assert "UNPROVEN, not convicted" in text
+    assert "FMP data carries lookahead" not in text
+
+
+def test_one_real_FAIL_still_convicts_even_alongside_undetermined_checks(
+        monkeypatch, tmp_path, capsys):
+    """The softer wording must not swallow a measured failure."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(probe, "check_restatement", lambda out: None)
+    monkeypatch.setattr(probe, "check_filing_lag", lambda out: False)
+    monkeypatch.setattr(probe, "check_survivorship", lambda out: None)
+    assert probe.main() == 1
+    text = " ".join(capsys.readouterr().out.split())
+    assert "FMP data carries lookahead" in text
+    assert "UNPROVEN, not convicted" not in text
+
+
 def test_main_exits_zero_and_blesses_only_when_all_three_pass(monkeypatch,
                                                               tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
@@ -187,7 +296,14 @@ def test_main_exits_zero_and_blesses_only_when_all_three_pass(monkeypatch,
     assert "All three checks PASS" in text
     # Even the blessing must not overclaim.
     assert "does NOT mean fundamentals help" in text
-    assert "0 for 12" in text
+    # It must also not restate the EDGE tally. This assertion used to read
+    # `"0 for 12" in text`, which pinned a number the probe has no way to know
+    # and which was already stale (§44 took it to 13 on 2026-08-02). A count
+    # duplicated into a banner drifts from the ledger that owns it and then
+    # gets quoted as if it were checked.
+    assert "knowledge/backtest_candidates.md" in text
+    import re
+    assert not re.search(r"0 for \d+", text)
 
 
 def test_the_report_is_written_whichever_way_the_verdict_goes(monkeypatch,
