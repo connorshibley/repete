@@ -45,7 +45,7 @@ def _stub_anthropic(monkeypatch, reply: dict):
     msg = SimpleNamespace(content=[_text_block(json.dumps(reply))])
     client = SimpleNamespace(
         messages=SimpleNamespace(create=lambda **kw: msg))
-    fake = SimpleNamespace(Anthropic=lambda: client)
+    fake = SimpleNamespace(Anthropic=lambda **_kw: client)
     monkeypatch.setitem(sys.modules, "anthropic", fake)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 

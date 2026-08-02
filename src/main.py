@@ -980,6 +980,35 @@ def _run_cycle(completed_bars_only: bool = False):
                 f"llm_judge[{review.get('degraded_reason', 'unknown')}]: review "
                 f"unavailable for {symbol}, proceeding rule-based "
                 f"({review['degraded']})")
+
+        # llm.on_unavailable: block — refuse the ENTRY the judge could not judge.
+        #
+        # ENTRIES ONLY, deliberately. An exit that cannot be reviewed must still
+        # run: the judge's only permitted effect is to SHRINK risk, so blocking
+        # a sell because the reviewer is down would TRAP an open position and
+        # enlarge risk through the reviewer's absence — the precise inversion
+        # invariant 2 exists to prevent.
+        #
+        # Recorded as kind="degraded", never "veto". The judge vetoed nothing;
+        # it was never reached. Writing this to the judgment ledger as a veto
+        # would attribute a decision to a model that never made one, and every
+        # calibration measured off that ledger would inherit the lie.
+        if sig.action == "buy" and review.get("unavailable_block"):
+            blocked_reason = (
+                f"judge unavailable "
+                f"({review.get('degraded_reason', 'unknown')}) and "
+                f"llm.on_unavailable=block")
+            tid = ledger.log_decision(
+                symbol, sig.action, sig.reason, sig.indicators, review,
+                executed=False, detail=blocked_reason,
+                regime=regime_label, strategy=sig.strategy)
+            memory.judgments.log_judgment(
+                tid, symbol, sig.action, "degraded_block", 1.0, price,
+                regime_label, kind="degraded", executed=False,
+                reasoning=blocked_reason, strategy=sig.strategy)
+            log.warning("%s: BUY blocked — %s", symbol, blocked_reason)
+            return "blocked"
+
         if review["verdict"] == "veto":
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False, detail="LLM veto",

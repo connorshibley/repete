@@ -501,6 +501,29 @@ llm:                   # optional judgment layer (Anthropic API)
                           # for trading-judge roles; weekly learning stays on Fable
                           # via learning.model below.
   max_tokens: 4000        # roomy — replies truncate otherwise
+  timeout_seconds: 30     # wall-clock ceiling on ONE judge call. The SDK's own
+                          # default is 600s, which inside a cycle means a hung
+                          # vendor can hold execution for TEN MINUTES PER
+                          # SIGNAL and push fills past the close. Observed
+                          # latency is single-digit seconds, so 30 is generous.
+                          # Non-positive or unparseable values fall back to the
+                          # 30s default rather than restoring an unbounded call.
+  on_unavailable: approve # what to do with an ENTRY the judge could not judge
+                          # (key absent, API error, unusable reply).
+                          #   approve — degrade to full-size rule-based
+                          #             execution. THE HISTORICAL DEFAULT: every
+                          #             result in knowledge/backtest_candidates.md
+                          #             was produced under it, and the judge has
+                          #             never been evidenced to add edge, so an
+                          #             unjudged trade is not a known-worse one.
+                          #   block   — refuse the entry. The judge may only ever
+                          #             SHRINK risk, so an outage removes a
+                          #             risk-reducer and nothing else; this is
+                          #             for an owner who would rather the book
+                          #             stand still than trade unsupervised.
+                          # EXITS ALWAYS RUN either way — blocking a sell because
+                          # the reviewer is down would trap a position and
+                          # ENLARGE risk through the reviewer's absence.
   knowledge_path: knowledge/principles.md  # curated external principles fed to the
                           # review prompt, labeled unverified; comment out to disable
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.

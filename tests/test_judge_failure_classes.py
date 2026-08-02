@@ -48,7 +48,7 @@ def _stub_reply(monkeypatch, text):
 
     monkeypatch.setitem(
         sys.modules, "anthropic",
-        types.SimpleNamespace(Anthropic=lambda: types.SimpleNamespace(
+        types.SimpleNamespace(Anthropic=lambda **_kw: types.SimpleNamespace(
             messages=FakeMessages())))
 
 
@@ -59,7 +59,7 @@ def _stub_outage(monkeypatch, exc):
 
     monkeypatch.setitem(
         sys.modules, "anthropic",
-        types.SimpleNamespace(Anthropic=lambda: types.SimpleNamespace(
+        types.SimpleNamespace(Anthropic=lambda **_kw: types.SimpleNamespace(
             messages=FakeMessages())))
 
 

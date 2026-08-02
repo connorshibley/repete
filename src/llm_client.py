@@ -28,6 +28,21 @@ log = logging.getLogger("llm_client")
 
 DEFAULT_PROVIDER = "anthropic"
 
+# Wall-clock ceiling on ONE judge call, seconds.
+#
+# The SDK's own default is 600s. That is reasonable for a batch script and
+# dangerous inside a trading cycle: the judge runs once per actionable signal,
+# so a hung vendor could hold the 15:45 cycle for ten minutes PER SIGNAL and
+# push execution past the close — or past the point where the price the signal
+# was computed on still means anything.
+#
+# 30s is generous against observed latency (a ~1k-token verdict returns in
+# single-digit seconds) and bounds the damage. The SDK also retries internally,
+# so the true worst case per signal is roughly this value times (1 +
+# max_retries); the point is that it is SHORT AND BOUNDED, not that it is
+# exact. Override with `llm.timeout_seconds` when a slower model is configured.
+DEFAULT_TIMEOUT_SECONDS = 30.0
+
 # Per-provider facts. `key_len` is a deliberately generous band: the point is to
 # catch a paste accident (truncated, doubled, wrong variable), not to pin a
 # vendor format that may change without notice.
@@ -82,6 +97,29 @@ def key_shape_fail(value: str, spec: dict | None = None) -> str | None:
     return None
 
 
+def timeout_seconds(cfg: dict) -> float:
+    """Per-call wall-clock ceiling. Falls back to DEFAULT_TIMEOUT_SECONDS.
+
+    A non-positive or unparseable value falls back rather than raising: an
+    unbounded judge call is the failure this exists to prevent, so a typo in
+    config must not be able to reinstate one.
+    """
+    raw = (cfg.get("llm") or {}).get("timeout_seconds")
+    if raw is None:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        log.warning("llm.timeout_seconds is not a number — using %ss",
+                    DEFAULT_TIMEOUT_SECONDS)
+        return DEFAULT_TIMEOUT_SECONDS
+    if val <= 0:
+        log.warning("llm.timeout_seconds must be positive — using %ss",
+                    DEFAULT_TIMEOUT_SECONDS)
+        return DEFAULT_TIMEOUT_SECONDS
+    return val
+
+
 def configured(cfg: dict) -> bool:
     """Judge switched on AND a key present. Says nothing about the key working."""
     return bool((cfg.get("llm") or {}).get("enabled")
@@ -100,7 +138,10 @@ def _create(cfg: dict):
             f"llm.provider is {name!r} but only 'anthropic' is implemented; "
             f"add it to llm_client.PROVIDERS and _create() before configuring it")
     import anthropic
-    return anthropic.Anthropic()
+    # Timeout is set on the CLIENT, not per request, so it covers the fallback
+    # retry in `complete()` too. A timeout applied to only the first of two
+    # calls is the kind of gap that reads as fixed and is not.
+    return anthropic.Anthropic(timeout=timeout_seconds(cfg))
 
 
 def _text(msg) -> str:
