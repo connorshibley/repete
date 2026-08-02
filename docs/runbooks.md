@@ -13,6 +13,51 @@ python src/review.py            # full skeptical report
 tail -5 logs/agent.jsonl        # structured log tail (secrets redacted)
 ```
 
+**Stop it now:** `./scripts/halt.sh "why you are stopping it"`
+
+---
+
+## STOP TRADING NOW (operator-initiated halt)
+
+**When:** you want new positions to stop opening — a data source looks wrong,
+fills look wrong, news you do not want the bot trading into, or you simply want
+it to stand still while you look at something.
+
+**What it does:** blocks NEW ENTRIES, immediately. `risk.check_halt` is
+consulted once per cycle *and again per order*, so this stops the very next
+order, not merely the next cycle.
+
+**What it does NOT do: it does not sell anything.** Open positions keep running
+to their normal stops and exits, and their broker-side bracket legs keep
+protecting them independently of the bot process. This is deliberate (owner
+decision 2026-08-02): a forced liquidation crystallises every open loss at
+whatever the screen says in the worst minute of the day, which is exactly the
+minute someone reaches for a stop button. Halting stops the bleeding from
+getting *wider* without converting paper losses into realised ones.
+
+**If you actually want the book flat, close the positions yourself** — through
+the broker, deliberately, having decided that is what you want. There is no
+scripted flatten, on purpose.
+
+```bash
+./scripts/halt.sh "fills look wrong on every order"   # engage
+./scripts/halt.sh --status                            # is it on, and why
+./scripts/halt.sh --clear                             # resume trading
+```
+
+**Verify:** `./scripts/halt.sh --status` reports engaged, and the next cycle
+logs entries blocked on the `halt` rail. The halt is also ledgered
+(`halt_engaged`) and alerted, so a second operator sees it.
+
+**Notes:**
+
+- Halting twice does **not** overwrite the original reason. The record of why
+  trading stopped is what the next person needs most.
+- It refuses to halt without a reason — an unexplained HALT cannot be safely
+  cleared later, because nobody can tell it from a stray file.
+- A failing ledger write or a dead alert webhook does **not** prevent the halt.
+  Those are the same things that tend to be broken during a real incident.
+
 ---
 
 ## HALT engaged (daily-loss kill switch)
