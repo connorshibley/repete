@@ -955,6 +955,13 @@ def _run_cycle(completed_bars_only: bool = False):
                 symbol, sig.action, sig.reason, sig.indicators, None,
                 executed=False,
                 detail=f"risk rejection: {entries_blocked_reason[:180]}",
+                # Named for the runbook entry that diagnoses it ("Vendor
+                # divergence (datacheck blocking entries)"). Not a
+                # RiskRejection — this guard is inline — but it IS a rail from
+                # the ledger's point of view, and a `rail` field that covered
+                # only the rails that happen to raise would read as complete
+                # while silently omitting three of them.
+                rail="datacheck",
                 regime=regime_label, strategy=sig.strategy)
             memory.judgments.log_judgment(
                 tid, symbol, sig.action, "rails_reject", 1.0, price,
@@ -1059,6 +1066,11 @@ def _run_cycle(completed_bars_only: bool = False):
                 tid = ledger.log_decision(
                     symbol, sig.action, sig.reason, sig.indicators, review,
                     executed=False, detail=f"risk rejection: {why}",
+                    # Distinct from pure_checks' `zero_qty`: that one means the
+                    # account cannot afford the caps, this one means the judge's
+                    # downsize truncated the order away. Same outcome, different
+                    # cause, and collapsing them would hide which lever to pull.
+                    rail="downsize_zero_qty",
                     regime=regime_label, strategy=sig.strategy)
                 # Still a rails rejection: the judge calibration scoreboard must
                 # see it, exactly as every other rails block is recorded.
@@ -1089,6 +1101,14 @@ def _run_cycle(completed_bars_only: bool = False):
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,
                                       detail=f"risk rejection: {e}",
+                                      # `rail` defaults to "unattributed" in
+                                      # RiskRejection.__init__, so the bare
+                                      # raise from `live_kill_blocked` above
+                                      # lands there rather than as a null.
+                                      # getattr matches backtest.py:874 and
+                                      # keeps a logging path from ever being
+                                      # the thing that raises.
+                                      rail=getattr(e, "rail", "unattributed"),
                                       regime=regime_label, strategy=sig.strategy)
             stop, tp = _would_be_brackets(sig, bars, price)
             memory.judgments.log_judgment(
@@ -1121,6 +1141,7 @@ def _run_cycle(completed_bars_only: bool = False):
                 tid = ledger.log_decision(symbol, sig.action, sig.reason,
                                           sig.indicators, review, executed=False,
                                           detail=f"risk rejection: {msg}",
+                                          rail="entry_drift",
                                           regime=regime_label, strategy=sig.strategy)
                 stop, tp = _would_be_brackets(sig, bars, price)
                 memory.judgments.log_judgment(
