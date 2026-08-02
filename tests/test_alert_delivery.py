@@ -30,10 +30,23 @@ import alerting
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+_REAL_BANNER = alerting._macos_banner
+_REAL_POST = alerting._post_json
+
+
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     monkeypatch.delenv(alerting.WEBHOOK_ENV, raising=False)
     monkeypatch.delenv(alerting.PING_ENV, raising=False)
+    # Same opt-out as tests/test_alerting.py — this file tests webhook SHAPING
+    # and delivery, which blanket suppression would turn green while proving
+    # nothing. See src/alerting.FORCE_ENV. `urlopen` is stubbed per test, so
+    # restoring the real primitives restores the code under test, not the
+    # ability to reach anyone.
+    monkeypatch.setenv(alerting.FORCE_ENV, "1")
+    monkeypatch.delenv(alerting.SUPPRESS_ENV, raising=False)
+    monkeypatch.setattr(alerting, "_macos_banner", _REAL_BANNER)
+    monkeypatch.setattr(alerting, "_post_json", _REAL_POST)
 
 
 # ---------------- _shape(): what each destination will accept ----------------

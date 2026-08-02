@@ -17,6 +17,41 @@ def _fake_broker_env(monkeypatch):
     monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
 
 
+@pytest.fixture(autouse=True)
+def _no_real_alerts(monkeypatch):
+    """No test may deliver an alert to a human or to an external service.
+
+    `alerting.send()` already refuses under `PYTEST_CURRENT_TEST`; this stubs the
+    two DELIVERY primitives as well, so a path that bypasses `send()` — a direct
+    `_macos_banner` call, a future channel, a module that grows its own poster —
+    still cannot reach the screen or the network. Two independent layers, because
+    on 2026-08-02 the suite delivered eight real notifications to the owner's
+    phone and one layer is exactly what was missing.
+
+    These raise rather than no-op: a test that tries to alert is a test with a
+    bug in it, and silently swallowing the attempt would hide the next one.
+
+    `tests/test_alerts_are_silent_in_tests.py` proves the guard;
+    `tests/test_alerting.py` opts out of the ENV half so real channel selection
+    stays covered — a suppression that quietly stops delivery being tested is
+    how this comes back.
+    """
+    import alerting
+
+    def _no_banner(title, message):
+        raise AssertionError(
+            f"a test tried to deliver a desktop notification: {title!r}. "
+            f"Stub it — see conftest._no_real_alerts.")
+
+    def _no_post(*a, **k):
+        raise AssertionError(
+            "a test tried to POST to an alert webhook. Stub it — see "
+            "conftest._no_real_alerts.")
+
+    monkeypatch.setattr(alerting, "_macos_banner", _no_banner)
+    monkeypatch.setattr(alerting, "_post_json", _no_post)
+
+
 @pytest.fixture
 def cfg(tmp_path):
     """Minimal dict config mirroring config.yaml, network layers disabled.
