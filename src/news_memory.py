@@ -35,8 +35,10 @@ allowed to block a cycle and this does not change that.
 
 What it does NOT claim
 ----------------------
-Nothing here has been gated. EDGE is 0 for 12 and this is not attempt 13 — it
-is instrumentation that makes attempt 13 possible. It also creates sim/live
+Nothing here has been gated. This is not an EDGE attempt at all — it is the
+instrumentation that makes a future one (a §46) possible. The EDGE tally is
+unchanged by it, and the count of record lives in
+`knowledge/backtest_candidates.md`, not here. It also creates sim/live
 divergence #14 on purpose: the live judge sees this block and the backtest's
 `judge_model` cannot, because there is no historical news archive to replay.
 """

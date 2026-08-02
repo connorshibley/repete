@@ -575,8 +575,9 @@ news:                  # market awareness (Alpaca News API + LLM distill),
   # trade and cannot create one. Nominations are deliberately NOT influenced —
   # that path does create trades and was left alone.
   #
-  # UNGATED, and honest about it: EDGE is 0 for 12 and this is not attempt 13.
-  # It is the instrumentation that makes a §46 possible, because the outcome
+  # UNGATED, and honest about it: this is not an EDGE attempt at all, and the
+  # EDGE tally is unchanged by it — knowledge/backtest_candidates.md owns that
+  # count. It is the instrumentation that makes a §46 possible, because the outcome
   # records give a future gate its two populations (entered-with-news vs
   # without). It also creates sim/live divergence #14 ON PURPOSE — the live
   # judge sees this block, the backtest's judge_model cannot, and there is no

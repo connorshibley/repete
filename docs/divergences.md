@@ -278,7 +278,9 @@ requires the archive in (1), not a code change.
 
 ### Not a claim of value
 
-**EDGE remains 0 for 12.** Nothing here has been gated. The outcome half exists
+**This is not an EDGE claim.** Nothing here has been gated, and the EDGE tally
+is unchanged by it — `knowledge/backtest_candidates.md` owns that count, and it
+is not restated here. The outcome half exists
 to produce the two populations a §46 would compare — trades entered with news
 present versus without — and there are currently **4 closed trades**. A gate
 scored on 4 trades is theatre, so no gate is registered.
