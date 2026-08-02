@@ -1,0 +1,54 @@
+# §44b — DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? (2007-2013)
+# One of four periods in the s44a-d conjunction. Full rationale in s44a.yaml —
+# not repeated here to avoid the four files silently drifting from each other;
+# only the snapshot and title differ. This period includes the 2008 crisis.
+id: s44b
+claim: EDGE
+title: "Decay + reduced sizing: does return improve at matched drawdown? (2007-2013)"
+
+# judge ON — see s44a.yaml for why. §44's numbers are not directly comparable
+# to §41's own table (§41 was judge-less); read this on its own clauses.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2007-01-01_2013-12-31.json.gz
+  sha256: 2ba815e1b0d2ca5db7b1e1778a65ab4126f9526e1347299464573ea16d7591d5
+
+cash: 100000.0
+bonferroni_k: 13
+
+arms:
+  - name: baseline
+
+  - name: decay_reduced_sizing
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+      risk.risk_per_trade_pct: 5.0
+
+clauses:
+  - {id: a, rule: maxdd_within, pp: 3.0}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: min_trades, n: 30}
+  - {id: d, rule: not_worse}
+
+prior: >-
+  Same prior as s44a: the base rate is REJECTED, most likely on (b) for the
+  same structural reason (reduced sizing and matched drawdown pull against
+  higher exposure-matched return by construction). This period additionally
+  contains the 2008 crisis, where §41 measured the baseline arm's own maxDD at
+  12.04% — already above the 10pp rail's nominal trigger — so the latch's
+  behavior during the crisis itself, not just after it, is part of what this
+  measures. If decay lets the bot back in DURING 2008 rather than only after,
+  clause (a) is the more likely failure point here than in the other three
+  periods.
+
+failure_modes:
+  - >-
+    All five failure modes in s44a.yaml apply unchanged. Additionally: this is
+    the one period where §41's baseline arm itself already breached the
+    nominal 10pp rail (12.04%), so "matched drawdown" here means matched
+    against an already-elevated baseline, not against a calm one — a PASS on
+    (a) is a weaker signal in this period specifically than in a period where
+    baseline stayed clean.
