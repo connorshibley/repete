@@ -54,10 +54,11 @@ the dashboard, blog and journal are views rendered from it.
 
 This is the section most repos leave out.
 
-**EDGE claims: 0 for 11.** Every pre-registered claim that some edge exists has
-been rejected. Not quietly dropped — written up in
-`knowledge/backtest_candidates.md` (35 sections) with the verdict, the frozen
-prior, and what the failure did and did not license.
+**Every EDGE claim has been rejected.** Every pre-registered claim that some
+edge exists has been rejected. Not quietly dropped — written up in
+`knowledge/backtest_candidates.md` with the verdict, the frozen prior, and what
+the failure did and did not license. That file carries the running count and is
+the only place it is kept.
 
 **The shipped configuration fails its own gate.** §43 pointed
 `backtest.enablement_gate` — the function that rejected every candidate — at the
