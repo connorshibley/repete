@@ -40,7 +40,8 @@ class Ledger:
                      entry_price: float | None = None, qty: int | None = None,
                      regime: str | None = None, strategy: str | None = None,
                      entry_ts: str | None = None,
-                     trade_plan: dict | None = None) -> str:
+                     trade_plan: dict | None = None,
+                     rail: str | None = None) -> str:
         trade_id = str(uuid.uuid4())[:8]
         self._append({
             "type": "decision",
@@ -54,6 +55,15 @@ class Ledger:
             "llm_review": llm_review,      # verdict + reasoning from the judgment layer
             "executed": executed,
             "detail": detail,              # e.g. risk-rejection reason
+            # WHICH rail refused this, as a queryable key rather than prose
+            # (2026-08-02). §40 made the same fix in the backtester's census on
+            # 2026-07-29 — "the reason existed at the moment of the block and
+            # was dropped" — but only there, so until now the simulator could
+            # break blocks down by rail and the LIVE bot could not. Answering
+            # "what stopped us trading this week" meant string-matching `detail`
+            # against message text that is free to be reworded.
+            # None on every non-rejection record, which is most of them.
+            "rail": rail,
             "order": order,
             "entry_price": entry_price,
             "qty": qty,

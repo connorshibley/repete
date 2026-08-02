@@ -887,8 +887,21 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Set well above observed demand (~15 buy signals/day live) so it never
     # refuses a real opportunity, but still bounds an API loop, a bad feed, or
     # a signal bug that would otherwise place orders until buying power ran out.
+    #
+    # ENTRIES ONLY (2026-08-02). Until now this had no action guard, and
+    # `record_trade()` counts sells as well as buys, so a day that reached the
+    # cap refused the next EXIT and left the position open past the signal that
+    # said to close it. Worse, `_trades_today()` fails CLOSED on an unreadable
+    # counter — right for entries, and catastrophic for exits, where one corrupt
+    # JSON file would have blocked every close until a human repaired it.
+    #
+    # Every hazard in the rationale above is entry-side: a loop, a bad feed and
+    # a signal bug all place ORDERS until buying power runs out. None of them is
+    # a reason to refuse a sell. A control that traps a position through its own
+    # limit has enlarged risk, which is the shape PR #69 refused for the judge
+    # and §31 refused for the drawdown breaker. Same reasoning, third rail.
     _cap_day = cfg["risk"].get("max_trades_per_day") or 0
-    if _cap_day and _trades_today() >= _cap_day:
+    if action == "buy" and _cap_day and _trades_today() >= _cap_day:
         raise RiskRejection(f"max trades per day reached ({_cap_day})", rail="daily_cap")
 
     # Count THIS strategy's currently-open positions for its slot allocation.

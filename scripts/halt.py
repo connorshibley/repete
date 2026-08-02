@@ -19,9 +19,21 @@ directory. That is not a kill switch; that is trivia.
 
 WHAT THIS DOES AND DOES NOT DO
 ------------------------------
-It BLOCKS NEW ENTRIES. It does NOT sell anything. Open positions keep running
-to their normal stops and exits, and their broker-side bracket legs keep
-protecting them independently of this process.
+It BLOCKS NEW ENTRIES. It does NOT sell anything. Open positions keep running,
+and their broker-side bracket legs keep protecting them independently of this
+process.
+
+BE PRECISE ABOUT WHAT STILL PROTECTS THEM (corrected 2026-08-02). This used to
+say positions "keep running to their normal stops and exits", which overstates
+it: while HALT is engaged the cycle returns at src/main.py:596 before a single
+signal is evaluated, so the agent evaluates no exits at all. What protects an
+open position is the bracket sitting AT THE BROKER — the stop and take-profit
+legs submitted when the position was opened. They fill whether or not this
+process ever runs again, which is the whole reason brackets are mandatory.
+
+The practical consequence: HALT is safe to leave on over a weekend, and is NOT
+a substitute for deciding what to do with an open book. Nothing will manage
+those positions but the broker's own legs until you clear it.
 
 That is the owner's choice (2026-08-02), and it is the conservative one: a
 forced liquidation crystallises every open loss at whatever the screen says in
@@ -121,8 +133,9 @@ def engage(reason: str) -> int:
               file=sys.stderr)
 
     print("HALT ENGAGED. No new entries will be opened.")
-    print("Open positions are NOT closed — they keep running to their normal")
-    print("stops and exits, and their broker-side brackets still protect them.")
+    print("Open positions are NOT closed. While HALT is on the cycle does not")
+    print("run at all, so the agent evaluates NO exits — the broker-side")
+    print("bracket legs are what protect open positions until you clear it.")
     print("\nResume with: ./scripts/halt.sh --clear")
     return 0
 
