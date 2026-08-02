@@ -190,6 +190,34 @@ def run(cfg: dict) -> list[str]:
                              f"unjudged at full size. Fix the value in .env "
                              f"(one line, one key) or set llm.enabled: false")
 
+        # A misspelled policy silently reverts to `approve` at runtime (the
+        # cycle must not crash on a typo), which means an owner who set
+        # `blok` believing they had stopped unsupervised trading would get
+        # exactly the behaviour they were trying to switch off, with no
+        # symptom. Reported here rather than left to be noticed in a ledger.
+        raw_policy = cfg["llm"].get("on_unavailable")
+        if raw_policy is not None and str(raw_policy).strip().lower() not in (
+                "approve", "block"):
+            fails.append(
+                f"llm.on_unavailable is {raw_policy!r}, which is neither "
+                f"'approve' nor 'block' — it would silently fall back to "
+                f"'approve' and trade unjudged entries at full size")
+
+        # An unbounded judge call inside a cycle is the 600s-SDK-default
+        # failure this setting exists to prevent; a typo must not reinstate it
+        # silently either.
+        raw_timeout = cfg["llm"].get("timeout_seconds")
+        if raw_timeout is not None:
+            try:
+                bad = float(raw_timeout) <= 0
+            except (TypeError, ValueError):
+                bad = True
+            if bad:
+                fails.append(
+                    f"llm.timeout_seconds is {raw_timeout!r} — must be a "
+                    f"positive number of seconds; it would fall back to the "
+                    f"{llm_client.DEFAULT_TIMEOUT_SECONDS}s default")
+
     for key in REQUIRED_ENV:
         if not os.environ.get(key):
             fails.append(f"env {key} missing")

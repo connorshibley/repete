@@ -59,7 +59,39 @@ Rules:
   the trade's real outcome, and dishonest citations corrupt your own lesson book."""
 
 
+def unavailable_policy(cfg: dict) -> str:
+    """What to do with an ENTRY when the judge could not judge it.
+
+    "approve" (default) is the behaviour every result in this repo was produced
+    under: an unreachable judge degrades to full-size rule-based execution. It
+    stays the default because changing it silently would change trading
+    behaviour, and because the judge has never been evidenced to add edge — an
+    unjudged trade is not a known-worse trade.
+
+    "block" is the conservative alternative, and the reason it exists: the
+    judge's only permitted effect is to SHRINK risk (veto or downsize), so an
+    outage removes a risk-reducer and nothing else. An owner who wants the book
+    to stand still rather than trade unsupervised sets this.
+
+    Unknown values fall back to "approve" rather than raising — preflight
+    reports the typo; the cycle does not crash on one.
+    """
+    raw = ((cfg.get("llm") or {}).get("on_unavailable") or "approve")
+    val = str(raw).strip().lower()
+    if val not in ("approve", "block"):
+        log.warning("llm.on_unavailable=%r is not 'approve' or 'block' — "
+                    "using 'approve'", raw)
+        return "approve"
+    return val
+
+
 def review_signal(signal, memory_context: str, cfg: dict) -> dict:
+    # Set on every degraded return below when policy is "block". main.py reads
+    # it and refuses the ENTRY, ledgering it as a degradation rather than as a
+    # judge veto — the judge vetoed nothing; it was never reached. Recording it
+    # as a veto would put decisions in the judgment ledger that no model made
+    # and quietly poison every calibration measured off that ledger.
+    block = unavailable_policy(cfg) == "block"
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
                 "bull_case": "", "bear_case": "", "confidence": None,
                 "reasoning": "LLM review disabled/unavailable — rule-based execution."}
@@ -73,6 +105,7 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # marker covers any caller that skips preflight, and makes the
         # historical ledger honest about which entries were actually judged.
         return {**fallback, "degraded": True, "degraded_reason": "absent_key",
+                "unavailable_block": block,
                 "reasoning": f"LLM review UNAVAILABLE — "
                              f"{llm_client.key_env_var(cfg)} not set while "
                              f"llm.enabled is true. Approved unjudged by "
@@ -100,7 +133,8 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
             max_tokens=cfg["llm"]["max_tokens"])
     except Exception as e:  # noqa: BLE001 — vendor or network failure
         log.warning("LLM review call failed (%s) — proceeding rule-based", e)
-        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "api"}
+        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "api",
+                "unavailable_block": block}
 
     try:
         start, end = text.find("{"), text.rfind("}") + 1
@@ -108,7 +142,17 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # Clamp: the LLM can only reduce, never enlarge.
         verdict["scale"] = min(max(float(verdict.get("scale", 1.0)), 0.0), 1.0)
         if verdict.get("verdict") not in ("approve", "downsize", "veto"):
-            return fallback
+            # A reply arrived and parsed, but names a verdict the judge is not
+            # allowed to return. Until 2026-08-02 this returned the bare
+            # fallback with NO degraded marker, so the ledger recorded an
+            # unjudged full-size approval as a genuine judge approval — the
+            # same dishonesty the absent_key marker was added to prevent, in a
+            # path nobody had marked.
+            log.warning("LLM returned unknown verdict %r — proceeding "
+                        "rule-based", verdict.get("verdict"))
+            return {**fallback, "degraded": f"unknown verdict "
+                                            f"{str(verdict.get('verdict'))[:40]!r}",
+                    "degraded_reason": "parse", "unavailable_block": block}
         # cited lessons: strings only, capped; unknown ids are dropped later
         # at grading time (learn.grade_cited_lessons validates against the store)
         cited = verdict.get("cited_lessons")
@@ -132,7 +176,8 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
         # genuinely approved (and from one intentionally disabled). Without the
         # marker an unusable reply records as a real "approve" and the
         # calibration scoreboard credits the judge for a decision it never made.
-        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "parse"}
+        return {**fallback, "degraded": str(e)[:200], "degraded_reason": "parse",
+                "unavailable_block": block}
 
 
 def write_x_post(trade: dict, cfg: dict) -> str | None:

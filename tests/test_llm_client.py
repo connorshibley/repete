@@ -33,8 +33,14 @@ class _FakeMessage:
         self.content = [types.SimpleNamespace(type="text", text=text)]
 
 
-def _fake_anthropic(monkeypatch, *, replies=None, fail_models=()):
-    """Stub the SDK. `replies` maps model -> text; `fail_models` always raise."""
+def _fake_anthropic(monkeypatch, *, replies=None, fail_models=(),
+                    init_kwargs=None):
+    """Stub the SDK. `replies` maps model -> text; `fail_models` always raise.
+
+    `init_kwargs`, when a list is passed, collects the kwargs each client was
+    constructed with — that is how the timeout assertion below reads what was
+    actually handed to the SDK rather than trusting the config.
+    """
     calls = []
 
     class FakeMessages:
@@ -45,7 +51,13 @@ def _fake_anthropic(monkeypatch, *, replies=None, fail_models=()):
             return _FakeMessage((replies or {}).get(model, f"ok:{model}"))
 
     class FakeClient:
-        def __init__(self):
+        def __init__(self, **kw):
+            # **kw so the stub keeps accepting client-level options the real
+            # SDK takes (timeout= since 2026-08-02). A stub with a stricter
+            # signature than the thing it stands in for fails on the change
+            # rather than on the defect.
+            if init_kwargs is not None:
+                init_kwargs.append(kw)
             self.messages = FakeMessages()
 
     monkeypatch.setitem(sys.modules, "anthropic",
@@ -161,3 +173,53 @@ def test_configured_needs_both_the_switch_and_the_key(monkeypatch):
     assert llm_client.configured(_cfg(enabled=False)) is False
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert llm_client.configured(_cfg()) is False
+
+
+# ---- the judge call is time-bounded (2026-08-02) --------------------------
+#
+# The SDK's default timeout is 600s. The judge runs once per actionable signal
+# inside a cycle, so an unbounded call is not "slow" — it is a cycle that can
+# still be waiting when the market closes. These pin that a bound is actually
+# handed to the SDK, not merely written in config.
+
+def test_a_timeout_is_passed_to_the_sdk(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", GOOD)
+    seen = []
+    _fake_anthropic(monkeypatch, init_kwargs=seen)
+    llm_client.complete(_cfg(), "sys", "user", max_tokens=10)
+    assert seen, "no client was constructed"
+    assert seen[0].get("timeout") == llm_client.DEFAULT_TIMEOUT_SECONDS
+
+
+def test_the_configured_timeout_is_the_one_used(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", GOOD)
+    seen = []
+    _fake_anthropic(monkeypatch, init_kwargs=seen)
+    llm_client.complete(_cfg(timeout_seconds=7.5), "sys", "user", max_tokens=10)
+    assert seen[0].get("timeout") == 7.5
+
+
+def test_the_fallback_retry_is_also_time_bounded(monkeypatch):
+    """A timeout on the first call and not the retry reads as fixed and is not."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", GOOD)
+    seen = []
+    _fake_anthropic(monkeypatch, fail_models=("primary",), init_kwargs=seen)
+    llm_client.complete(_cfg(model="primary", fallback_model="backup"),
+                        "sys", "user", max_tokens=10)
+    assert seen, "no client was constructed"
+    assert all(kw.get("timeout") == llm_client.DEFAULT_TIMEOUT_SECONDS
+               for kw in seen), seen
+
+
+def test_a_nonsense_timeout_cannot_restore_an_unbounded_call(monkeypatch):
+    """The failure mode this guard exists for is a typo re-creating a 600s
+    hang. Every unusable value must land on the bounded default."""
+    for bad in (0, -1, "abc", "", [], {}):
+        assert llm_client.timeout_seconds({"llm": {"timeout_seconds": bad}}) \
+            == llm_client.DEFAULT_TIMEOUT_SECONDS, bad
+
+
+def test_an_absent_timeout_still_gets_the_default():
+    assert llm_client.timeout_seconds({}) == llm_client.DEFAULT_TIMEOUT_SECONDS
+    assert llm_client.timeout_seconds({"llm": {}}) == \
+        llm_client.DEFAULT_TIMEOUT_SECONDS
