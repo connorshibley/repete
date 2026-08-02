@@ -31,6 +31,31 @@ REQUIRED_POSITIVE_RISK = (
 # them ran the SHIPPED config through preflight. That test exists now.
 DISABLEABLE_RISK = ("max_order_value_usd", "max_trades_per_day")
 
+# Rails expressed as a PERCENTAGE OF EQUITY. Every check above this line asks
+# whether a number is present and non-negative; none of them asks whether it is
+# survivable, so until 2026-08-02 `risk_per_trade_pct: 150` and
+# `max_position_pct: 500` both passed preflight and shipped straight into the
+# sizing arithmetic.
+#
+# THE BOUND IS DELIBERATELY LOOSE, and that is the design, not a compromise.
+# This repo's owner runs values other people would call reckless on purpose and
+# with evidence (§29 raised per-trade risk 1.0 -> 8.0 and moved the drawdown
+# tolerance to 10pp, both recorded as owner decisions). Preflight has no
+# business relitigating that. What it CAN say without an opinion is that a
+# percentage of equity above 100 is not aggressive, it is incoherent: you
+# cannot risk more than the account on one trade, hold more than the whole
+# account in one name, or fall further than 100% from a peak. Those are
+# arithmetic facts, not risk preferences.
+#
+# So the ceiling catches the failure that actually happens — a missing decimal
+# point or a doubled keystroke (8.0 -> 80 is NOT caught; 8.0 -> 800 is) — while
+# leaving every coherent value, however bold, to the owner.
+PERCENT_OF_EQUITY_RAILS = (
+    "risk_per_trade_pct", "max_position_pct", "daily_loss_limit_pct",
+    "max_drawdown_pct", "max_portfolio_heat_pct",
+)
+PERCENT_CEILING = 100.0
+
 REQUIRED_ENV = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
 
 def anthropic_key_shape_fail(value: str) -> str | None:
@@ -76,6 +101,21 @@ def run(cfg: dict) -> list[str]:
         if not isinstance(v, (int, float)) or v < 0:
             fails.append(f"risk.{key} missing or negative ({v!r}) — "
                          f"use 0 to disable it, not a negative number")
+
+    # Upper bounds. Only values that are PRESENT and numeric are checked: a
+    # missing key is either already reported above (required rails) or a
+    # legitimate omission (disableable ones), and reporting it twice would
+    # bury the real fault in noise.
+    for key in PERCENT_OF_EQUITY_RAILS:
+        v = r.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and v > PERCENT_CEILING:
+            fails.append(
+                f"risk.{key} is {v!r}% of equity, which is not possible — "
+                f"a percentage of equity cannot exceed {PERCENT_CEILING:g}. "
+                f"Check for a missing decimal point or a doubled keystroke; "
+                f"this rail would otherwise size orders off a number the "
+                f"account cannot back")
 
     if cfg.get("mode", "paper") not in ("paper", "live"):
         fails.append(f"mode must be paper|live, got {cfg.get('mode')!r}")
