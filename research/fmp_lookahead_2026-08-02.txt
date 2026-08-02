@@ -1,0 +1,49 @@
+FMP LOOKAHEAD PROBE
+run 2026-08-02T17:55:22-04:00
+read-only; no repo state mutated; no strategy or rail touched
+
+== 1. RESTATEMENT ==
+
+  KHC: Kraft Heinz restated FY2016-2018 in its 2019 10-K/A
+    standard series unavailable (plan-gated or empty)
+
+  UAA: Under Armour restated revenue timing after the SEC inquiry
+    standard series unavailable (plan-gated or empty)
+
+  VERDICT: UNDETERMINED — treat as FAIL. An unanswerable question is not a passed one.
+
+== 2. FILING LAG ==
+  AAPL: plan-gated (http 402) — not measured
+  MSFT: plan-gated (http 402) — not measured
+  KO: plan-gated (http 402) — not measured
+
+  VERDICT: UNDETERMINED — treat as FAIL. Every symbol was refused for plan reasons, so NO row was read and nothing was learned about whether filing dates exist. Saying 'no filing date on any row' here would describe the subscription, not the data.
+
+== 3. SURVIVORSHIP ==
+  SIVB (Silicon Valley Bank, failed March 2023): plan-gated (http 402) — not measured
+  FRC (First Republic Bank, failed May 2023): plan-gated (http 402) — not measured
+
+  VERDICT: UNDETERMINED — treat as FAIL. This plan will not serve delisted symbols at all, so their absence measures the SUBSCRIPTION, not the data. A plan that serves them may or may not retain their history; this run does not know, and must not claim to.
+
+FMP calls used: 9 (budget 40, free tier 250/day)
+
+=======================================================================
+REFUSING: this run could not show FMP to be free of lookahead. No check
+came back clean and at least one was refused for plan reasons, so the
+source is UNPROVEN, not convicted. Do NOT register a fundamentals gate
+on it — an unverified source and a bad one are equally unusable for
+scoring — but note that a plan which serves the gated endpoints could
+still settle the question either way.
+
+Fundamentals may still be used as LIVE JUDGE CONTEXT ONLY: judge-only,
+so under invariant #2 it can veto or shrink and can never create a
+trade; ungated; and recorded as a sim/live divergence. That is exactly
+the shape W7 used for news memory — see docs/divergences.md #14.
+
+Nothing is adopted by this result. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
+=======================================================================
+
+  restatement    UNDETERMINED
+  filing_lag     UNDETERMINED
+  survivorship   UNDETERMINED

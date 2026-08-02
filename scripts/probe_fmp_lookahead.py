@@ -75,8 +75,30 @@ def _key() -> str:
     return k
 
 
-def get(path: str, **params) -> list | dict | None:
-    """One GET. Returns parsed JSON, or None on any failure.
+class _PlanGated:
+    """FMP refused the request for SUBSCRIPTION reasons, not data reasons.
+
+    Distinct from None (transport failure) and from [] (a genuine empty
+    answer), and the distinction is the whole point. Measured 2026-08-02 on
+    the free tier: `historical-price-eod/full` served AAPL and MSFT 251 rows
+    each for 2022 and answered SIVB and FRC with **http 402**. Collapsing
+    that to "0 historical bars" is how check 3 came to report "no history for
+    failed companies" — a decisive claim about the DATA resting on a question
+    the plan never let it ask. The conservative verdict was right; the stated
+    reason was false, and a false reason survives into the next decision.
+    """
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<plan-gated>"
+
+
+PLAN_GATED = _PlanGated()
+
+
+def get(path: str, **params) -> list | dict | None | _PlanGated:
+    """One GET. Returns parsed JSON, PLAN_GATED on 402, or None on any other
+    failure.
 
     The key is never logged, on any path — a diagnosis that has to be redacted
     on its way to a log is the wrong diagnosis.
@@ -94,6 +116,8 @@ def get(path: str, **params) -> list | dict | None:
             return json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         print(f"  http {e.code} on {path}", file=sys.stderr)
+        if e.code == 402:
+            return PLAN_GATED
     except Exception as e:  # noqa: BLE001
         print(f"  {type(e).__name__} on {path}", file=sys.stderr)
     return None
@@ -175,11 +199,17 @@ def check_filing_lag(out: list) -> bool | None:
     """
     out.append("\n== 2. FILING LAG ==")
     lags, missing = [], 0
+    gated, read_any = 0, False
     for sym in LAG_SYMBOLS:
         rows = get("income-statement", symbol=sym, period="quarter", limit=8)
+        if rows is PLAN_GATED:
+            gated += 1
+            out.append(f"  {sym}: plan-gated (http 402) — not measured")
+            continue
         if not isinstance(rows, list) or not rows:
             out.append(f"  {sym}: unavailable")
             continue
+        read_any = True
         for r in rows:
             if not isinstance(r, dict):
                 continue
@@ -199,6 +229,13 @@ def check_filing_lag(out: list) -> bool | None:
         out.append(f"  {sym}: {len(rows)} periods read")
 
     if not lags:
+        if gated and not read_any:
+            out.append("\n  VERDICT: UNDETERMINED — treat as FAIL. Every symbol "
+                       "was refused for plan reasons, so NO row was read and "
+                       "nothing was learned about whether filing dates exist. "
+                       "Saying 'no filing date on any row' here would describe "
+                       "the subscription, not the data.")
+            return None
         out.append("\n  VERDICT: FAIL — no filing date on any row. The lag "
                    "cannot be corrected for on data that does not carry it.")
         return False
@@ -223,13 +260,24 @@ def check_filing_lag(out: list) -> bool | None:
 def check_survivorship(out: list) -> bool | None:
     """Is history retained for companies that stopped existing?"""
     out.append("\n== 3. SURVIVORSHIP ==")
-    found = 0
+    found, gated = 0, 0
     for sym, why in DELISTED:
         rows = get("historical-price-eod/full", symbol=sym)
+        if rows is PLAN_GATED:
+            gated += 1
+            out.append(f"  {sym} ({why}): plan-gated (http 402) — not measured")
+            continue
         n = len(rows) if isinstance(rows, list) else 0
         out.append(f"  {sym} ({why}): {n} historical bars")
         if n:
             found += 1
+    if gated:
+        out.append("\n  VERDICT: UNDETERMINED — treat as FAIL. This plan will "
+                   "not serve delisted symbols at all, so their absence "
+                   "measures the SUBSCRIPTION, not the data. A plan that "
+                   "serves them may or may not retain their history; this run "
+                   "does not know, and must not claim to.")
+        return None
     if found == len(DELISTED):
         out.append("\n  VERDICT: PASS — delisted names retain history.")
         return True
@@ -242,20 +290,45 @@ def check_survivorship(out: list) -> bool | None:
     return False
 
 
-REFUSAL = """
+# Two refusals, because they rest on different evidence and imply different
+# next steps. MEASURED says the data was read and is bad — upgrading the plan
+# changes nothing. UNMEASURED says the plan refused the questions — the source
+# is unproven, which forbids a gate just the same, but a paid plan could still
+# settle it. Printing the MEASURED wording after an all-402 run is how a
+# subscription limit gets recorded as a fact about the vendor's data.
+REFUSAL_HEAD_MEASURED = """
 =======================================================================
 REFUSING: FMP data carries lookahead. Do NOT register a fundamentals
 gate on this source — a claim scored against it would be inflated and
-indistinguishable from a real edge.
+indistinguishable from a real edge."""
+
+REFUSAL_HEAD_UNMEASURED = """
+=======================================================================
+REFUSING: this run could not show FMP to be free of lookahead. No check
+came back clean and at least one was refused for plan reasons, so the
+source is UNPROVEN, not convicted. Do NOT register a fundamentals gate
+on it — an unverified source and a bad one are equally unusable for
+scoring — but note that a plan which serves the gated endpoints could
+still settle the question either way."""
+
+REFUSAL_TAIL = """
 
 Fundamentals may still be used as LIVE JUDGE CONTEXT ONLY: judge-only,
 so under invariant #2 it can veto or shrink and can never create a
 trade; ungated; and recorded as a sim/live divergence. That is exactly
 the shape W7 used for news memory — see docs/divergences.md #14.
 
-EDGE stays 0 for 12. Nothing is adopted by this result.
+Nothing is adopted by this result. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
+
+
+def refusal(results: dict) -> str:
+    """MEASURED only when a check actually came back False."""
+    head = (REFUSAL_HEAD_MEASURED if any(v is False for v in results.values())
+            else REFUSAL_HEAD_UNMEASURED)
+    return head + REFUSAL_TAIL
 
 BLESSING = """
 =======================================================================
@@ -265,7 +338,8 @@ canonical-hash the spec before running, count it against Bonferroni K,
 and use the exposure-matched benchmark.
 
 This does NOT mean fundamentals help. It means a test of whether they
-help would be meaningful. EDGE is still 0 for 12.
+help would be meaningful, not that they do. The EDGE tally is unchanged
+and is kept in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
 
@@ -285,7 +359,7 @@ def main() -> int:
                f"free tier 250/day)")
 
     passed = all(v is True for v in results.values())
-    out.append(BLESSING if passed else REFUSAL)
+    out.append(BLESSING if passed else refusal(results))
     for k, v in results.items():
         out.append(f"  {k:14} {'PASS' if v is True else 'FAIL' if v is False else 'UNDETERMINED'}")
 
