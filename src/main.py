@@ -553,13 +553,17 @@ def check_degradation_slo(ledger: Ledger, cfg: dict):
 def _bootstrap_cycle():
     """Config, preflight, stores, HALT check, broker state.
 
-    Returns `(cfg, ledger, memory, broker, account, positions)`, or **None**
-    when the cycle must not proceed — a preflight failure or an engaged HALT.
-    `None` is the abort signal rather than an exception because both cases are
-    ORDINARY: a misconfigured system and a deliberately halted one are things
-    the operator did, not faults to raise through.
+    Returns `(cfg, ledger, memory, broker, account, positions, halted)`, or
+    **None** when the cycle must not proceed — a preflight failure or a HALT in
+    `freeze` mode. `None` is the abort signal rather than an exception because
+    both cases are ORDINARY: a misconfigured system and a deliberately halted
+    one are things the operator did, not faults to raise through.
 
-    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    `halted` is True under a HALT in `exits` mode: the cycle RUNS, works its
+    exits, and opens nothing. See risk.halt_mode for why the two are separate
+    instructions rather than one flag.
+
+    Extracted from `_run_cycle` in W4-7 (2026-07-29).
     """
     load_dotenv()
     with open("config.yaml") as f:
@@ -593,16 +597,31 @@ def _bootstrap_cycle():
     ledger.set_model_version(modelver.current_version())
     memory = Memory(cfg, ledger)
 
-    if risk.check_halt():
-        log.critical("HALT file present — refusing to trade. Delete HALT to resume.")
+    # Two halts, two behaviours. `freeze` is the original: nothing runs, which is
+    # what you want when the bot or the broker is itself suspect. `exits` runs
+    # the cycle with entries blocked so open positions are still managed —
+    # before 2026-08-02 that was only ever true of the broker's own bracket
+    # legs, while halt.py's docstring claimed otherwise.
+    halted = False
+    mode = risk.halt_mode()
+    if mode == risk.HALT_MODE_FREEZE:
+        log.critical("HALT (freeze) — refusing to trade. Delete HALT to resume.")
         ledger.log_event("halted_cycle_skipped")
         return None
+    if mode == risk.HALT_MODE_EXITS:
+        halted = True
+        log.critical("HALT (exits) — entries blocked; still working exits. "
+                     "Delete HALT to resume normal trading.")
+        # A DISTINCT event from halted_cycle_skipped. Collapsing them would make
+        # the ledger unable to answer "did the bot do anything while halted?",
+        # which is the first question anyone asks after a halt.
+        ledger.log_event("halted_exits_only")
 
     broker = Broker(cfg)
     account = broker.account()          # deterministic state: always from the broker,
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
-    return cfg, ledger, memory, broker, account, positions
+    return cfg, ledger, memory, broker, account, positions, halted
 
 
 def _kill_switch_fired(broker, ledger: Ledger, account: dict, cfg: dict) -> bool:
@@ -620,7 +639,15 @@ def _kill_switch_fired(broker, ledger: Ledger, account: dict, cfg: dict) -> bool
     # broker error while closing (timeout/API outage) must not leave the
     # daily-loss breach un-halted and unrecorded — otherwise the next
     # scheduled cycle re-enters this path instead of being HALT-blocked.
-    risk.engage_halt("daily loss limit breached — flattening all positions")
+    # FREEZE, explicitly, and this is load-bearing rather than a default.
+    # The comment above depends on HALT stopping the next cycle. Under
+    # `exits` the cycle WOULD run again, re-enter this function while the
+    # daily loss still stands, and re-call flatten_all() every cycle — and
+    # return early before any exit ran, so it would not even buy the exits
+    # that mode exists for. There is also nothing to exit: the book was just
+    # flattened.
+    risk.engage_halt("daily loss limit breached — flattening all positions",
+                     mode=risk.HALT_MODE_FREEZE)
     ledger.log_event("kill_switch",
                      "daily loss limit breached; HALT engaged; flattening")
     try:
@@ -875,7 +902,7 @@ def _run_cycle(completed_bars_only: bool = False):
     started = _bootstrap_cycle()
     if started is None:
         return
-    cfg, ledger, memory, broker, account, positions = started
+    cfg, ledger, memory, broker, account, positions, halted = started
 
     # --- DIVERGENCE #11: ratchet the equity peak ONCE PER CYCLE ---
     #
@@ -925,8 +952,25 @@ def _run_cycle(completed_bars_only: bool = False):
 
     # --- Today's market context (news): judge context + validated watchlist
     # nominations, and the scan universe derived from them. ---
-    news_ctx, nominated, scan_symbols = _market_context(
-        cfg, broker, ledger, positions)
+    if halted:
+        # Every product of _market_context feeds ENTRIES: news context is judge
+        # input for a buy, nominations ARE entry candidates, and the wide scan
+        # universe exists to find them. Under an exits-halt none of it can
+        # execute, so running it would spend an LLM budget and a news fetch on
+        # decisions that are already refused — during a period the operator has
+        # declared abnormal, which is the worst time to be doing optional work.
+        #
+        # SPY is not optional: _fetch_and_validate_bars aborts the cycle on a
+        # stale SPY, and it is the benchmark handle_close scores against.
+        news_ctx, nominated = {}, {}
+        scan_symbols = list(positions)
+        if "SPY" not in scan_symbols:
+            scan_symbols.append("SPY")
+        log.info("HALT (exits): scanning %d held symbol(s) for exits only",
+                 len(positions))
+    else:
+        news_ctx, nominated, scan_symbols = _market_context(
+            cfg, broker, ledger, positions)
 
     market_regime = None   # computed after the ensemble bar fetch (from SPY bars)
     regime_label = None
@@ -955,13 +999,15 @@ def _run_cycle(completed_bars_only: bool = False):
                 symbol, sig.action, sig.reason, sig.indicators, None,
                 executed=False,
                 detail=f"risk rejection: {entries_blocked_reason[:180]}",
-                # Named for the runbook entry that diagnoses it ("Vendor
-                # divergence (datacheck blocking entries)"). Not a
-                # RiskRejection — this guard is inline — but it IS a rail from
-                # the ledger's point of view, and a `rail` field that covered
-                # only the rails that happen to raise would read as complete
-                # while silently omitting three of them.
-                rail="datacheck",
+                # Which of the two entry blocks this was: "datacheck" for the
+                # vendor divergence this guard was built for (named for its
+                # runbook entry, "Vendor divergence (datacheck blocking
+                # entries)"), or "halt" for an operator halt in exits mode.
+                # Neither is a RiskRejection — this guard is inline — but both
+                # ARE rails from the ledger's point of view, and a `rail` field
+                # that covered only the rails that happen to raise would read as
+                # complete while silently omitting three of them.
+                rail=entries_blocked_rail,
                 regime=regime_label, strategy=sig.strategy)
             memory.judgments.log_judgment(
                 tid, symbol, sig.action, "rails_reject", 1.0, price,
@@ -1283,6 +1329,20 @@ def _run_cycle(completed_bars_only: bool = False):
     if fetched_ctx is None:
         return                      # SPY stale — the whole feed is suspect
     all_bars, entries_blocked_reason, market_regime, regime_label = fetched_ctx
+    entries_blocked_rail = "datacheck"
+    if halted:
+        # Reuses the vendor-divergence mechanism rather than adding a second
+        # entry-blocking path, because it already means precisely this: entries
+        # refused, exits untouched. A parallel implementation would be a second
+        # place for the exit exemption to be got wrong.
+        #
+        # Overrides any datacheck reason rather than appending to it. Both block
+        # entries identically, the datacheck verdict is separately recorded as a
+        # `degradation` event, and the operator's own halt is the fact that
+        # should appear against a refused trade.
+        entries_blocked_reason = ("HALT engaged (exits mode) — entries blocked, "
+                                  "exits still run")
+        entries_blocked_rail = "halt"
 
     # Chandelier trail maintenance (param-gated; no-op while mult is 0).
     update_trailing_stops(broker, ledger, cfg, open_trades, all_bars)

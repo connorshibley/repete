@@ -27,32 +27,53 @@ it to stand still while you look at something.
 consulted once per cycle *and again per order*, so this stops the very next
 order, not merely the next cycle.
 
-**What it does NOT do: it does not sell anything.** Open positions keep running
-to their normal stops and exits, and their broker-side bracket legs keep
-protecting them independently of the bot process. This is deliberate (owner
-decision 2026-08-02): a forced liquidation crystallises every open loss at
-whatever the screen says in the worst minute of the day, which is exactly the
-minute someone reaches for a stop button. Halting stops the bleeding from
-getting *wider* without converting paper losses into realised ones.
+**Two modes. Pick by asking: do you still trust the bot and the broker?**
+
+| | `./scripts/halt.sh "why"` (default) | `./scripts/halt.sh --freeze "why"` |
+|---|---|---|
+| new entries | blocked | blocked |
+| the cycle | **runs** | does not run at all |
+| your open positions | still managed — closed when their strategy says to | untouched by the agent; **only broker-side bracket legs protect them** |
+| use it when | "stop adding risk" — the market has gone mad, you want the book wound down on its own terms | the BOT or the BROKER is what you distrust: bad fills, a suspect feed, a bug |
+
+The distinction matters most in the case that reads backwards: if you halt
+*because the broker is filling badly*, the default mode would keep sending it
+sell orders. That is what `--freeze` is for.
+
+**Neither mode sells anything by itself.** `exits` only acts when a strategy
+signals an exit; `freeze` does not act at all. Neither is a substitute for
+deciding what to do with an open book.
 
 **If you actually want the book flat, close the positions yourself** — through
 the broker, deliberately, having decided that is what you want. There is no
 scripted flatten, on purpose.
 
+**History (2026-08-02):** HALT used to be `freeze` always, while `halt.py`
+claimed positions kept "running to their normal stops and exits". They did not
+— the cycle returned before any signal was evaluated. PR #72 corrected the
+wording; the mode split made the original promise available for real.
+
 ```bash
-./scripts/halt.sh "fills look wrong on every order"   # engage
-./scripts/halt.sh --status                            # is it on, and why
-./scripts/halt.sh --clear                             # resume trading
+./scripts/halt.sh "the market has gone mad"              # entries blocked, exits still run
+./scripts/halt.sh --freeze "fills look wrong on every order"   # stop everything
+./scripts/halt.sh --status                               # is it on, which mode, and why
+./scripts/halt.sh --clear                                # resume trading
 ```
 
-**Verify:** `./scripts/halt.sh --status` reports engaged, and the next cycle
-logs entries blocked on the `halt` rail. The halt is also ledgered
+**Verify:** `./scripts/halt.sh --status` reports engaged and names the mode.
+The next cycle logs `halted_exits_only` (exits mode) or `halted_cycle_skipped`
+(freeze), and blocked entries record the `halt` rail. The halt is also ledgered
 (`halt_engaged`) and alerted, so a second operator sees it.
 
 **Notes:**
 
-- Halting twice does **not** overwrite the original reason. The record of why
-  trading stopped is what the next person needs most.
+- Halting twice does **not** overwrite the original reason **or its mode**.
+  Re-running with `--freeze` on a live `exits` halt changes nothing — clear it
+  and engage again. Silently escalating an engaged kill switch while reporting
+  "already engaged" is exactly the surprise to avoid.
+- A HALT file written before modes existed (no `mode:` line) reads as
+  **freeze**. Whoever pulled it believed it stopped everything, and a missing
+  line is not permission to resume trading.
 - It refuses to halt without a reason — an unexplained HALT cannot be safely
   cleared later, because nobody can tell it from a stray file.
 - A failing ledger write or a dead alert webhook does **not** prevent the halt.
@@ -75,6 +96,25 @@ grep '"event": "kill_switch"' memory/ledger.jsonl | tail -3
 grep '"event": "kill_switch_flatten_failed"' memory/ledger.jsonl | tail -3
 grep '"event": "halted_cycle_skipped"' memory/ledger.jsonl | tail -3
 ```
+
+The kill switch always engages a **freeze**, never `exits`, and that is
+load-bearing rather than stylistic: it engages HALT *before* flattening
+specifically so the next cycle cannot re-enter the same path and re-call
+`flatten_all()`. Under `exits` it would do exactly that, every cycle, for as
+long as the daily loss stood — and return early before any exit ran anyway.
+
+**CHECK THIS FIRST: did the flatten actually succeed?**
+```bash
+grep '"event": "kill_switch_flatten_failed"' memory/ledger.jsonl | tail -3
+```
+If that line exists, **positions are still open and nothing is managing them**
+except their broker-side bracket legs — the book is frozen with exposure on.
+That is the worst state this system has, and it is **not** healed
+automatically; automatic re-liquidation after a broker failure is a bigger
+decision than the mode split was. Deal with it deliberately: close the
+positions at the broker yourself, or `./scripts/halt.sh --clear` and re-engage
+with `./scripts/halt.sh "post-kill-switch, working exits"` so the agent manages
+them down while still opening nothing.
 
 **Fix:** This is the one guard that *should* require a human. Read the ledger
 around the trip, understand which positions caused the loss, decide whether
