@@ -1,0 +1,58 @@
+# §44c — DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? (2014-2019)
+# One of four periods in the s44a-d conjunction. Full rationale in s44a.yaml.
+# §41 flagged this period as anomalous: baseline and decay arms reported
+# IDENTICAL maxDD to the digit (11.59%) because the latch barely operated here
+# (20.65% of blocks were drawdown, versus 94-99% in the other three periods).
+id: s44c
+claim: EDGE
+title: "Decay + reduced sizing: does return improve at matched drawdown? (2014-2019)"
+
+# judge ON — see s44a.yaml for why. §44's numbers are not directly comparable
+# to §41's own table (§41 was judge-less); read this on its own clauses.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+bonferroni_k: 13
+
+arms:
+  - name: baseline
+
+  - name: decay_reduced_sizing
+    set:
+      risk.drawdown_decay.enabled: true
+      risk.drawdown_decay.grace_bars: 10
+      risk.drawdown_decay.halflife_bars: 20
+      risk.risk_per_trade_pct: 5.0
+
+clauses:
+  - {id: a, rule: maxdd_within, pp: 3.0}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: min_trades, n: 30}
+  - {id: d, rule: not_worse}
+
+prior: >-
+  This is the period §41 itself flagged as least informative for the
+  mechanism under test: the latch barely bound at baseline (20.65% of blocks),
+  so decay has little to re-close and clause (a) is expected to pass here
+  almost by default, near-certainly rather than as a finding about the
+  mechanism — stated before the run, same as §41 stated it for its own
+  clause (d) in this period. The informative clauses here are (b) and (d):
+  whether reduced sizing alone, mostly independent of decay in a period where
+  decay does little, changes anything. The honest expectation, given
+  risk_per_trade_pct scales exposure roughly linearly and this period's
+  baseline is already §41's best-performing arm (PF 1.486, +69.02% at 68.97%
+  deployment), is that reduced sizing simply shrinks deployment and return
+  together with little else to say — REJECTED on (b), not because the
+  mechanism failed but because this period gives it the least room to matter.
+
+failure_modes:
+  - >-
+    All five failure modes in s44a.yaml apply unchanged. Additionally: a PASS
+    on (a) in this period specifically is close to guaranteed by the latch's
+    own inactivity here, not by the sizing choice — read a PASS here as
+    near-uninformative about the mechanism, exactly as §41 read its own
+    clause (d) in this period.
