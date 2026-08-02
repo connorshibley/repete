@@ -78,6 +78,20 @@ The next cycle logs `halted_exits_only` (exits mode) or `halted_cycle_skipped`
   cleared later, because nobody can tell it from a stray file.
 - A failing ledger write or a dead alert webhook does **not** prevent the halt.
   Those are the same things that tend to be broken during a real incident.
+- **Rehearsing this? Set `REPETE_ALERTS_OFF=1`.** `halt.py` sends a real alert,
+  so a drill pages you for an incident that is not happening. On 2026-08-02 a
+  single evening's rehearsals and test runs delivered eight false notifications;
+  an alert channel that cries wolf during development is one you learn to swipe
+  away, and a muted channel is worse than none. The test suite is already
+  covered — `alerting.send` refuses while `PYTEST_CURRENT_TEST` is set — so this
+  is only for manual runs and drills.
+
+  ```bash
+  REPETE_ALERTS_OFF=1 ./scripts/halt.sh "rehearsal, not a real halt"
+  ```
+
+  It suppresses **delivery only**: the HALT file is still written, the ledger
+  still records it, and the suppressed alert is still logged at INFO.
 
 ---
 

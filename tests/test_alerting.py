@@ -10,6 +10,12 @@ import pytest
 
 import alerting
 
+# Captured at import, BEFORE conftest._no_real_alerts swaps them per-test. This
+# file tests the delivery primitives themselves, so it needs the genuine ones —
+# see clean_env below.
+_REAL_BANNER = alerting._macos_banner
+_REAL_POST = alerting._post_json
+
 
 class FakeResponse:
     def __init__(self, status=200):
@@ -26,6 +32,30 @@ class FakeResponse:
 def clean_env(monkeypatch):
     monkeypatch.delenv(alerting.WEBHOOK_ENV, raising=False)
     monkeypatch.delenv(alerting.PING_ENV, raising=False)
+    # THIS FILE IS THE ONE PLACE THAT OPTS OUT OF ALERT SUPPRESSION.
+    #
+    # `send()` and `heartbeat_ping()` refuse to deliver while
+    # `PYTEST_CURRENT_TEST` is set (2026-08-02, after the suite paged the owner
+    # eight times in one evening). Every other test wants exactly that. These
+    # tests exist to assert WHICH CHANNEL is chosen, so blanket suppression
+    # would turn the whole file green while testing nothing — the shape of the
+    # 2026-07-27 audit failure, where a null risk engine left 13 tests passing.
+    #
+    # Delivery still cannot escape: conftest._no_real_alerts stubs
+    # `_macos_banner` and `_post_json` to RAISE, and each test below installs
+    # its own fake. The env is opted out of; the wire is not.
+    #
+    # Deleting PYTEST_CURRENT_TEST does not work — pytest re-sets it for every
+    # phase of every test, so it is back before the call runs. Hence the
+    # explicit FORCE flag.
+    monkeypatch.setenv(alerting.FORCE_ENV, "1")
+    monkeypatch.delenv(alerting.SUPPRESS_ENV, raising=False)
+    # And put the real primitives back, since conftest replaced them with
+    # raisers. Nothing reaches a human anyway: every test below either stubs
+    # `urlopen`/`subprocess` underneath them or asserts on a failure path. What
+    # is restored is the CODE UNDER TEST, not the ability to notify.
+    monkeypatch.setattr(alerting, "_macos_banner", _REAL_BANNER)
+    monkeypatch.setattr(alerting, "_post_json", _REAL_POST)
 
 
 # ---------------- send() ----------------

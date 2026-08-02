@@ -52,6 +52,53 @@ WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 PING_ENV = "HEARTBEAT_PING_URL"
 TIMEOUT = 10
 
+# ---- alerts must never leave a test run or a drill (2026-08-02) -------------
+#
+# `send()` falls back to an osascript banner when no webhook is set, and nothing
+# stopped a pytest run from reaching it. Measured 2026-08-02: one evening's work
+# delivered eight real notifications to the owner's phone — three from
+# `scripts/halt.py` drills, one from the kill-switch alert added in #75, and four
+# "deployment drift" banners fired BY THE TEST SUITE.
+#
+# Those last four look like the live monitor misbehaving and are not.
+# `deploycheck._repo_root()` resolves from the module's own path, so a test in
+# `tmp_path` still inspects the REAL repository, while its fresh tmp ledger
+# defeats the once-per-day dedupe that keeps the live check quiet. Every suite
+# run rang the bell.
+#
+# An alert channel that cries wolf during development is one the owner learns to
+# swipe away, and a muted channel is worse than none — the same argument the
+# drift check already makes for its own dedupe.
+#
+# SUPPRESSION IS DELIBERATELY NARROW. `PYTEST_CURRENT_TEST` is set by pytest per
+# test and never exists in production; `REPETE_ALERTS_OFF` must be set by hand.
+# Nothing here guesses at its own environment, because silencing a real alert is
+# a far worse failure than one spurious banner.
+SUPPRESS_ENV = "REPETE_ALERTS_OFF"
+# The escape hatch for the tests that exist to exercise delivery ITSELF
+# (tests/test_alerting.py, tests/test_alert_delivery.py). It cannot be
+# `monkeypatch.delenv("PYTEST_CURRENT_TEST")`: pytest re-sets that variable for
+# each phase of each test, so a fixture deleting it during setup has it back
+# before the call runs. An explicit opt-in is also the more honest control —
+# turning a safety guard off should be something a file says out loud.
+FORCE_ENV = "REPETE_ALERTS_FORCE"
+_FALSEY = ("", "0", "false", "no")
+
+
+def _truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() not in _FALSEY
+
+
+def _suppressed() -> str | None:
+    """Why delivery is suppressed, or None to deliver normally."""
+    if _truthy(FORCE_ENV):
+        return None
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return "pytest"
+    if _truthy(SUPPRESS_ENV):
+        return SUPPRESS_ENV
+    return None
+
 # Which bot this is. The three forks share one alert channel, so this is the
 # only thing that tells them apart in a notification. repete2 shipped with
 # "repete1" here from the fork until 2026-07-30 — an alert that lies about who
@@ -146,7 +193,16 @@ def _macos_banner(title: str, message: str) -> bool:
 
 def send(title: str, message: str) -> str:
     """Raise an operator alert. Returns which channel carried it, for logs and
-    tests: "webhook" | "desktop" | "log-only". Never raises."""
+    tests: "webhook" | "desktop" | "log-only" | "suppressed". Never raises."""
+    why = _suppressed()
+    if why:
+        # Logged, not silent. A suppressed alert still has to be findable —
+        # "nothing was delivered" must be a recorded fact rather than an
+        # absence, or this guard becomes indistinguishable from a broken
+        # channel the next time someone asks why no alert arrived.
+        log.info("alert suppressed (%s) — %s: %s", why, title, message)
+        return "suppressed"
+
     url = os.environ.get(WEBHOOK_ENV, "").strip()
     if url:
         try:
@@ -178,8 +234,20 @@ def heartbeat_ping(success: bool = True) -> str:
     is recorded as a failure rather than silently skipped — a check that is
     merely late looks identical to one that is broken otherwise.
 
-    Returns "pinged" | "failed" | "disabled". Never raises.
+    Returns "pinged" | "failed" | "disabled" | "suppressed". Never raises.
+
+    SUPPRESSED UNDER TEST FOR A SHARPER REASON THAN send()'s. A ping says "the
+    cycle completed". A suite run that reached this would tell healthchecks.io
+    the bot is alive FROM A LAPTOP, holding the monitor green while the real
+    deployment was dead — defeating the one check designed to survive the host
+    dying, and doing it silently. Noise is the failure mode above; here it is a
+    false all-clear.
     """
+    why = _suppressed()
+    if why:
+        log.info("heartbeat ping suppressed (%s), success=%s", why, success)
+        return "suppressed"
+
     url = os.environ.get(PING_ENV, "").strip()
     if not url:
         return "disabled"
