@@ -4374,3 +4374,90 @@ prior got revised into being worse than the one it replaced.
 `./scripts/set_fmp_key.sh` (never pasted into a chat).
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
+
+---
+
+## §47 — RANDOM-ENTRY DECAY MONITOR (DIAGNOSTIC, pre-registered 2026-08-01, before first run)
+
+**Claim type: DIAGNOSTIC.** Like §40/§42/§45 this cannot enable or disable a
+strategy, and no verdict it produces changes `mode`, `max_open_positions`, or
+any threshold. It adds an *instrument*, not a candidate.
+
+### The gap it closes
+
+The daily-loss kill switch answers "am I losing money too fast." Nothing in this
+repo answered **"did my entry signal stop carrying information."** Those are
+different failure modes: a strategy that has been arbitraged away bleeds slowly
+and never trips a loss limit. §46's own framing — that any found edge is
+temporary and crowding-out is expected — implies a decay instrument, and there
+wasn't one.
+
+Source of the idea: AI Pathways, *"How To Actually Find A Profitable Strategy
+With Claude"* (2026-07-31). Most of that video is a lower-rigor version of what
+`run_gate.py` already enforces — it runs 155 ideas and *then* picks filters,
+which is the multiple-comparisons trap the Bonferroni-K correction exists to
+prevent, and it reports point estimates with no confidence interval. Two things
+in it were genuinely absent here; this is the one worth building. (The other,
+a named worst-decade 2000–2009 stress era, is **not** being built: it can only
+reject, and with EDGE 0-for-12 nothing is close enough for regime-robustness to
+be the deciding factor. Recorded so the decision is visible, not forgotten.)
+
+### The null, fixed before any run
+
+*Would entering on random dates have done as well?* Random entries are drawn on
+the **same symbols**, over the **same bar series**, with holding periods
+**resampled from the actual trades**, entering at the **next open** (never the
+decision-bar close), with slippage charged on **both legs**. Matching exposure
+is what makes it honest: an unmatched null holds a different amount of market
+risk and reads as "edge" in any up market.
+
+The statistic is the **percentile of the strategy's mean return per trade inside
+the distribution of means random timing would have produced.**
+
+### Thresholds, frozen before the first result was seen
+
+| condition | verdict | alerts? |
+|---|---|---|
+| `n_trades < 20` | `INSUFFICIENT_DATA` | no |
+| percentile < 5.0 | `WORSE_THAN_RANDOM` | **yes** |
+| 5.0 ≤ percentile < 95.0 | `INDISTINGUISHABLE_FROM_RANDOM` | no |
+| percentile ≥ 95.0 | `BEATS_RANDOM` | no |
+
+`INSUFFICIENT_DATA` is a distinct state, never folded into a pass. A monitor
+reporting "healthy" on an empty book is the *empty is not the same as absent*
+trap, and this repo has been bitten by it before.
+
+### Known asymmetry, stated rather than hidden
+
+Real trades carry stops and take-profits; the null trades do not. Resampling
+**realised** holding periods absorbs much of this (a trade stopped out on day 2
+contributes a 2-bar holding) but not all: an unprotected null takes the full
+loss where a real trade cut it. That biases the null **downward**, flattering
+the strategy, making this monitor **lenient** — it under-fires rather than
+over-fires. Right direction for an alert whose false positives cost attention;
+**wrong instrument to cite as evidence of edge.**
+
+### Alert-only, by construction
+
+Owner decision 2026-08-01: it does **not** halt. `tests/test_decaycheck.py::
+test_monitor_cannot_halt_trading` walks the module AST and fails if it ever
+imports `risk` or calls `engage_halt`/`check_halt` — so invariant #2 holds
+structurally, not by argument. A component that can only emit text cannot
+enlarge risk.
+
+### First run, and why its number is NOT a finding
+
+Live, 2026-08-01: **`INSUFFICIENT_DATA` — 7 closed trades, need 20.** That is
+the correct and expected result; all three enabled strategies sit at
+`max_open_positions: 0` (§29), so the book cannot enter.
+
+The machinery was then smoke-tested by **deliberately overriding the threshold**
+to `--min-trades 5`, which returned `BEATS_RANDOM, +2.617%/trade (n=7), 95.2th
+percentile of 500 samples`. **This is not evidence of anything.** n=7 against a
+pre-registered floor of 20; the percentile sits a fraction above the boundary; a
+seven-trade sample cannot separate edge from luck in either direction. It is
+recorded here **only** because it is exactly the kind of flattering number a
+later session would otherwise rediscover, rationalise, and cite. It is a proof
+that the code path executes, nothing more.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**

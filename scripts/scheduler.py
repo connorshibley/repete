@@ -87,6 +87,12 @@ JOBS = [
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
     ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),
+    # §47 random-entry decay monitor. Sunday 11:30 ET, matching
+    # com.trading-agent.decaycheck.plist — after the week's trading is closed
+    # out and before the next week opens. ALERT-ONLY: it cannot halt trading
+    # (tests/test_decaycheck.py walks the AST to keep it that way), so the
+    # worst a spurious fire costs is one notification.
+    ("decaycheck",   [6],         11,   30, [PY, "src/decaycheck.py", "--alert"]),
 ]
 # news-brain runs hourly at :25 between these ET hours (market-day awareness)
 NEWS_HOURS = range(9, 16)
