@@ -26,12 +26,15 @@ _spec.loader.exec_module(probe)
 
 
 def _router(monkeypatch, table):
-    """Serve canned JSON by path prefix; assert nothing else is requested."""
+    """Serve canned JSON by exact path; assert nothing else is requested.
+
+    /stable/ paths are fixed strings — the symbol travels as a `symbol=`
+    kwarg, not embedded in the path — so this matches path exactly rather
+    than by prefix (the old /api/v3/{path}/{symbol} convention needed
+    prefix matching; this one doesn't).
+    """
     def fake_get(path, **params):
-        for prefix, payload in table.items():
-            if path.startswith(prefix):
-                return payload
-        return None
+        return table.get(path)
     monkeypatch.setattr(probe, "get", fake_get)
 
 
@@ -47,9 +50,9 @@ def _stmt(date_, revenue, filed=None):
 def test_restatement_passes_when_both_series_agree(monkeypatch):
     rows = [_stmt("2016-09-30", 6_000_000_000)]
     _router(monkeypatch, {
-        "income-statement-as-reported/": [{"date": "2016-09-30",
-                                           "revenues": 6_000_000_000}],
-        "income-statement/": rows,
+        "income-statement-as-reported": [{"date": "2016-09-30",
+                                          "revenues": 6_000_000_000}],
+        "income-statement": rows,
     })
     out = []
     assert probe.check_restatement(out) is True
@@ -60,9 +63,9 @@ def test_restatement_FAILS_when_the_series_disagree(monkeypatch):
     """The leak, measured. A >1% gap between standard and as-reported means the
     standard series carries corrections made after the fact."""
     _router(monkeypatch, {
-        "income-statement-as-reported/": [{"date": "2016-09-30",
-                                           "revenues": 6_000_000_000}],
-        "income-statement/": [_stmt("2016-09-30", 5_400_000_000)],
+        "income-statement-as-reported": [{"date": "2016-09-30",
+                                          "revenues": 6_000_000_000}],
+        "income-statement": [_stmt("2016-09-30", 5_400_000_000)],
     })
     out = []
     assert probe.check_restatement(out) is False
@@ -74,7 +77,7 @@ def test_restatement_FAILS_when_the_series_disagree(monkeypatch):
 def test_a_missing_as_reported_endpoint_is_UNDETERMINED_not_a_pass(monkeypatch):
     """An unanswerable question must not be scored as a passed one — the exact
     trap that lets plan-gated data look clean."""
-    _router(monkeypatch, {"income-statement/": [_stmt("2016-09-30", 6e9)]})
+    _router(monkeypatch, {"income-statement": [_stmt("2016-09-30", 6e9)]})
     out = []
     assert probe.check_restatement(out) is None
     assert "UNDETERMINED" in "\n".join(out)
@@ -83,7 +86,7 @@ def test_a_missing_as_reported_endpoint_is_UNDETERMINED_not_a_pass(monkeypatch):
 # ---------------- 2. filing lag ----------------
 
 def test_filing_lag_passes_on_a_realistic_lag(monkeypatch):
-    _router(monkeypatch, {"income-statement/": [
+    _router(monkeypatch, {"income-statement": [
         _stmt("2026-03-31", 1e9, filed="2026-05-08"),
         _stmt("2025-12-31", 1e9, filed="2026-02-06"),
     ]})
@@ -94,7 +97,7 @@ def test_filing_lag_passes_on_a_realistic_lag(monkeypatch):
 def test_filing_lag_FAILS_when_no_filing_date_exists(monkeypatch):
     """The quietest lookahead: without a filing date a backtest keys off period
     end and trades on figures nobody had for another six weeks."""
-    _router(monkeypatch, {"income-statement/": [_stmt("2026-03-31", 1e9)]})
+    _router(monkeypatch, {"income-statement": [_stmt("2026-03-31", 1e9)]})
     out = []
     assert probe.check_filing_lag(out) is False
     assert "cannot be corrected" in "\n".join(out)
@@ -102,7 +105,7 @@ def test_filing_lag_FAILS_when_no_filing_date_exists(monkeypatch):
 
 def test_filing_lag_FAILS_when_the_date_is_really_the_period_end(monkeypatch):
     """A zero-day 'filing date' is the period end wearing another name."""
-    _router(monkeypatch, {"income-statement/": [
+    _router(monkeypatch, {"income-statement": [
         _stmt("2026-03-31", 1e9, filed="2026-03-31"),
         _stmt("2025-12-31", 1e9, filed="2025-12-31"),
     ]})
@@ -111,7 +114,7 @@ def test_filing_lag_FAILS_when_the_date_is_really_the_period_end(monkeypatch):
 
 
 def test_filing_lag_FAILS_when_only_some_rows_carry_a_date(monkeypatch):
-    _router(monkeypatch, {"income-statement/": [
+    _router(monkeypatch, {"income-statement": [
         _stmt("2026-03-31", 1e9, filed="2026-05-08"),
         _stmt("2025-12-31", 1e9),
     ]})
@@ -122,14 +125,14 @@ def test_filing_lag_FAILS_when_only_some_rows_carry_a_date(monkeypatch):
 # ---------------- 3. survivorship ----------------
 
 def test_survivorship_passes_when_dead_names_keep_history(monkeypatch):
-    _router(monkeypatch, {"historical-price-full/":
-                          {"historical": [{"date": "2023-03-01"}]}})
+    _router(monkeypatch, {"historical-price-eod/full":
+                          [{"date": "2023-03-01"}]})
     out = []
     assert probe.check_survivorship(out) is True
 
 
 def test_survivorship_FAILS_when_dead_names_are_absent(monkeypatch):
-    _router(monkeypatch, {"historical-price-full/": {"historical": []}})
+    _router(monkeypatch, {"historical-price-eod/full": []})
     out = []
     assert probe.check_survivorship(out) is False
     assert "went bankrupt" in "\n".join(out)
@@ -140,7 +143,7 @@ def test_survivorship_FAILS_on_partial_coverage(monkeypatch):
 
     def fake_get(path, **params):
         seen["n"] += 1
-        return {"historical": [{"date": "x"}]} if seen["n"] == 1 else {"historical": []}
+        return [{"date": "x"}] if seen["n"] == 1 else []
     monkeypatch.setattr(probe, "get", fake_get)
     out = []
     assert probe.check_survivorship(out) is False
@@ -211,7 +214,7 @@ def test_the_api_key_never_reaches_stdout_or_stderr(monkeypatch, capsys):
         def __call__(self, *a, **k):
             raise OSError("network down")
     monkeypatch.setattr(probe.urllib.request, "urlopen", Boom())
-    assert probe.get("income-statement/AAPL") is None
+    assert probe.get("income-statement", symbol="AAPL") is None
     cap = capsys.readouterr()
     assert "supersecret" not in cap.out + cap.err
 
@@ -221,6 +224,6 @@ def test_the_call_budget_is_enforced(monkeypatch, capsys):
     leave the owner unable to run it again the same day."""
     monkeypatch.setenv("FMP_API_KEY", "k" * 30)
     probe._CALLS = probe.CALL_BUDGET
-    assert probe.get("income-statement/AAPL") is None
+    assert probe.get("income-statement", symbol="AAPL") is None
     assert "budget" in capsys.readouterr().err
     probe._CALLS = 0
