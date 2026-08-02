@@ -106,15 +106,37 @@ long as the daily loss stood — and return early before any exit ran anyway.
 **CHECK THIS FIRST: did the flatten actually succeed?**
 ```bash
 grep '"event": "kill_switch_flatten_failed"' memory/ledger.jsonl | tail -3
+grep '"event": "kill_switch_flatten_retry"' memory/ledger.jsonl | tail -5
+grep '"event": "kill_switch_flatten_recovered"' memory/ledger.jsonl | tail -3
+grep '"event": "kill_switch_flatten_abandoned"' memory/ledger.jsonl | tail -3
 ```
-If that line exists, **positions are still open and nothing is managing them**
-except their broker-side bracket legs — the book is frozen with exposure on.
-That is the worst state this system has, and it is **not** healed
-automatically; automatic re-liquidation after a broker failure is a bigger
-decision than the mode split was. Deal with it deliberately: close the
-positions at the broker yourself, or `./scripts/halt.sh --clear` and re-engage
-with `./scripts/halt.sh "post-kill-switch, working exits"` so the agent manages
-them down while still opening nothing.
+
+Success is judged by **re-reading the book from the broker**, not by the absence
+of an exception (`flatten_all` is `cancel_orders` + `close_all_positions`, and
+the close-all reports per-position results rather than raising when only some of
+them close). So `kill_switch_flatten_failed` means positions genuinely remain.
+
+**Since 2026-08-02 this retries itself.** The kill switch tries three times
+in-cycle, then writes a `flatten: pending` marker into the `HALT` file and the
+`flatten-retry` job re-attempts every 15 minutes through the session
+(09:30–16:00 ET), up to `risk.kill_switch.max_attempts` (8, ≈2 hours).
+
+| you see | meaning | what to do |
+|---|---|---|
+| `kill_switch_flatten_recovered` | the book is flat | nothing — HALT stays on for you to clear deliberately |
+| `kill_switch_flatten_retry` | still trying | watch; alerts fire per attempt |
+| `kill_switch_flatten_abandoned` | **budget spent, positions still open** | close them at the broker yourself |
+
+`cat HALT` shows the pending marker and the attempt count.
+
+**Clearing HALT also cancels a pending flatten** — the marker lives inside the
+HALT file precisely so `rm HALT` cannot leave an automatic liquidation armed
+against a book you have just decided to keep. If you clear it and still want the
+positions worked down, re-engage with `./scripts/halt.sh "post-kill-switch"` so
+the agent manages exits while opening nothing.
+
+To turn the automation off entirely, set `risk.kill_switch.auto_retry_flatten:
+false`; the failure is then marked and alerted, and waits for you.
 
 **Fix:** This is the one guard that *should* require a human. Read the ledger
 around the trip, understand which positions caused the loss, decide whether

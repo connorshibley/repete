@@ -117,6 +117,30 @@ def run(cfg: dict) -> list[str]:
                 f"this rail would otherwise size orders off a number the "
                 f"account cannot back")
 
+    # The kill switch's recovery budget. A typo here does not stop the bot, but
+    # it decides how long an AUTOMATIC LIQUIDATION keeps retrying after the
+    # daily-loss rail fired. Worth failing loudly on rather than falling back
+    # silently, because the fallback is invisible in a config file the operator
+    # believes they have just tuned.
+    ks = r.get("kill_switch")
+    if ks is not None:
+        if not isinstance(ks, dict):
+            fails.append(f"risk.kill_switch must be a block, got {ks!r}")
+        else:
+            v = ks.get("max_attempts")
+            if v is not None and (not isinstance(v, int)
+                                  or isinstance(v, bool) or v <= 0):
+                fails.append(
+                    f"risk.kill_switch.max_attempts must be a positive int "
+                    f"({v!r}) — it bounds how many times the bot will retry "
+                    f"liquidating the book after a kill switch")
+            v = ks.get("auto_retry_flatten")
+            if v is not None and not isinstance(v, bool):
+                fails.append(
+                    f"risk.kill_switch.auto_retry_flatten must be true or "
+                    f"false ({v!r}) — anything else reads as true, which is "
+                    f"the side that liquidates")
+
     if cfg.get("mode", "paper") not in ("paper", "live"):
         fails.append(f"mode must be paper|live, got {cfg.get('mode')!r}")
     if (cfg.get("mode") == "live"
