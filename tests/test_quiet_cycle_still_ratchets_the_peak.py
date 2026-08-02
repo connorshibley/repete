@@ -156,7 +156,15 @@ def test_the_ratchet_runs_before_any_decision(cycle_env):
 
     # 2. `_run_cycle` unpacks that result BEFORE it ratchets, so the equity the
     #    peak is measured against is this cycle's.
-    unpack = src.index("cfg, ledger, memory, broker, account, positions = started")
+    #
+    # Tracked forward again on 2026-08-02, when the HALT split into freeze/exits
+    # modes added `halted` to the tuple — structural for the same reason as
+    # W4-7, and the property is unchanged. Under `freeze` the bootstrap still
+    # returns None and no ratchet happens (nothing traded, so nothing to
+    # measure); under `exits` the cycle runs and the ratchet must still precede
+    # every early return, which is exactly what the ordering below pins.
+    unpack = src.index(
+        "cfg, ledger, memory, broker, account, positions, halted = started")
     ratchet = src.index('risk.update_high_water(account["equity"])')
     # The daily-loss kill switch is the first thing in _run_cycle that can
     # return early. W4-7 moved its body into _kill_switch_fired, so the call is

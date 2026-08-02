@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """The operator's stop button: block new entries, now.
-`./scripts/halt.sh "why"`   engage    (also: --status, --clear)
+`./scripts/halt.sh "why"`            engage — entries blocked, exits still run
+`./scripts/halt.sh --freeze "why"`   engage — stop the cycle entirely
+                                     (also: --status, --clear)
 
 Why this exists (2026-08-02)
 ----------------------------
@@ -19,21 +21,35 @@ directory. That is not a kill switch; that is trivia.
 
 WHAT THIS DOES AND DOES NOT DO
 ------------------------------
-It BLOCKS NEW ENTRIES. It does NOT sell anything. Open positions keep running,
-and their broker-side bracket legs keep protecting them independently of this
-process.
+Neither mode SELLS ANYTHING on its own. Both block new entries. They differ in
+whether the bot keeps managing the book you already have:
 
-BE PRECISE ABOUT WHAT STILL PROTECTS THEM (corrected 2026-08-02). This used to
-say positions "keep running to their normal stops and exits", which overstates
-it: while HALT is engaged the cycle returns at src/main.py:596 before a single
-signal is evaluated, so the agent evaluates no exits at all. What protects an
-open position is the bracket sitting AT THE BROKER — the stop and take-profit
-legs submitted when the position was opened. They fill whether or not this
-process ever runs again, which is the whole reason brackets are mandatory.
+  default (exits)   The cycle keeps running with entries refused. Strategies
+                    still evaluate their open positions and still close them
+                    when they say to. Use this for "stop adding risk" — the
+                    market has gone mad, or you want the book wound down on its
+                    own terms rather than dumped.
 
-The practical consequence: HALT is safe to leave on over a weekend, and is NOT
-a substitute for deciding what to do with an open book. Nothing will manage
-those positions but the broker's own legs until you clear it.
+  --freeze          The cycle does not run at all. The agent evaluates no
+                    exits; only the bracket legs sitting AT THE BROKER protect
+                    open positions, and they do so whether or not this process
+                    ever runs again. Use this when the BOT or the BROKER is what
+                    you distrust — sending sell orders into a broker you halted
+                    over because it was filling badly is not a safety measure.
+
+WHY THE DEFAULT CHANGED (2026-08-02). This file used to promise that positions
+"keep running to their normal stops and exits". They did not: HALT returned the
+cycle at src/main.py:596 before a single signal was evaluated, so exits never
+ran. PR #72 corrected the wording to match the behaviour; this makes the
+original promise true instead, and keeps the old behaviour under --freeze.
+
+Either mode is safe to leave on over a weekend. Neither is a substitute for
+deciding what to do with an open book: `exits` will only act when a strategy
+signals an exit, and `freeze` will not act at all.
+
+Re-running while a halt is live does NOT change its mode. Clear it and engage
+again — silently escalating or relaxing a live kill switch is exactly the kind
+of surprise this file exists to prevent.
 
 That is the owner's choice (2026-08-02), and it is the conservative one: a
 forced liquidation crystallises every open loss at whatever the screen says in
@@ -84,12 +100,30 @@ def _load_env() -> None:
         pass
 
 
+def _mode_lines(mode: str) -> list[str]:
+    """What this mode actually does, in the operator's terms.
+
+    Printed everywhere a halt is reported, because there are now two of them
+    and the difference is exactly the thing worth getting wrong at 3am: one
+    keeps managing the book, the other does not touch it at all.
+    """
+    if mode == risk.HALT_MODE_EXITS:
+        return ["Mode: EXITS — new entries blocked, exits STILL RUN.",
+                "The cycle keeps running and will close positions when their",
+                "strategy says to. Nothing new is opened."]
+    return ["Mode: FREEZE — the cycle does not run AT ALL.",
+            "The agent evaluates no exits; only the broker-side bracket legs",
+            "protect open positions until you clear this."]
+
+
 def status() -> int:
     if not risk.check_halt():
         print("HALT is NOT engaged — the bot may open new positions.")
         return 0
     print("HALT IS ENGAGED. No new entries will be opened.")
-    print("Open positions are UNAFFECTED and still running.\n")
+    for line in _mode_lines(risk.halt_mode()):
+        print(line)
+    print("Open positions are NOT closed by this switch.\n")
     try:
         with open(risk.HALT_FILE) as f:
             print(f.read().rstrip())
@@ -99,13 +133,18 @@ def status() -> int:
     return 0
 
 
-def engage(reason: str) -> int:
+def engage(reason: str, mode: str = risk.HALT_MODE_EXITS) -> int:
     already = risk.check_halt()
     if already:
-        print("HALT was ALREADY engaged — leaving the existing reason intact.\n")
+        # Also leaves the existing MODE intact. Re-running with --freeze does
+        # not escalate a live halt: silently changing what an engaged kill
+        # switch means, while reporting "already engaged", is the kind of
+        # surprise this file exists to avoid. Clear it and engage again.
+        print("HALT was ALREADY engaged — leaving the existing reason and "
+              "mode intact.\n")
         return status()
 
-    risk.engage_halt(f"MANUAL — {reason}")
+    risk.engage_halt(f"MANUAL — {reason}", mode=mode)
 
     # Ledger and alert are best-effort and deliberately AFTER the file write.
     # The stop must not depend on a disk write to memory/ or on a webhook being
@@ -115,7 +154,7 @@ def engage(reason: str) -> int:
         from ledger import Ledger
         cfg = _cfg()
         Ledger(cfg["memory"]["ledger_path"]).log_event(
-            "halt_engaged", f"manual halt by operator: {reason}")
+            "halt_engaged", f"manual halt by operator ({mode}): {reason}")
     except Exception as e:                                   # noqa: BLE001
         print(f"  warn: could not ledger the halt ({e}) — the HALT itself is set",
               file=sys.stderr)
@@ -124,18 +163,18 @@ def engage(reason: str) -> int:
     try:
         import alerting
         alerting.send(
-            "Repete: MANUAL HALT engaged",
-            f"New entries are blocked.\n"
-            f"Open positions are NOT closed and are still running.\n\n"
-            f"Reason: {reason}")
+            f"Repete: MANUAL HALT engaged ({mode})",
+            "New entries are blocked.\n"
+            + "\n".join(_mode_lines(mode))
+            + f"\n\nReason: {reason}")
     except Exception as e:                                   # noqa: BLE001
         print(f"  warn: alert delivery failed ({e}) — the HALT itself is set",
               file=sys.stderr)
 
     print("HALT ENGAGED. No new entries will be opened.")
-    print("Open positions are NOT closed. While HALT is on the cycle does not")
-    print("run at all, so the agent evaluates NO exits — the broker-side")
-    print("bracket legs are what protect open positions until you clear it.")
+    for line in _mode_lines(mode):
+        print(line)
+    print("Open positions are NOT closed by this switch.")
     print("\nResume with: ./scripts/halt.sh --clear")
     return 0
 
@@ -184,6 +223,10 @@ def main(argv=None) -> int:
                    help="report whether HALT is engaged, and why")
     p.add_argument("--clear", action="store_true",
                    help="remove HALT and re-enable new entries")
+    p.add_argument("--freeze", action="store_true",
+                   help="stop the cycle ENTIRELY, exits included — for when "
+                        "the bot or the broker is itself suspect. Default is "
+                        "to block entries but keep working exits.")
     args = p.parse_args(argv)
 
     if args.status and args.clear:
@@ -199,11 +242,13 @@ def main(argv=None) -> int:
         # A halt with no stated reason is one nobody can safely clear later:
         # the next operator cannot tell a deliberate stop from a stray file.
         print("Refusing to halt without a reason.\n\n"
-              '  ./scripts/halt.sh "broker returning bad fills"\n'
+              '  ./scripts/halt.sh "the market has gone mad"      (exits still run)\n'
+              '  ./scripts/halt.sh --freeze "broker sending bad fills"\n'
               "  ./scripts/halt.sh --status\n"
               "  ./scripts/halt.sh --clear\n", file=sys.stderr)
         return 2
-    return engage(reason)
+    return engage(reason, mode=(risk.HALT_MODE_FREEZE if args.freeze
+                                else risk.HALT_MODE_EXITS))
 
 
 if __name__ == "__main__":

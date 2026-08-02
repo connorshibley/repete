@@ -52,15 +52,85 @@ class RiskRejection(Exception):
         self.rail = rail
 
 
+# HALT is two different instructions wearing one filename (2026-08-02).
+#
+#   exits  — stop ADDING risk. Entries blocked; the cycle still runs and the
+#            agent still works its exits. For "the market has gone mad" or "I
+#            want out of this position but not at any price".
+#   freeze — stop EVERYTHING. The cycle does not run at all. For when the bot
+#            or the broker is the thing you distrust: halt.py's own usage
+#            example is `./scripts/halt.sh "broker returning bad fills"`, and
+#            sending sell orders into a broker you just halted over is the
+#            opposite of a safety measure.
+#
+# Before this, HALT always meant `freeze` while halt.py's docstring claimed
+# open positions kept "running to their normal stops and exits". They did not —
+# PR #72 corrected the wording; this makes the original promise available as a
+# real mode instead.
+HALT_MODE_EXITS = "exits"
+HALT_MODE_FREEZE = "freeze"
+HALT_MODES = (HALT_MODE_EXITS, HALT_MODE_FREEZE)
+
+
 def check_halt() -> bool:
+    """Is a HALT engaged at all? Deliberately still a BOOLEAN.
+
+    `health.py`, `watchdog.py` and `daily_posts.py` each define `HALT_FILE`
+    independently and ask only this question. Widening what this returns would
+    make one predicate mean different things in four modules — the §29
+    `max_order_value_usd: 0` trap. Callers that need the mode ask `halt_mode()`.
+    """
     return os.path.exists(HALT_FILE)
 
 
-def engage_halt(reason: str):
+def halt_mode() -> str | None:
+    """Which HALT is engaged, or None if there is no HALT file.
+
+    Anything unreadable, unrecognised, or simply absent from the file reads as
+    `freeze`, and that polarity is the whole point: a HALT engaged before this
+    existed, or written by a version that did not know about modes, was pulled
+    by someone who believed it stopped everything. Re-interpreting their halt as
+    "actually, keep trading" on the strength of a missing line would be the
+    worst possible default. An unknown halt is a total halt.
+    """
+    try:
+        with open(HALT_FILE) as f:
+            body = f.read()
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        log.critical("HALT file unreadable (%s) — treating it as a full freeze", e)
+        return HALT_MODE_FREEZE
+    for line in body.splitlines():
+        if line.startswith("mode:"):
+            mode = line.split(":", 1)[1].strip().lower()
+            if mode in HALT_MODES:
+                return mode
+            log.critical("HALT file names unknown mode %r — treating it as a "
+                         "full freeze", mode)
+            return HALT_MODE_FREEZE
+    return HALT_MODE_FREEZE          # legacy file, written before modes existed
+
+
+def engage_halt(reason: str, mode: str = HALT_MODE_FREEZE):
+    """Write the HALT file.
+
+    `mode` defaults to FREEZE, not to the friendlier `exits`, so that a caller
+    which never considered the question gets the conservative behaviour. The
+    two callers that HAVE considered it say so explicitly: halt.py passes
+    `exits` for an operator stop, and the daily-loss kill switch passes `freeze`
+    (see _kill_switch_fired — it relies on HALT stopping the next cycle so it
+    cannot re-enter its own flatten).
+    """
+    if mode not in HALT_MODES:
+        log.critical("engage_halt got unknown mode %r — writing a full freeze",
+                     mode)
+        mode = HALT_MODE_FREEZE
     with open(HALT_FILE, "w") as f:
         f.write(f"{datetime.now(timezone.utc).isoformat()} — {reason}\n"
+                f"mode: {mode}\n"
                 "Delete this file to re-enable trading (after you understand what happened).\n")
-    log.critical("HALT ENGAGED: %s", reason)
+    log.critical("HALT ENGAGED (%s): %s", mode, reason)
 
 
 # A corrupt counter must not silently un-cap the day's trading. Absent file =
@@ -881,7 +951,18 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      candidate_stop: float | None = None,
                      strategy: str | None = None):
     """Last-stage gate every order must pass. Raises RiskRejection with a reason."""
-    if check_halt():
+    # ENTRIES ONLY (2026-08-02). This check was previously unreachable: under a
+    # HALT the cycle returned in _bootstrap_cycle before any signal existed, so
+    # nothing ever arrived here to be refused. `halt_mode() == "exits"` makes it
+    # live, and an unguarded version would refuse the very sells that mode was
+    # added to allow — a rail blocking an exit is a rail enlarging risk (§31 for
+    # the drawdown breaker, #69 for the judge, #72 for the daily cap; fourth
+    # rail, same rule).
+    #
+    # Still raised for buys even though the cycle also blocks entries upstream.
+    # That redundancy is deliberate: it is the last gate before an order, and it
+    # holds even for a caller that never went through _run_cycle.
+    if action == "buy" and check_halt():
         raise RiskRejection("HALT file present — trading disabled", rail="halt")
     # §29: 0 disables. This is no longer a risk rail — it is a RUNAWAY GUARD.
     # Set well above observed demand (~15 buy signals/day live) so it never
