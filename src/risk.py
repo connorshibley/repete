@@ -340,6 +340,87 @@ def drawdown_pct(equity: float, peak: float) -> float:
     return max(0.0, (peak - equity) / peak * 100)
 
 
+def drawdown_state(equity: float | None, limit_pct: float) -> dict:
+    """Read-only view of the drawdown circuit breaker. NEVER writes.
+
+    Why this exists (2026-08-03)
+    ----------------------------
+    §40 established that the breaker is a ONE-WAY LATCH and that this is a live
+    defect, not a backtest artifact. `update_high_water` ratchets the peak up
+    and never down — correct on its own terms, since a peak that followed
+    equity downward could never fire — but combined with entries-blocked it has
+    no recovery path:
+
+        equity peaks at P -> a >=limit drawdown blocks every entry -> open
+        positions exit normally and the book goes to cash -> in cash equity is
+        FLAT at ~P*(1-limit) -> the peak stays P -> the drawdown stays >=limit
+        -> the bot never buys again, for the rest of the run.
+
+    In 2022-2026 that blocked 99.43% of every buy signal. Production has not
+    tripped it yet (§40 measured 9.85pp of headroom), which is precisely why
+    nobody has felt it.
+
+    §41 (decay at unchanged sizing) and §44 (decay plus reduced sizing) both
+    tested candidate FIXES and both were REJECTED, so `risk.drawdown_decay`
+    stays absent and the latch stays. **This function does not change that and
+    is not a fix.** It makes the state legible so a silent permanent kill
+    switch becomes a loud one a human can clear. It moves no threshold and
+    blocks nothing.
+
+    ONE implementation on purpose: `health.status()` and `watchdog.check()`
+    both read it. Two hand-rolled copies of this arithmetic would be free to
+    disagree about when the rail is engaged, which is the class of divergence
+    this repo numbers.
+
+    `equity=None` means "not known" and is reported as such — an unknown
+    drawdown must never read as a healthy one.
+    """
+    out = {"known": False, "engaged": False, "equity": None, "peak_equity": None,
+           "drawdown_pct": None, "limit_pct": float(limit_pct or 0),
+           "headroom_pp": None, "note": ""}
+
+    if not limit_pct:
+        out["note"] = "rail disabled (max_drawdown_pct: 0)"
+        out["known"] = True
+        return out
+    if equity is None:
+        out["note"] = "no equity reading — drawdown unknown"
+        return out
+
+    peak = read_high_water()
+    out["known"] = True
+    out["equity"] = float(equity)
+
+    # Polarity matches read_high_water's own: an unreadable peak fails CLOSED,
+    # because we do not know how far below it we are. Reported as engaged so
+    # the operator sees it, with a different note so it is not mistaken for a
+    # real drawdown.
+    if peak is _PEAK_UNKNOWN or peak == _PEAK_UNKNOWN:
+        out["engaged"] = True
+        out["note"] = ("equity high-water file unreadable — the rail fails "
+                       "CLOSED and self-heals on the next cycle's write")
+        return out
+
+    out["peak_equity"] = float(peak)
+    if peak <= 0:
+        # Never seeded: first run, no peak to be below. Not a drawdown.
+        out["drawdown_pct"] = 0.0
+        out["headroom_pp"] = float(limit_pct)
+        out["note"] = "high-water never seeded — no drawdown yet"
+        return out
+
+    dd = drawdown_pct(equity, peak)
+    out["drawdown_pct"] = round(dd, 2)
+    out["headroom_pp"] = round(limit_pct - dd, 2)
+    out["engaged"] = dd >= limit_pct
+    return out
+
+
+HIGHWATER_RESET_HINT = (
+    f"the peak only ratchets UP, so this cannot clear itself — see §40. "
+    f"To reset after reviewing: rm {_HIGHWATER_FILE}")
+
+
 def decay_clock(prev_trough: float | None, prev_bars: int,
                 equity: float, peak: float) -> tuple[float | None, int]:
     """Advance the decay clock one bar. Pure. Returns (trough, bars_stable).
