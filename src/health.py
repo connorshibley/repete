@@ -17,9 +17,44 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 HEARTBEAT_FILE = "memory/heartbeat"
 HALT_FILE = "HALT"
-# A weekday cycle runs at 15:45 ET; ~26h covers a normal overnight gap, and
-# weekends are excluded from the staleness verdict below.
+# The heartbeat is written by the trading cycle, which fires at 15:45 ET on
+# weekdays. 26h covers a normal overnight gap BETWEEN two consecutive trading
+# days — Monday 15:45 to Tuesday 15:45 is 24h.
 MAX_HEARTBEAT_AGE_HOURS = 26
+
+# ...but the age alone cannot tell you a cycle was MISSED (2026-08-03).
+#
+# This comment used to claim "weekends are excluded from the staleness verdict".
+# They were not. The guard was `now.weekday() < 5`, which only skips the check
+# when TODAY is a weekend and does nothing about the weekend GAP. The heartbeat
+# comes from the 15:45 cycle, so every Monday before 15:45 the newest one is
+# Friday's — 66-70h old — and health.py reported
+#
+#     DEGRADED | heartbeat is 66.2h old — a weekday cycle was missed
+#
+# when nothing had been missed and the day's cycle was still hours away. It
+# fired every Monday, and `main()` exits non-zero on degraded, so anything
+# gating on this failed every Monday morning too.
+#
+# A stale heartbeat is only EVIDENCE OF A MISS once the cycle that writes it was
+# actually due. So the assertion is gated on the scheduled time having passed
+# today, which fixes Monday and market holidays for the same reason, rather than
+# on an hour count that cannot know about either. Detection is unchanged after
+# the cycle is due: still stale at 16:15 is still a genuine miss.
+CYCLE_HOUR_ET, CYCLE_MINUTE_ET = 15, 45
+
+
+def cycle_was_due(now: datetime) -> bool:
+    """Has today's trading cycle already been scheduled to run?
+
+    False on weekends, and on a weekday before 15:45 ET. Callers use this to
+    decide whether a stale heartbeat means anything yet.
+    """
+    from zoneinfo import ZoneInfo
+    et = now.astimezone(ZoneInfo("America/New_York"))
+    if et.weekday() >= 5:
+        return False
+    return (et.hour, et.minute) >= (CYCLE_HOUR_ET, CYCLE_MINUTE_ET)
 
 
 def heartbeat_age_hours(path: str = HEARTBEAT_FILE,
@@ -121,10 +156,10 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         out["problems"].append("HALT file present — trading disabled")
     if age is None:
         out["problems"].append("no heartbeat — the cycle has never run")
-    elif age > MAX_HEARTBEAT_AGE_HOURS and now.weekday() < 5:
+    elif age > MAX_HEARTBEAT_AGE_HOURS and cycle_was_due(now):
         out["problems"].append(
             f"heartbeat is {age:.1f}h old — a weekday cycle was missed")
-    elif now.weekday() < 5 and not out["cycle_completed_today"]:
+    elif cycle_was_due(now) and not out["cycle_completed_today"]:
         # The heartbeat is fresh, so the process ran. `last_cycle` has been
         # collected here since this file was written but was only ever
         # reported, never asserted on — so a cycle that started and died read
