@@ -4602,3 +4602,114 @@ later session would otherwise rediscover, rationalise, and cite. It is a proof
 that the code path executes, nothing more.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
+
+---
+
+## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)
+
+**Claim type: DIAGNOSTIC.** Like §40/§42/§45/§47 this cannot enable or disable a
+strategy, and no verdict it produces changes `mode`, `max_drawdown_pct`, or any
+other config value. `run_gate.py` prints *"DIAGNOSTIC — this decides NOTHING"*
+and records no verdict. **The multiple-comparisons count does not rise: K stays
+13.**
+
+Specs `research/specs/s48a-d.yaml`, written and frozen **together** before any
+of them was run — the §41/§44 convention. Frozen hashes:
+
+| spec | period | frozen sha256 |
+|---|---|---|
+| s48a | 2000-2006 | `78df9ad69bd17c88…` |
+| s48b | 2007-2013 | `063ecf050494c09c…` |
+| s48c | 2014-2019 | `d682853578229340…` |
+| s48d | 2022-2026 | `50bbcea427c73b46…` |
+
+### The question, and why nobody has asked it
+
+`scripts/census.py` states the problem in its own docstring:
+
+> at that exposure a genuine edge would be invisible, so **"no edge found" and
+> "no edge expressible" are currently indistinguishable** — and all ten EDGE
+> rejections inherit that ambiguity.
+
+§40 measured the exposure and §45 confirmed the constraint is the entry side:
+
+| period | signals | executed | rate | fully in cash | blocked by drawdown |
+|---|---|---|---|---|---|
+| 2000-2006 | 422,592 | **101** | 0.02% | 84.3% | 94.58% |
+| 2007-2013 | 423,926 | **155** | 0.04% | 86.8% | 96.71% |
+| 2014-2019 | 336,408 | 1,732 | 0.51% | 18.9% | 20.65% |
+| 2022-2026 | 245,213 | **29** | 0.01% | 92.4% | **99.43%** |
+
+**Twenty-nine executions from 245,213 signals** in the period closest to today.
+
+Two claims have already tested candidate *fixes* to the one-way latch. §41
+tested `risk.decayed_peak` at unchanged sizing — REJECTED, maxDD roughly doubled
+in three of four periods. §44 tested that decay paired with reduced sizing —
+REJECTED on the period containing 2008, at 28.03% maxDD against a 14.45%
+allowance.
+
+**Neither ran the clean counterfactual: the rail simply absent.** That is the
+gap §48 closes. `risk.max_drawdown_pct: 0` here is a *control condition*, not a
+proposal — the arm that makes the baseline arm interpretable.
+
+### What this explicitly does not do
+
+`census.py`'s own rule governs, and is restated because it is exactly the move a
+result like this invites:
+
+> if a rail turns out to be strangling deployment, that fix is a separate
+> pre-registered decision. **Loosening a risk rail because a diagnostic
+> suggested it is exactly the unfalsifiable move this whole programme exists to
+> prevent.**
+
+No outcome here licenses moving `max_drawdown_pct`. The unblocked arm will have
+far worse drawdown by construction; that is arithmetic, not a finding, and it is
+not weighed against the owner's stated 10pp tolerance anywhere in this section.
+
+### THE READING RULE — committed before the run
+
+Written into all four specs' `prior` and hashed with them, so the outcome cannot
+select the experiment. That is the §46 trap, and the mistake §44's revised prior
+made. Read across s48a-d **together**:
+
+1. **Unblocked arm FAILS `beats_exposure_matched` in ≥2 of 4 periods** → the
+   strategies have no expressible edge on this universe even when fully
+   deployed. The ambiguity resolves *against* the strategies, the rejection
+   record is confirmed rather than confounded, and this licenses **no further
+   EDGE registration on this universe** — specifically, the drafted
+   volatility-targeting spec is not registered.
+2. **Unblocked arm CLEARS it in ≥3 of 4** → the rail was masking measurement,
+   and some share of the rejections were scoring a bot that was in cash. This
+   licenses **exactly one thing**: a fresh EDGE registration re-testing the
+   *incumbent* at full deployment, spending budget as K=14. Not new machinery,
+   and not a config change.
+3. **Any other split is INDETERMINATE and licenses nothing.** A rule that turns
+   every possible outcome into a green light is not a rule.
+
+Outcome 1 is the honest expectation and is the more valuable of the two: it
+converts *"we do not know whether there is an edge"* into *"we know there is
+not"*, which is the first thing this project could act on decisively.
+
+### The prior, in one line
+
+The unblocked arm clears deployment and trade-count easily — that is arithmetic
+— and still fails the exposure-matched return test. Removing a risk rail cannot
+create predictive power that was not there.
+
+### Two things that must not be over-read
+
+**A clean result under outcome 2 is still not an EDGE.** It would say the
+previous measurements were confounded, not that the strategies work. Nothing
+here withdraws, re-scores or revisits any of the thirteen rejections — §41 set
+that precedent explicitly when its own simulator finding could have reopened ten
+verdicts, and it reopened none.
+
+**2014-2019 is a null manipulation, not a null result.** The rail blocked only
+20.65% of signals there, so the two arms may come back nearly identical. §41
+already flagged this period as anomalous for the same reason. It is run anyway
+and counted on the same terms — dropping the inconvenient period *after* knowing
+which one it is would be period selection.
+
+*(Measured results follow below, written after the run.)*
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged.**

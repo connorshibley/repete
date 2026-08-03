@@ -1,0 +1,123 @@
+# §48b — IS THERE SIGNAL AT FULL DEPLOYMENT? (2007-2013)
+#
+# One of four. s48a-d are written and frozen TOGETHER before any is run; see
+# s48a.yaml for the full reasoning. The short version: census.py's docstring
+# says "'no edge found' and 'no edge expressible' are currently
+# indistinguishable — and all ten EDGE rejections inherit that ambiguity", §40
+# measured the exposure and §45 confirmed the constraint is the entry side, and
+# nothing has ever run the clean counterfactual of the rail simply absent.
+#
+# THIS PERIOD. §40 measured 423,926 signals -> 155 executions (0.04%), 86.8% of
+# bars fully in cash, and the drawdown rail blocking 96.71% of every buy signal
+# — the second-most-strangled of the four. It also contains 2008, which is the
+# period that sank §44: its decay arm came in at 28.03% maxDD against a 14.45%
+# allowance. Expect the unblocked arm's drawdown here to be the worst of the
+# four by a wide margin, and see the first failure mode for why that is
+# arithmetic rather than a result.
+#
+# NOT A FIX. `risk.max_drawdown_pct: 0` is the control condition, not a
+# proposal. census.py's rule governs: "loosening a risk rail because a
+# diagnostic suggested it is exactly the unfalsifiable move this whole
+# programme exists to prevent."
+id: s48b
+claim: DIAGNOSTIC
+title: "Is there signal at full deployment? Drawdown rail present vs absent (2007-2013)"
+
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2007-01-01_2013-12-31.json.gz
+  sha256: 2ba815e1b0d2ca5db7b1e1778a65ab4126f9526e1347299464573ea16d7591d5
+
+cash: 100000.0
+
+# K=13 for comparability. THE COUNT DOES NOT RISE — a DIAGNOSTIC spends no
+# multiple-comparisons budget because it cannot produce a PASS that licenses
+# anything.
+bonferroni_k: 13
+
+arms:
+  - name: baseline          # the SHIPPED configuration, unmodified
+
+  - name: no_drawdown_rail
+    set:
+      risk.max_drawdown_pct: 0
+
+clauses:
+  - {id: a, rule: deployment_at_least, pct: 25}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: min_trades, n: 30}
+
+prior: >-
+  The honest expectation is that the unblocked arm clears (a) and (c) easily —
+  removing the constraint that blocked 96.71% of signals must raise deployment
+  and trade count, and that part is arithmetic rather than a finding. Clause
+  (b) is the one that carries information, and the base rate says it fails:
+  EDGE stands at 0 for 13, and there is no reason removing a risk rail would
+  create predictive power that was not there. This period is additionally the
+  one where the prior is least confident in EITHER direction, because 2008
+  dominates it: a strategy that is simply long more of the time gets hurt worse
+  here than anywhere else, which pushes against the survivorship bias that
+  pushes the other way.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select
+  the experiment — the §46 trap, and the mistake §44's revised prior made.
+  Across s48a-d taken together:
+
+  (1) If the unblocked arm FAILS clause (b) in two or more of the four periods,
+  then the strategies have no expressible edge on this universe even when fully
+  deployed. The ambiguity census.py named resolves against the strategies, the
+  0-for-13 record is confirmed rather than confounded, and this licenses NO
+  further EDGE registration on this universe — specifically, the drafted
+  volatility-targeting spec is not registered.
+
+  (2) If the unblocked arm CLEARS clause (b) in three or more periods, the
+  ambiguity resolves the other way: the rail was masking measurement, and some
+  share of the thirteen rejections were scoring a bot that was in cash. That
+  licenses exactly one thing — a fresh EDGE registration re-testing the
+  INCUMBENT at full deployment, spending budget as K=14. It does not license
+  new machinery, and it does not license touching max_drawdown_pct.
+
+  (3) Any other split is INDETERMINATE and licenses nothing. Saying so now is
+  the point; a rule that resolves every possible outcome into a green light is
+  not a rule.
+
+  Either resolution is worth having. (1) is the more likely and is the more
+  valuable of the two, because it converts "we do not know whether there is an
+  edge" into "we know there is not", which is the first thing this project
+  could act on decisively.
+
+failure_modes:
+  - >-
+    THE UNBLOCKED ARM WILL HAVE FAR WORSE DRAWDOWN, BY CONSTRUCTION, and worse
+    here than in any other period because 2008 is inside it. That is
+    arithmetic, not a finding, and it is not an argument against the rail. The
+    drawdown rail exists because the owner has a stated 10pp tolerance. Nothing
+    in this diagnostic weighs return against that tolerance, and a reader who
+    takes "the unblocked arm returned more" as "remove the rail" has drawn the
+    exact conclusion census.py forbids.
+  - >-
+    CLAUSE (b) IS NEARLY MEANINGLESS ON THE BASELINE ARM, which runs the
+    SHIPPED config. beats_exposure_matched compares return against
+    buy-and-hold SCALED BY DEPLOYMENT. This period's
+    baseline arm sits ~87% in cash, so its benchmark is scaled to near zero and
+    is trivially clearable by a couple of winning trades. A (b) pass on the
+    baseline arm is an artifact of the denominator and must not be read as the
+    control validating anything. Only the unblocked arm's (b) is interpretable.
+  - >-
+    SURVIVORSHIP, inherited from §41/§44, and at its most severe in this
+    period: the universe is built from today's index membership, so every bank
+    and broker that failed in 2008 is excluded by construction. This flatters
+    any long strategy and flatters the HIGHER-DEPLOYMENT arm more, biasing
+    clause (b) toward the more permissive reading. The rule above is written
+    knowing this, and outcome (2) licenses only a further registration.
+  - >-
+    A CLEAN RESULT UNDER (2) IS STILL NOT AN EDGE. It would say the previous
+    measurements were confounded, not that the strategies work. The thirteen
+    rejections are not withdrawn, re-scored or revisited by anything here —
+    §41 set that precedent explicitly when its own simulator finding could have
+    been used to reopen ten verdicts, and it reopened none.
+  - >-
+    ONE PERIOD IS NOT THE CLAIM. s48a-d are read together under the rule in
+    `prior`. A striking result in this period alone is a period-selection story,
+    which is the failure §37 and §44 were both structured to avoid.

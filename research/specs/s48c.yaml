@@ -1,0 +1,122 @@
+# §48c — IS THERE SIGNAL AT FULL DEPLOYMENT? (2014-2019)
+#
+# One of four. s48a-d are written and frozen TOGETHER before any is run; see
+# s48a.yaml for the full reasoning.
+#
+# THIS PERIOD IS THE OUTLIER AND IS EXPECTED TO BE THE LEAST INFORMATIVE OF THE
+# FOUR. §40 measured 336,408 signals -> 1,732 executions (0.51%) and only 18.9%
+# of bars fully in cash — an order of magnitude more participation than the
+# other three. The reason is mechanical: a smooth bull market rarely draws down
+# 10%, so the latch mostly never tripped. Its top blocker was zero_qty at
+# 63.36%, with drawdown a distant 20.65%.
+#
+# §41 already flagged this period as anomalous for exactly this reason — its
+# maxDD was identical across both arms "because the latch barely operated
+# there" — and noted that a pass here is weaker evidence than a pass elsewhere.
+# The same caution applies with more force to this spec, because the whole
+# manipulation is the latch. If the rail was not binding, removing it changes
+# little, and the two arms may come back close to identical. That is a
+# NULL manipulation, not a null result, and the third failure mode says how to
+# read it.
+#
+# It is run anyway, and its result counts toward the rule in `prior` on the same
+# terms as the other three. Dropping the period that is inconvenient for the
+# manipulation, after knowing which one that is, would be period selection.
+id: s48c
+claim: DIAGNOSTIC
+title: "Is there signal at full deployment? Drawdown rail present vs absent (2014-2019)"
+
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+
+# K=13 for comparability. THE COUNT DOES NOT RISE — a DIAGNOSTIC spends no
+# multiple-comparisons budget because it cannot produce a PASS that licenses
+# anything.
+bonferroni_k: 13
+
+arms:
+  - name: baseline          # the SHIPPED configuration, unmodified
+
+  - name: no_drawdown_rail
+    set:
+      risk.max_drawdown_pct: 0
+
+clauses:
+  - {id: a, rule: deployment_at_least, pct: 25}
+  - {id: b, rule: beats_exposure_matched}
+  - {id: c, rule: min_trades, n: 30}
+
+prior: >-
+  Unlike the other three periods, the baseline arm is expected to clear (a) and
+  (c) here on its own — 18.9% cash and 1,732 executions is a bot that traded.
+  The two arms are expected to come back CLOSE, because the rail blocked only
+  20.65% of signals here against 94-99% elsewhere. Clause (b) is the one that
+  carries information, and the base rate says it fails for both arms: EDGE
+  stands at 0 for 13, and there is no reason removing a rail would create
+  predictive power that was not there. A (b) pass by EITHER arm in this period
+  specifically is the single most likely way this diagnostic produces a
+  misleading headline, because 2014-2019 is a period in which almost any
+  long-biased strategy made money.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select
+  the experiment — the §46 trap, and the mistake §44's revised prior made.
+  Across s48a-d taken together:
+
+  (1) If the unblocked arm FAILS clause (b) in two or more of the four periods,
+  then the strategies have no expressible edge on this universe even when fully
+  deployed. The ambiguity census.py named resolves against the strategies, the
+  0-for-13 record is confirmed rather than confounded, and this licenses NO
+  further EDGE registration on this universe — specifically, the drafted
+  volatility-targeting spec is not registered.
+
+  (2) If the unblocked arm CLEARS clause (b) in three or more periods, the
+  ambiguity resolves the other way: the rail was masking measurement, and some
+  share of the thirteen rejections were scoring a bot that was in cash. That
+  licenses exactly one thing — a fresh EDGE registration re-testing the
+  INCUMBENT at full deployment, spending budget as K=14. It does not license
+  new machinery, and it does not license touching max_drawdown_pct.
+
+  (3) Any other split is INDETERMINATE and licenses nothing. Saying so now is
+  the point; a rule that resolves every possible outcome into a green light is
+  not a rule.
+
+  Either resolution is worth having. (1) is the more likely and is the more
+  valuable of the two, because it converts "we do not know whether there is an
+  edge" into "we know there is not", which is the first thing this project
+  could act on decisively.
+
+failure_modes:
+  - >-
+    THE UNBLOCKED ARM WILL HAVE WORSE DRAWDOWN, BY CONSTRUCTION — though least
+    so here, since the latch barely operated. That is arithmetic, not a
+    finding, and it is not an argument against the rail. Nothing in this
+    diagnostic weighs return against the owner's stated 10pp tolerance, and a
+    reader who takes "the unblocked arm returned more" as "remove the rail" has
+    drawn the exact conclusion census.py forbids.
+  - >-
+    THIS IS THE ONE PERIOD WHERE CLAUSE (b) ON THE BASELINE ARM IS ACTUALLY
+    INTERPRETABLE, because deployment was real rather than near zero. That
+    makes it the exception to the warning carried by s48a/b/d, and it cuts both
+    ways: a baseline-arm (b) failure here is genuine evidence about the
+    strategies, unmediated by the rail.
+  - >-
+    A NULL MANIPULATION IS NOT A NULL RESULT. If both arms come back nearly
+    identical, that says the rail was not binding in this period — which is
+    already known from §40 — and says nothing about signal quality either way.
+    It must be reported as "manipulation did not bite here", not as "removing
+    the rail made no difference", and it should not be counted as evidence for
+    outcome (1) merely because clause (b) failed on an arm that was
+    indistinguishable from the control.
+  - >-
+    SURVIVORSHIP, inherited from §41/§44: the universe is built from today's
+    index membership, so the period excludes names that later failed. Mildest
+    here of the four, since 2014-2019 had few large-cap failures, but present.
+  - >-
+    ONE PERIOD IS NOT THE CLAIM. s48a-d are read together under the rule in
+    `prior`. A striking result in this period alone is a period-selection story,
+    and this is the period most likely to produce one.
