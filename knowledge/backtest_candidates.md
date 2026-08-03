@@ -4834,3 +4834,110 @@ built from survivors.
   now exists to keep that honest.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged.**
+
+---
+
+## §49 — HOW MANY INDEPENDENT BETS IS THE BOOK TAKING? (DIAGNOSTIC, 2026-08-03)
+
+**Claim type: DIAGNOSTIC.** Decides nothing, enables nothing, spends no
+multiple-comparisons budget. **K stays 13.** `scripts/breadth_census.py`, full
+output in `research/breadth_2026-08-03.txt`.
+
+### Why this, and why it has never been asked
+
+Grinold's fundamental law says risk-adjusted return has two levers and only two:
+
+> **IR = IC × √BR**
+
+IC is skill. BR is **breadth** — the number of *independent* decisions.
+Thirteen EDGE claims have all been attempts to raise IC. **Nothing in this
+project has ever measured BR.**
+
+And nominal breadth is not breadth. `config.yaml` lists 38 symbols, but four
+are broad index ETFs, four are sector ETFs, and the rest are US large caps that
+largely move together. Thirty-eight names that move as one is *one* bet.
+
+The existing guard cannot see this: `correlation_cap` is **pairwise**
+(`max_correlated: 2` at `threshold: 0.85`, entries only). It asks "do two names
+I hold correlate with this one", which says nothing about the concentration of
+the book as a whole. §40 found the sibling heat cap bound **zero** times.
+
+### The measurement (daily returns, 2020-01-01 → 2026-07-10, 1,637 days)
+
+| | configured universe | live book |
+|---|---|---|
+| nominal positions | 38 | 19 *(of 20 held; MA absent from the snapshot)* |
+| **effective bets — entropy** | **10.50** | **6.19** |
+| **effective bets — participation ratio** | **4.35** | **3.24** |
+| first eigenvalue | 45.7% of variance | **53.1% of variance** |
+| mean pairwise correlation | 0.421 | 0.479 |
+| **IR ceiling vs an independent book** | **0.526×** | **0.571×** |
+
+Two standard measures are reported because agreeing is weak evidence and
+disagreeing is informative. They disagree here — entropy is forgiving of a long
+tail of small eigenvalues, the participation ratio weights the top of the
+spectrum. For risk, the participation ratio is the more conservative reading.
+
+**Twenty open positions are between three and six independent bets, and a
+single factor explains 53% of the book's variance.** The achievable information
+ratio is roughly **half** what the same number of independent bets would allow —
+a ceiling no amount of signal work can lift.
+
+### The sharper finding: the correlation cap is an ETF-overlap detector
+
+Of 703 pairs in the configured universe, **13 sit at or above the 0.85 cap —
+and 11 of those 13 involve an ETF**:
+
+| | |
+|---|---|
+| QQQ / XLK | 0.974 |
+| SPY / DIA | 0.940 |
+| SPY / QQQ | 0.935 |
+| XLE / XOM | 0.932 |
+| XLF / JPM | 0.908 |
+| *…seven more, all with an ETF leg* | |
+
+**Only 2 of 435 stock-vs-stock pairs (0.46%) reach the cap** — JPM/BAC at 0.879
+and XOM/CVX at 0.855. On the 500-name wide snapshot, where no sector ETFs
+exist, the *maximum* pairwise correlation in the whole live universe is
+**0.846 — below the 0.85 threshold**, so the rail cannot bind there at all.
+
+So the cap is not functioning as a stock-diversification rail. It is an
+index-overlap detector, and §22 already recorded that index ETFs get systematic
+first refusal on scarce slots because they lead `config.yaml`. The rail mostly
+fires on exactly the names an arbitrary ordering bias already favours.
+
+### Scoring the prior
+
+The plan predicted effective breadth of **~2–3 against a nominal 20+**. The
+participation ratio came in at **3.24** — inside the predicted band. The
+entropy measure came in at **6.19** — roughly double it. **Scored as one of two,
+and the miss is recorded rather than the hit quoted.** The qualitative claim
+(the book is far less diversified than its position count suggests) held; the
+specific number was too pessimistic on one of the two measures.
+
+### Two limitations, both structural
+
+1. **The gates and live trade different universes.** The wide snapshots are 500
+   individual stocks and contain **no sector ETFs** — QQQ, DIA, IWM, XLK, XLF,
+   XLE and XLV are all absent. Every wide-snapshot gate, §48 included, scored a
+   universe the live bot does not trade, and vice versa. This measurement uses
+   the 38-symbol snapshot precisely because it matches live.
+2. **Survivorship pushes this number DOWN, not up** (§48). Survivors are
+   plausibly more correlated with each other than a full cohort would be, so
+   the true independence is more likely to be *understated* here than
+   overstated. Stated so the bias direction is on the record.
+
+### What this licenses
+
+**Nothing.** It is a measurement. Widening the universe, reordering it, or
+retuning `correlation_cap` are each separate pre-registered decisions — the
+same rule `census.py` states about rails, for the same reason: changing a
+setting because a diagnostic suggested it is the unfalsifiable move this
+programme exists to prevent.
+
+What it does provide is a *denominator*. Any future claim that proposes to
+raise breadth now has a number to beat, and any claim that raises IC now has an
+explicit ceiling to be judged against.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. K stays 13.**

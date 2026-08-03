@@ -1,0 +1,32 @@
+CONFIGURED UNIVERSE — bars_2020-01-01_2026-07-10.json.gz (1637 days)
+
+  nominal positions            38
+  effective bets (entropy)     10.5
+  effective bets (participation) 4.35
+  first eigenvalue             45.7% of total variance
+
+  mean pairwise correlation    0.421
+  median pairwise correlation  0.4
+  pairs >= 0.85 (the cap)      1.85%
+
+  IR ceiling vs an independent book of the same size: 0.526x
+  (sqrt(10.5)/sqrt(38) = 0.526 — the fraction of an independent book's IR ceiling this universe can reach)
+
+MEASUREMENT ONLY — no verdict, nothing enabled. Widening the universe
+would be a separate pre-registered decision. See §49.
+LIVE BOOK — bars_2020-01-01_2026-07-10.json.gz (1637 days)
+
+  nominal positions            19
+  effective bets (entropy)     6.19
+  effective bets (participation) 3.24
+  first eigenvalue             53.1% of total variance
+
+  mean pairwise correlation    0.479
+  median pairwise correlation  0.463
+  pairs >= 0.85 (the cap)      4.68%
+
+  IR ceiling vs an independent book of the same size: 0.571x
+  (sqrt(6.19)/sqrt(19) = 0.571 — the fraction of an independent book's IR ceiling this universe can reach)
+
+MEASUREMENT ONLY — no verdict, nothing enabled. Widening the universe
+would be a separate pre-registered decision. See §49.

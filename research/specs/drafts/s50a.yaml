@@ -1,0 +1,147 @@
+# §50a — VOLATILITY TARGETING (2000-2006) — **DRAFT. NOT REGISTERED.**
+#
+# ============================ READ THIS FIRST ============================
+# This spec is COMPLETE and DELIBERATELY UNREGISTERED. It lives in
+# research/specs/drafts/, which scripts/register_gate.py cannot resolve.
+#
+# §48's reading rule, frozen before its run, licensed exactly ONE follow-up:
+#
+#   "a fresh EDGE registration re-testing the INCUMBENT at full deployment,
+#    spending budget as K=14. It does not license new machinery, and it does
+#    not license touching max_drawdown_pct."
+#
+# Volatility targeting is new machinery. It is therefore NOT licensed by §48
+# under either branch of the rule — outcome (1) named this spec by name as the
+# thing not to register, and outcome (2) licensed only the incumbent re-test.
+# Registering it now would be helping myself to a budget the rule did not
+# grant, which is the precise failure the rule exists to prevent.
+#
+# It is written anyway, and now, for one reason: the argument for it is
+# strongest BEFORE any result is known. A spec drafted after a disappointing
+# incumbent re-test would be a spec drafted to rescue something.
+# =========================================================================
+#
+# THE EXTERNAL PRIOR, and why it is unusually strong for this repo.
+# Harvey, Hoyle, Korgaonkar, Rattray, Sargaison and Van Hemert, "The Impact of
+# Volatility Targeting" (JPM 2018): 60 assets, daily data from 1926 to 2017.
+# Volatility-managed portfolios realise HIGHER Sharpe ratios than constant-
+# notional ones for RISK ASSETS specifically (equities and credit; the effect
+# is negligible for bonds, FX and commodities), and reduce the likelihood of
+# extreme returns across every asset class, because left-tail events cluster in
+# high-volatility periods when a vol-targeted book is carrying least.
+#
+# Two things make that a better prior than anything §14-§47 started from:
+#   * it is NOT a signal. It forecasts nothing and cannot create an entry. It
+#     rescales exposure the strategies have already decided to take.
+#   * it replicates across asset classes and across ninety years, which is a
+#     different order of evidence from a backtest on four snapshots.
+#
+# And one thing makes it weaker than it looks: McLean & Pontiff (JF 2016)
+# measured published predictors at 26% lower out-of-sample and 58% lower
+# post-publication. This paper is from 2018 and is widely implemented. Whatever
+# is left is the part that survived being known.
+#
+# WHY IT MIGHT DO NOTHING HERE, stated before any run. The mechanism works by
+# varying notional exposure with realised volatility. §48 measured that the
+# shipped bot's deployment is 4.72%-69.25% and is set by the DRAWDOWN RAIL, not
+# by any volatility view. A vol target layered on top of a book whose exposure
+# is already dominated by a different constraint may be inert — the honest
+# reason this is a draft and not an obvious win.
+#
+# WHAT IT WOULD NEED THAT DOES NOT EXIST YET. `risk.vol_target` is not
+# implemented. This spec is unrunnable as written and names the gap rather than
+# pretending an arm exists: the `set:` block below references a config path
+# that has no code behind it. That is deliberate — a draft that looked runnable
+# would invite someone to run it.
+id: s50a
+claim: EDGE
+title: "Volatility targeting: higher risk-adjusted return at matched drawdown? (2000-2006) [DRAFT]"
+
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2000-01-01_2006-12-31.json.gz
+  sha256: 432cec564ccee6abcf690d365b51cfd107b8b734c2375b8638ff4cadb5251cc8
+
+cash: 100000.0
+
+# WOULD BE K=15 AT THE EARLIEST, not 14. §48's rule reserved 14 for the
+# incumbent re-test. If that re-test is registered and run, this becomes 15;
+# if it is not, this stays a draft. The number is written here so that nobody
+# later assigns it 14 by reflex.
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+
+  - name: vol_targeted
+    set:
+      # NOT IMPLEMENTED. There is no risk.vol_target in src/risk.py.
+      risk.vol_target.enabled: true
+      risk.vol_target.annual_target_pct: 12.0
+      risk.vol_target.lookback_bars: 60
+      risk.vol_target.max_leverage: 1.0     # scale DOWN only, never up
+
+clauses:
+  - {id: a, rule: maxdd_within, pp: 0.0}
+  - {id: b, rule: significantly_better}
+  - {id: c, rule: min_trades, n: 30}
+  - {id: d, rule: beats_buy_hold}
+
+prior: >-
+  EDGE stands at 0 for 13 and the base rate is REJECTED. The external evidence
+  is the strongest any claim in this file has started from — ninety years, 60
+  assets, and a mechanism that forecasts nothing — but three things cut against
+  it here and are named before any run.
+
+  First, the mechanism may be INERT on this bot. §48 measured deployment as
+  governed by the drawdown rail, not by any volatility view; a vol target
+  layered on exposure that is already capped by something else may simply not
+  bind, which would show up as two nearly identical arms rather than as a
+  failure.
+
+  Second, §33 and §34 established that selection on this data does not predict:
+  a 12% annual target and a 60-bar lookback are three free parameters, and
+  choosing among settings after seeing results is the move those sections
+  retired. Any registration must fix all three in advance from an external
+  source, not tune them.
+
+  Third, clause (d) `beats_buy_hold` is included DELIBERATELY in place of the
+  `beats_exposure_matched` that §48 used, because §48's survivorship
+  measurement showed that clause is passed by any long-biased strategy against
+  a benchmark inflated by up to +130pp. A claim registered after §48 that used
+  the weaker benchmark would be ignoring the thing §48 found.
+
+  Expected outcome, if ever run: REJECTED on (b), with the two arms close
+  enough that the honest report is "the mechanism did not bind".
+
+failure_modes:
+  - >-
+    SURVIVORSHIP, quantified by §48 at +130.06pp on this exact snapshot: SPY
+    returned +8.68% over these bars while the equal-weight universe returned
+    +138.74%. Clause (d) `beats_buy_hold` is measured against that inflated
+    number, so a PASS on (d) here would be a very low bar dressed as a high
+    one. `scripts/survivorship_check.py` must be run and quoted alongside any
+    result from this period.
+  - >-
+    PUBLICATION DECAY. McLean & Pontiff measured published predictors 58% lower
+    post-publication. The Harvey et al. paper is from 2018 and widely
+    implemented; the prior should be discounted accordingly rather than treated
+    as a ninety-year guarantee.
+  - >-
+    THREE FREE PARAMETERS (target, lookback, leverage cap). Fixed here from the
+    source paper's own conventions rather than tuned, and they must not be
+    revisited after a result. §34 showed that selecting the best of several
+    settings on this data predicts nothing out of sample.
+  - >-
+    AN INERT MECHANISM IS NOT A REFUTED ONE. If both arms come back nearly
+    identical because the drawdown rail already caps exposure, that says
+    volatility targeting was never given a chance on this configuration — the
+    same "null manipulation, not null result" distinction §48c had to make. It
+    must be reported that way and must NOT be counted as evidence against the
+    external literature.
+  - >-
+    A PASS WOULD BE THE FIRST EDGE THIS PROJECT HAS PRODUCED and should attract
+    proportionally more scrutiny, not less. Nothing would be enabled on the
+    strength of four historical periods; the 30-closed-trade live evidence gate
+    is untouched by anything here.
