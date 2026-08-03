@@ -4602,3 +4602,235 @@ later session would otherwise rediscover, rationalise, and cite. It is a proof
 that the code path executes, nothing more.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
+
+---
+
+## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)
+
+**Claim type: DIAGNOSTIC.** Like §40/§42/§45/§47 this cannot enable or disable a
+strategy, and no verdict it produces changes `mode`, `max_drawdown_pct`, or any
+other config value. `run_gate.py` prints *"DIAGNOSTIC — this decides NOTHING"*
+and records no verdict. **The multiple-comparisons count does not rise: K stays
+13.**
+
+Specs `research/specs/s48a-d.yaml`, written and frozen **together** before any
+of them was run — the §41/§44 convention. Frozen hashes:
+
+| spec | period | frozen sha256 |
+|---|---|---|
+| s48a | 2000-2006 | `78df9ad69bd17c88…` |
+| s48b | 2007-2013 | `063ecf050494c09c…` |
+| s48c | 2014-2019 | `d682853578229340…` |
+| s48d | 2022-2026 | `50bbcea427c73b46…` |
+
+### The question, and why nobody has asked it
+
+`scripts/census.py` states the problem in its own docstring:
+
+> at that exposure a genuine edge would be invisible, so **"no edge found" and
+> "no edge expressible" are currently indistinguishable** — and all ten EDGE
+> rejections inherit that ambiguity.
+
+§40 measured the exposure and §45 confirmed the constraint is the entry side:
+
+| period | signals | executed | rate | fully in cash | blocked by drawdown |
+|---|---|---|---|---|---|
+| 2000-2006 | 422,592 | **101** | 0.02% | 84.3% | 94.58% |
+| 2007-2013 | 423,926 | **155** | 0.04% | 86.8% | 96.71% |
+| 2014-2019 | 336,408 | 1,732 | 0.51% | 18.9% | 20.65% |
+| 2022-2026 | 245,213 | **29** | 0.01% | 92.4% | **99.43%** |
+
+**Twenty-nine executions from 245,213 signals** in the period closest to today.
+
+Two claims have already tested candidate *fixes* to the one-way latch. §41
+tested `risk.decayed_peak` at unchanged sizing — REJECTED, maxDD roughly doubled
+in three of four periods. §44 tested that decay paired with reduced sizing —
+REJECTED on the period containing 2008, at 28.03% maxDD against a 14.45%
+allowance.
+
+**Neither ran the clean counterfactual: the rail simply absent.** That is the
+gap §48 closes. `risk.max_drawdown_pct: 0` here is a *control condition*, not a
+proposal — the arm that makes the baseline arm interpretable.
+
+### What this explicitly does not do
+
+`census.py`'s own rule governs, and is restated because it is exactly the move a
+result like this invites:
+
+> if a rail turns out to be strangling deployment, that fix is a separate
+> pre-registered decision. **Loosening a risk rail because a diagnostic
+> suggested it is exactly the unfalsifiable move this whole programme exists to
+> prevent.**
+
+No outcome here licenses moving `max_drawdown_pct`. The unblocked arm will have
+far worse drawdown by construction; that is arithmetic, not a finding, and it is
+not weighed against the owner's stated 10pp tolerance anywhere in this section.
+
+### THE READING RULE — committed before the run
+
+Written into all four specs' `prior` and hashed with them, so the outcome cannot
+select the experiment. That is the §46 trap, and the mistake §44's revised prior
+made. Read across s48a-d **together**:
+
+1. **Unblocked arm FAILS `beats_exposure_matched` in ≥2 of 4 periods** → the
+   strategies have no expressible edge on this universe even when fully
+   deployed. The ambiguity resolves *against* the strategies, the rejection
+   record is confirmed rather than confounded, and this licenses **no further
+   EDGE registration on this universe** — specifically, the drafted
+   volatility-targeting spec is not registered.
+2. **Unblocked arm CLEARS it in ≥3 of 4** → the rail was masking measurement,
+   and some share of the rejections were scoring a bot that was in cash. This
+   licenses **exactly one thing**: a fresh EDGE registration re-testing the
+   *incumbent* at full deployment, spending budget as K=14. Not new machinery,
+   and not a config change.
+3. **Any other split is INDETERMINATE and licenses nothing.** A rule that turns
+   every possible outcome into a green light is not a rule.
+
+Outcome 1 is the honest expectation and is the more valuable of the two: it
+converts *"we do not know whether there is an edge"* into *"we know there is
+not"*, which is the first thing this project could act on decisively.
+
+### The prior, in one line
+
+The unblocked arm clears deployment and trade-count easily — that is arithmetic
+— and still fails the exposure-matched return test. Removing a risk rail cannot
+create predictive power that was not there.
+
+### Two things that must not be over-read
+
+**A clean result under outcome 2 is still not an EDGE.** It would say the
+previous measurements were confounded, not that the strategies work. Nothing
+here withdraws, re-scores or revisits any of the thirteen rejections — §41 set
+that precedent explicitly when its own simulator finding could have reopened ten
+verdicts, and it reopened none.
+
+**2014-2019 is a null manipulation, not a null result.** The rail blocked only
+20.65% of signals there, so the two arms may come back nearly identical. §41
+already flagged this period as anomalous for the same reason. It is run anyway
+and counted on the same terms — dropping the inconvenient period *after* knowing
+which one it is would be period selection.
+
+*(Measured results follow below, written after the run.)*
+
+---
+
+### THE MEASUREMENT (2026-08-03, judge ON, full output `research/s48_run_2026-08-03.txt`)
+
+| period | arm | return | PF | maxDD | trades | symbols | deployment |
+|---|---|---|---|---|---|---|---|
+| 2000-2006 | baseline | +9.45% | 1.122 | 11.52% | 753 | 367 | 20.95% |
+| | **unblocked** | **+137.50%** | 1.553 | 22.23% | 3,974 | 498 | 74.22% |
+| 2007-2013 | baseline | +2.42% | 1.082 | 11.45% | 269 | 177 | 10.92% |
+| | **unblocked** | **+75.57%** | 1.366 | 33.84% | 3,592 | 500 | 75.96% |
+| 2014-2019 | baseline | +56.71% | 1.396 | 10.72% | 3,057 | 498 | 69.25% |
+| | **unblocked** | **+85.01%** | 1.471 | 11.74% | 3,785 | 498 | 84.01% |
+| 2022-2026 | baseline | **−7.71%** | **0.367** | 10.99% | 54 | 49 | **4.72%** |
+| | **unblocked** | **+61.67%** | 1.424 | 16.65% | 3,084 | 495 | 77.95% |
+
+**The control reproduced.** 2022-2026 baseline came back at −7.71%, PF 0.367,
+maxDD 10.99%, 54 trades — identical to the `s43d` figures §45 published. The
+diagnostic is measuring the same bot the record already describes.
+
+**One citation corrected while checking that.** The recorded census for the
+2022-2026 baseline is 245,212 signals with **237,522 blocked by drawdown =
+96.86%**, not the 99.43% quoted from §40's table in the pre-registration above.
+Both numbers are right for their own run: §40's entry census was scored
+**judge-off**, and §45 reported 96.86% for the same period **judge-on**, which
+is what s48 runs. The pre-registration text is left as written rather than
+edited — it quoted §40 accurately — and the judge-on figure is the one to use
+alongside these results.
+
+### The registered clauses: the unblocked arm passed 4 of 4
+
+| period | (a) deployment ≥25% | (b) beats_exposure_matched | (c) ≥30 trades |
+|---|---|---|---|
+| 2000-2006 | 74.22% ✓ | +137.50% vs +102.82% ✓ | 3,974 ✓ |
+| 2007-2013 | 75.96% ✓ | +75.57% vs +70.25% ✓ | 3,592 ✓ |
+| 2014-2019 | 84.01% ✓ | +85.01% vs +75.96% ✓ | 3,785 ✓ |
+| 2022-2026 | 77.95% ✓ | +61.67% vs +35.16% ✓ | 3,084 ✓ |
+
+**The prior was wrong.** It said the unblocked arm would trade far more and
+still fail (b). It cleared (b) in every period. Recorded plainly, because a
+prior that is quietly forgotten when it misses is not a prior.
+
+Under the pre-registered reading rule this is **outcome (2)**: ≥3 of 4. What
+that licenses is exactly one thing, quoted from the frozen spec — *"a fresh
+EDGE registration re-testing the INCUMBENT at full deployment, spending budget
+as K=14. It does not license new machinery, and it does not license touching
+`max_drawdown_pct`."*
+
+### AND THE PRE-REGISTERED FAILURE MODE IS REAL, AND ENORMOUS
+
+Every s48 spec listed survivorship third, and said it *"flatters the
+HIGHER-DEPLOYMENT arm more than the baseline — which biases clause (b) toward
+outcome (2) and therefore toward the more permissive reading."*
+
+That has been a stated direction on every gate since §41 and was never a size.
+It is now a size. `scripts/survivorship_check.py` measures it **from inside the
+snapshot**, needing no external data: SPY is in the universe, and an index
+ETF's price already reflects constituent changes, so the gap between the
+equal-weight 500 and SPY over identical bars *is* the inflation.
+
+| snapshot | SPY | equal-weight 500 | **inflation** |
+|---|---|---|---|
+| 2000-2006 | **+8.68%** | +138.74% | **+130.06pp** |
+| 2007-2013 | **+51.34%** | +96.80% | **+45.46pp** |
+| 2014-2019 | +97.97% | +101.94% | +3.97pp |
+| 2020-2026 | +154.94% | +140.26% | −14.68pp |
+| 2022-2026 | +64.39% | +54.80% | −9.59pp |
+
+**In 2000-2006 the snapshot's own benchmark says the market returned +138.54%.
+SPY, over the identical bars, returned +8.68%.** Today's 500 index members,
+back-projected to 2000, all survived the dot-com crash by construction. The
+inflation is largest in the two oldest periods and vanishes in the recent ones
+— exactly the gradient survivorship predicts, which is a strong check that this
+is the mechanism rather than a coincidence.
+
+### Where the outperformance actually lives
+
+`beats_exposure_matched` compares an arm against the snapshot's own
+buy-and-hold, so both sides carry the same survivorship and the clause is fair
+on its own terms. Setting the same returns against a **clean** benchmark asks a
+different and blunter question — would the owner have done better just holding
+the index:
+
+| period | unblocked | SPY | vs SPY | survivorship inflation |
+|---|---|---|---|---|
+| 2000-2006 | +137.50% | +8.68% | **+128.82pp** | **+130.06pp** |
+| 2007-2013 | +75.57% | +51.34% | **+24.23pp** | **+45.46pp** |
+| 2014-2019 | +85.01% | +97.97% | **−12.96pp** | +3.97pp |
+| 2022-2026 | +61.67% | +64.39% | **−2.72pp** | −9.59pp |
+
+**The outperformance appears only in the two periods whose benchmark is
+survivorship-poisoned, and disappears in both periods where it is not.** In
+2014-2019 and 2022-2026 — the two periods the universe has had least time to
+lose members — the fully-deployed bot *lost to SPY*.
+
+This is not a refutation of the clause result and is not offered as one. The
+bot also trades a survivor-only universe, so its own return is inflated too;
+the SPY column is harsher on the bot than a like-for-like comparison would be.
+Neither column alone settles it. What the pair establishes is narrower and
+firmer: **the (b) passes are not safe to read as evidence of an edge**, and the
+follow-up the rule licenses must be scored against a benchmark that is not
+built from survivors.
+
+### What this does and does not change
+
+- **Nothing is enabled. `max_drawdown_pct` stays at 10.0.** The unblocked arm's
+  drawdown was 22.23% / 33.84% / 11.74% / 16.65% against the owner's stated
+  10pp tolerance — the rail is doing the job it exists to do, and `census.py`'s
+  standing rule against loosening a rail on a diagnostic's say-so holds.
+- **The ambiguity §40 named is half-resolved.** "No edge found" and "no edge
+  expressible" are no longer indistinguishable: the bot demonstrably *can*
+  express far more when unblocked, and the shipped config was measuring a bot
+  in cash. Whether what it expresses is an *edge* is now the open question, and
+  the survivorship measurement says the current benchmark cannot answer it.
+- **No EDGE verdict is withdrawn, re-scored or revisited.** §41's precedent
+  stands. EDGE remains 0 for 13 and K stays 13; a DIAGNOSTIC spends no budget.
+- **The K=14 follow-up is the owner's decision, not an automatic next step** —
+  §44's precedent exactly, where §41 named its own legitimate follow-up and
+  refused to take it on its own authority. When registered it should score
+  against a survivorship-free benchmark, and `scripts/survivorship_check.py`
+  now exists to keep that honest.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged.**

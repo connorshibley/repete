@@ -162,6 +162,52 @@ schedule) and `python src/health.py` shows `halted: false`.
 
 ---
 
+## Drawdown circuit breaker ENGAGED (the bot has stopped buying, permanently)
+
+**Symptoms:** alert "drawdown circuit breaker ENGAGED"; `python src/health.py`
+prints `DEGRADED` with a `dd=…%` field and no headroom left; the bot holds and
+sells but never opens a new position.
+
+**Read this first: it will NOT clear itself.** This is not a cooldown. The
+equity high-water mark ratchets UP and never down (`risk.update_high_water`),
+which is correct on its own — a peak that followed equity downward could never
+fire. But combined with entries-blocked there is no recovery path:
+
+> equity peaks at **P** → a ≥10% drawdown blocks every entry → open positions
+> exit normally and the book goes to cash → **in cash, equity is flat** at
+> ~0.9P → the peak stays **P** → the drawdown stays ≥10% → **the bot never buys
+> again.**
+
+§40 measured what this does historically: in 2022–2026 the rail blocked
+**99.43%** of every buy signal, and the bot executed 29 trades out of 245,213.
+§41 and §44 both tested candidate automatic fixes (peak decay, with and without
+reduced sizing) and **both were REJECTED**, so the latch is deliberately still
+here and clearing it is a human decision.
+
+**Diagnose:**
+```bash
+python src/health.py --json | python -c "import json,sys; print(json.load(sys.stdin)['drawdown'])"
+```
+`engaged: true` with a real `drawdown_pct` is a genuine drawdown. `engaged:
+true` with `drawdown_pct: null` and an "unreadable" note is a corrupt
+high-water file instead — that one self-heals on the next cycle's write, so
+wait one cycle before touching anything.
+
+**Fix — only after you have decided the drawdown is acceptable to resume from:**
+```bash
+rm memory/.equity_highwater.json
+```
+The next cycle reseeds the peak from current equity, so the drawdown resets to
+0% and entries resume. **This forgives the drawdown rather than recovering
+it** — you are choosing a new peak, and the rail will then measure from there.
+If you are not willing to make that call, the correct action is to leave it
+engaged; the book still exits normally while blocked.
+
+**Verify:** `python src/health.py` shows headroom restored, and the next cycle
+logs a new peak.
+
+---
+
 ## slo_breach (too many fail-open degradations in one day)
 
 **Symptoms:** macOS alert "degradation SLO breached"; `slo_breach` event in

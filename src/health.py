@@ -83,6 +83,37 @@ def _open_buys_count(records: list[dict]) -> int:
     return len(open_ids)
 
 
+def _cycle_equity(rec: dict) -> float | None:
+    """Equity out of a `cycle_complete` record, or None if it cannot be read.
+
+    `detail` is a JSON string written by main.py — {"equity": ..., ...}. Read
+    defensively: an unparseable record must yield "unknown", never a stale or
+    invented number, because an unknown drawdown must not read as a healthy
+    one.
+    """
+    try:
+        return float(json.loads(rec.get("detail") or "{}")["equity"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+
+
+def last_known_equity(records) -> float | None:
+    """Newest equity from any `cycle_complete` record, or None.
+
+    The only equity reading available WITHOUT calling the broker, which is what
+    lets both `status()` and `watchdog.check()` report the drawdown rail
+    off-network. Public and shared on purpose: two hand-rolled copies of "find
+    the last cycle_complete and dig the equity out of its detail blob" would be
+    free to disagree, and the pair would then disagree about whether the rail
+    is engaged.
+    """
+    equity = None
+    for r in records or ():
+        if r.get("type") == "event" and r.get("event") == "cycle_complete":
+            equity = _cycle_equity(r) or equity   # chronological; last wins
+    return equity
+
+
 def status(cfg: dict | None = None, now: datetime | None = None,
            read_only: bool = False) -> dict:
     """Everything an operator (or a status page) needs in one object.
@@ -114,6 +145,13 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         "open_positions": None,
         "degradations_today": 0,
         "slo_breach_today": False,
+        # The drawdown circuit breaker, reported because it cannot report
+        # itself (2026-08-03). §40 showed it is a ONE-WAY LATCH with no
+        # recovery path — once engaged the book goes to cash, equity stops
+        # moving, the peak never falls, and entries stay blocked for good. It
+        # has never tripped in production, which is exactly why it has been
+        # invisible. Populated from `risk.drawdown_state`, read-only.
+        "drawdown": None,
         "problems": [],
     }
 
@@ -134,6 +172,7 @@ def status(cfg: dict | None = None, now: datetime | None = None,
             from ledger import Ledger
             records = Ledger(ledger_path).all_records()
         today = now.strftime("%Y-%m-%d")
+        last_equity = last_known_equity(records)
         for r in records:
             if r.get("type") != "event":
                 continue
@@ -151,6 +190,17 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         out["open_positions"] = _open_buys_count(records)
     except Exception as e:  # noqa: BLE001
         out["problems"].append(f"ledger unreadable: {e}")
+        last_equity = None
+
+    # --- the drawdown circuit breaker (2026-08-03) -------------------------
+    # Its own try/except: this is reporting, and a failure to report the rail
+    # must not take down the rest of the health check.
+    try:
+        import risk
+        out["drawdown"] = risk.drawdown_state(
+            last_equity, (cfg.get("risk") or {}).get("max_drawdown_pct", 0))
+    except Exception as e:  # noqa: BLE001 — health must never crash
+        out["problems"].append(f"drawdown state unreadable: {e}")
 
     if out["halted"]:
         out["problems"].append("HALT file present — trading disabled")
@@ -171,8 +221,28 @@ def status(cfg: dict | None = None, now: datetime | None = None,
     if out["slo_breach_today"]:
         out["problems"].append("degradation SLO breached today")
 
+    # §40: the latch has no recovery path, so this problem is permanent until
+    # a human acts. Saying only "entries blocked" would read as a transient
+    # state that clears itself — the whole point is that it does not.
+    dd = out["drawdown"]
+    if dd and dd.get("engaged"):
+        detail = (f"{dd['drawdown_pct']:.2f}% from peak "
+                  f"${dd['peak_equity']:,.0f} (limit {dd['limit_pct']:.1f}%)"
+                  if dd.get("drawdown_pct") is not None else dd.get("note", ""))
+        out["problems"].append(
+            f"drawdown circuit breaker ENGAGED — {detail}; entries are "
+            f"blocked and exits still run. " + _reset_hint())
+
     out["healthy"] = not out["problems"]
     return out
+
+
+def _reset_hint() -> str:
+    try:
+        import risk
+        return risk.HIGHWATER_RESET_HINT
+    except Exception:  # noqa: BLE001 — a missing hint must not break the check
+        return "the peak only ratchets UP, so this cannot clear itself."
 
 
 def main() -> int:
@@ -183,10 +253,19 @@ def main() -> int:
     if args.json:
         print(json.dumps(s, indent=2))
     else:
+        dd = s.get("drawdown") or {}
+        # Headroom, not just the drawdown: the number an operator wants is how
+        # far the book is from the point of no return, and it is the one figure
+        # here that nothing else surfaces.
+        dd_txt = (f" | dd={dd['drawdown_pct']:.2f}%"
+                  f" (headroom {dd['headroom_pp']:.2f}pp)"
+                  if dd.get("drawdown_pct") is not None
+                  and dd.get("headroom_pp") is not None else "")
         print(f"{'HEALTHY' if s['healthy'] else 'DEGRADED'} | mode={s['mode']}"
               f" | storage={s['storage_backend']}"
               f" | heartbeat={s['heartbeat_age_hours']}h"
               f" | open={s['open_positions']}"
+              f"{dd_txt}"
               f" | degradations today={s['degradations_today']}")
         for p in s["problems"]:
             print(f"  - {p}")

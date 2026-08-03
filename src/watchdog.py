@@ -1,7 +1,7 @@
 """Dead-man watchdog — the bot must fail LOUDLY when it runs unattended.
 
 Scheduled ~30 min after the daily cycle (see scripts/
-com.trading-agent.watchdog.plist). Checks FOUR things and alerts via an
+com.trading-agent.watchdog.plist). Checks FIVE things and alerts via an
 operator notification + log + ledger event when any of them fails:
 
   1. HEARTBEAT — did the PROCESS run? memory/heartbeat (written on every
@@ -17,6 +17,15 @@ operator notification + log + ledger event when any of them fails:
      symptoms. ALERT ONLY — news is fail-soft and never gates trading.
   4. HALT: if the kill-switch HALT file exists, keep reminding the owner
      every day until they deal with it.
+  5. DRAWDOWN LATCH: if the drawdown circuit breaker is engaged, say so every
+     day until it is cleared. Added 2026-08-03. §40 showed the rail is a
+     ONE-WAY LATCH — the equity peak ratchets up and never down, so once
+     entries are blocked the book goes to cash, equity stops moving, the peak
+     never falls, and the bot never buys again. It blocked 99.43% of buy
+     signals in 2022-2026 and has never tripped in production, which is
+     exactly why it would engage in silence. ALERT ONLY — nothing here blocks
+     or unblocks a cycle, and §41/§44 both REJECTED candidate fixes, so the
+     latch itself is untouched.
 
 Check 2 exists because check 1 cannot see a cycle that started and died.
 `write_heartbeat()` runs in a `finally:`, so a crashed cycle stamps a FRESH
@@ -147,11 +156,17 @@ def check(today: date | None = None,
           records=None) -> list[str]:
     """Return the list of problems found (empty = all clear).
 
-    Three different questions, deliberately kept apart:
+    Five different questions, deliberately kept apart:
 
-      * did the PROCESS run?    -> the heartbeat file
-      * did the CYCLE finish?   -> a `cycle_complete` record in the ledger
-      * did it KNOW anything?   -> a `market_context` record in the ledger
+      * did the PROCESS run?     -> the heartbeat file
+      * did the CYCLE finish?    -> a `cycle_complete` record in the ledger
+      * did it KNOW anything?    -> a `market_context` record in the ledger
+      * is trading halted?       -> the HALT file
+      * is the book locked out?  -> the drawdown latch (§40), via
+                                    `drawdown_latch()`
+
+    The last two are the ones that cannot clear themselves, and both re-alert
+    daily for that reason.
 
     Until 2026-07-26 only the first was asked, and `write_heartbeat()` runs in
     a `finally:` — so a cycle that crashed six seconds in still stamped a
@@ -199,7 +214,62 @@ def check(today: date | None = None,
     if os.path.exists(halt_path):
         problems.append("HALT file present — trading is disabled until you "
                         "review and delete it")
+
+    dd = drawdown_latch(records)
+    if dd.get("engaged"):
+        problems.append(f"drawdown circuit breaker ENGAGED — {_latch_detail(dd)}"
+                        f". Entries are blocked; exits still run. "
+                        f"{_reset_hint()}")
     return problems
+
+
+def _latch_detail(dd: dict) -> str:
+    if dd.get("drawdown_pct") is None:
+        return dd.get("note") or "state unknown"
+    return (f"{dd['drawdown_pct']:.2f}% from peak ${dd['peak_equity']:,.0f} "
+            f"(limit {dd['limit_pct']:.1f}%)")
+
+
+def _reset_hint() -> str:
+    try:
+        import risk
+        return risk.HIGHWATER_RESET_HINT
+    except Exception:  # noqa: BLE001 — a missing hint must not break the check
+        return "the peak only ratchets UP, so this cannot clear itself."
+
+
+def drawdown_latch(records=None) -> dict:
+    """State of the drawdown circuit breaker, read-only. Never raises.
+
+    THE FIFTH CHECK (2026-08-03). §40 established that this rail is a ONE-WAY
+    LATCH: `update_high_water` ratchets the peak up and never down, so once a
+    drawdown blocks entries the book goes to cash, equity stops moving, the
+    peak never falls, and **the bot never buys again**. In 2022-2026 it blocked
+    99.43% of every buy signal. Production has not tripped it — §40 measured
+    9.85pp of headroom — which is exactly why nobody has noticed that a
+    permanent kill switch would engage in complete silence.
+
+    §41 and §44 both tested candidate FIXES and both were REJECTED, so the
+    latch stays and nothing here touches it. This belongs beside the HALT check
+    rather than the heartbeat ones because it has the same shape: a state that
+    cannot clear itself, so the watchdog keeps reminding the owner every day
+    until they deal with it. A once-only alert would be wrong here — the
+    condition is permanent, and the repetition is the point.
+
+    Alerting only. Nothing here can block or unblock a cycle.
+    """
+    try:
+        import yaml
+        import health
+        import risk
+        with open("config.yaml") as f:
+            cfg = yaml.safe_load(f) or {}
+        limit = (cfg.get("risk") or {}).get("max_drawdown_pct", 0)
+        return risk.drawdown_state(
+            health.last_known_equity(_all_records(records)), limit)
+    except Exception as e:  # noqa: BLE001 — the watchdog itself never raises
+        log.warning("drawdown latch state unreadable: %s", e)
+        return {"engaged": False}
 
 
 def catchup(now: datetime | None = None, records=None) -> str:
