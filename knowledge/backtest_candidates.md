@@ -4495,6 +4495,27 @@ prior got revised into being worse than the one it replaced.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
 
+### Where the probe landed, and the sources that followed
+
+`probe_fmp_lookahead.py` ran on 2026-08-02. All three checks returned
+**UNDETERMINED** — the free FMP tier answers the deciding endpoints with HTTP
+402 — and the probe treats undetermined as failure. The rule above has therefore
+already fired, selecting the **judge-context-only** branch. Nothing is
+registered; fundamentals stay blocked on the owner's call about a paid plan.
+
+Two further sources of the same shape have since been assessed and produced no
+change. Their reviews live beside this file so the question does not get
+re-litigated a third time:
+
+- `knowledge/source-review-oria-one.md` (2026-08-03) — 18 Claude prompts for
+  deal and fundamental analysis; ten of them land inside the branch the rule
+  already selected. One unregistered candidate noted: book-level sector/factor
+  exposure, since `correlation_cap` is pairwise only.
+- `knowledge/source-review-tradingview-mcp.md` (2026-08-03) — an MCP that
+  automates the TradingView desktop app over a debug port. It cannot backtest
+  this bot's code, and an interactive strategy-search loop would spend
+  multiple-comparison budget that nothing counts.
+
 ---
 
 ## §47 — RANDOM-ENTRY DECAY MONITOR (DIAGNOSTIC, pre-registered 2026-08-01, before first run)
