@@ -1,0 +1,10 @@
+snapshot                                           SPY   equal-wt    median   inflation     n
+bars_wide_2000-01-01_2006-12-31.json.gz          8.68%    138.74%    97.24%    +130.06pp   500
+bars_wide_2007-01-01_2013-12-31.json.gz         51.34%     96.80%    68.14%     +45.46pp   500
+bars_wide_2014-01-01_2019-12-31.json.gz         97.97%    101.94%    79.51%      +3.97pp   500
+bars_wide_2020-01-01_2026-07-10.json.gz        154.94%    140.26%    73.15%     -14.68pp   500
+bars_wide_2022-01-01_2026-07-24.json.gz         64.39%     54.80%    26.25%      -9.59pp   500
+
+inflation = equal-weight universe minus the index ETF over the same
+bars. It is the amount by which a gate's own buy-and-hold benchmark
+overstates the market it claims to represent. See §48.

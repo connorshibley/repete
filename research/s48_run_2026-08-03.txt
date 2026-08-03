@@ -1,0 +1,161 @@
+===== s48a =====
+s48a — Is there signal at full deployment? Drawdown rail present vs absent (2000-2006)
+claim DIAGNOSTIC | K=13 | frozen 2026-08-03T21:39:26 | sha 78df9ad69bd17c88… | judge ON
+
+prior: The honest expectation is that the unblocked arm clears (a) and (c) easily — removing the constraint that blocked 94.58% of signals must raise deployment and trade count, and that part is arithmetic rather than a finding. Clause (b) is the one that carries information, and the base rate says it fails: EDGE stands at 0 for 13, five strategies have never cleared an enablement gate, and there is no reason removing a risk rail would create predictive power that was not there. Expected outcome is that the unblocked arm trades far more and still does not beat its own exposure-matched benchmark.
+THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select the experiment — the §46 trap, and the mistake §44's revised prior made. Across s48a-d taken together:
+(1) If the unblocked arm FAILS clause (b) in two or more of the four periods, then the strategies have no expressible edge on this universe even when fully deployed. The ambiguity census.py named resolves against the strategies, the 0-for-13 record is confirmed rather than confounded, and this licenses NO further EDGE registration on this universe — specifically, the drafted volatility-targeting spec is not registered.
+(2) If the unblocked arm CLEARS clause (b) in three or more periods, the ambiguity resolves the other way: the rail was masking measurement, and some share of the thirteen rejections were scoring a bot that was in cash. That licenses exactly one thing — a fresh EDGE registration re-testing the INCUMBENT at full deployment, spending budget as K=14. It does not license new machinery, and it does not license touching max_drawdown_pct.
+(3) Any other split is INDETERMINATE and licenses nothing. Saying so now is the point; a rule that resolves every possible outcome into a green light is not a rule.
+Either resolution is worth having. (1) is the more likely and is the more valuable of the two, because it converts "we do not know whether there is an edge" into "we know there is not", which is the first thing this project could act on decisively.
+
+  verified bars_wide_2000-01-01_2006-12-31.json.gz  sha256 432cec564ccee6ab…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret   +9.45%  PF 1.122  maxDD 11.52%  trades   753  symbols 367  deploy  20.95%  (125s)
+  no_drawdown_rail         ret +137.50%  PF 1.553  maxDD 22.23%  trades  3974  symbols 498  deploy  74.22%  (264s)
+
+  judge on baseline               sized 392081  cut 222526  vetoed  9572  truncated to 0   109
+  judge on no_drawdown_rail       sized 147988  cut  83984  vetoed  3595  truncated to 0  1175
+
+  buy-and-hold on this universe: +138.54%
+
+-- PRE-REGISTERED PASS MARK (no_drawdown_rail) --
+  [PASS] (a) deployment_at_least  74.22% deployed vs 25.0% required
+  [PASS] (b) beats_exposure_matched  +137.50% vs +102.82% (B&H +138.54% x 74.2% deployment)
+  [PASS] (c) min_trades  3974 vs 30
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: PASS  (390s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+
+===== s48b =====
+s48b — Is there signal at full deployment? Drawdown rail present vs absent (2007-2013)
+claim DIAGNOSTIC | K=13 | frozen 2026-08-03T21:39:26 | sha 063ecf050494c09c… | judge ON
+
+prior: The honest expectation is that the unblocked arm clears (a) and (c) easily — removing the constraint that blocked 96.71% of signals must raise deployment and trade count, and that part is arithmetic rather than a finding. Clause (b) is the one that carries information, and the base rate says it fails: EDGE stands at 0 for 13, and there is no reason removing a risk rail would create predictive power that was not there. This period is additionally the one where the prior is least confident in EITHER direction, because 2008 dominates it: a strategy that is simply long more of the time gets hurt worse here than anywhere else, which pushes against the survivorship bias that pushes the other way.
+THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select the experiment — the §46 trap, and the mistake §44's revised prior made. Across s48a-d taken together:
+(1) If the unblocked arm FAILS clause (b) in two or more of the four periods, then the strategies have no expressible edge on this universe even when fully deployed. The ambiguity census.py named resolves against the strategies, the 0-for-13 record is confirmed rather than confounded, and this licenses NO further EDGE registration on this universe — specifically, the drafted volatility-targeting spec is not registered.
+(2) If the unblocked arm CLEARS clause (b) in three or more periods, the ambiguity resolves the other way: the rail was masking measurement, and some share of the thirteen rejections were scoring a bot that was in cash. That licenses exactly one thing — a fresh EDGE registration re-testing the INCUMBENT at full deployment, spending budget as K=14. It does not license new machinery, and it does not license touching max_drawdown_pct.
+(3) Any other split is INDETERMINATE and licenses nothing. Saying so now is the point; a rule that resolves every possible outcome into a green light is not a rule.
+Either resolution is worth having. (1) is the more likely and is the more valuable of the two, because it converts "we do not know whether there is an edge" into "we know there is not", which is the first thing this project could act on decisively.
+
+  verified bars_wide_2007-01-01_2013-12-31.json.gz  sha256 2ba815e1b0d2ca5d…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret   +2.42%  PF 1.082  maxDD 11.45%  trades   269  symbols 177  deploy  10.92%  (117s)
+  no_drawdown_rail         ret  +75.57%  PF 1.366  maxDD 33.84%  trades  3592  symbols 500  deploy  75.96%  (201s)
+
+  judge on baseline               sized 419540  cut 237450  vetoed 10384  truncated to 0    55
+  judge on no_drawdown_rail       sized 115952  cut  65590  vetoed  2890  truncated to 0  1066
+
+  buy-and-hold on this universe: +92.48%
+
+-- PRE-REGISTERED PASS MARK (no_drawdown_rail) --
+  [PASS] (a) deployment_at_least  75.96% deployed vs 25.0% required
+  [PASS] (b) beats_exposure_matched  +75.57% vs +70.25% (B&H +92.48% x 76.0% deployment)
+  [PASS] (c) min_trades  3592 vs 30
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: PASS  (318s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+
+===== s48c =====
+s48c — Is there signal at full deployment? Drawdown rail present vs absent (2014-2019)
+claim DIAGNOSTIC | K=13 | frozen 2026-08-03T21:39:27 | sha d682853578229340… | judge ON
+
+prior: Unlike the other three periods, the baseline arm is expected to clear (a) and (c) here on its own — 18.9% cash and 1,732 executions is a bot that traded. The two arms are expected to come back CLOSE, because the rail blocked only 20.65% of signals here against 94-99% elsewhere. Clause (b) is the one that carries information, and the base rate says it fails for both arms: EDGE stands at 0 for 13, and there is no reason removing a rail would create predictive power that was not there. A (b) pass by EITHER arm in this period specifically is the single most likely way this diagnostic produces a misleading headline, because 2014-2019 is a period in which almost any long-biased strategy made money.
+THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select the experiment — the §46 trap, and the mistake §44's revised prior made. Across s48a-d taken together:
+(1) If the unblocked arm FAILS clause (b) in two or more of the four periods, then the strategies have no expressible edge on this universe even when fully deployed. The ambiguity census.py named resolves against the strategies, the 0-for-13 record is confirmed rather than confounded, and this licenses NO further EDGE registration on this universe — specifically, the drafted volatility-targeting spec is not registered.
+(2) If the unblocked arm CLEARS clause (b) in three or more periods, the ambiguity resolves the other way: the rail was masking measurement, and some share of the thirteen rejections were scoring a bot that was in cash. That licenses exactly one thing — a fresh EDGE registration re-testing the INCUMBENT at full deployment, spending budget as K=14. It does not license new machinery, and it does not license touching max_drawdown_pct.
+(3) Any other split is INDETERMINATE and licenses nothing. Saying so now is the point; a rule that resolves every possible outcome into a green light is not a rule.
+Either resolution is worth having. (1) is the more likely and is the more valuable of the two, because it converts "we do not know whether there is an edge" into "we know there is not", which is the first thing this project could act on decisively.
+
+  verified bars_wide_2014-01-01_2019-12-31.json.gz  sha256 dca8dc85b8770f74…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret  +56.71%  PF 1.396  maxDD 10.72%  trades  3057  symbols 498  deploy  69.25%  (147s)
+  no_drawdown_rail         ret  +85.01%  PF 1.471  maxDD 11.74%  trades  3785  symbols 498  deploy  84.01%  (181s)
+
+  judge on baseline               sized 129179  cut  72932  vetoed  3123  truncated to 0   980
+  judge on no_drawdown_rail       sized  72669  cut  41050  vetoed  1765  truncated to 0  1198
+
+  buy-and-hold on this universe: +90.41%
+
+-- PRE-REGISTERED PASS MARK (no_drawdown_rail) --
+  [PASS] (a) deployment_at_least  84.01% deployed vs 25.0% required
+  [PASS] (b) beats_exposure_matched  +85.01% vs +75.96% (B&H +90.41% x 84.0% deployment)
+  [PASS] (c) min_trades  3785 vs 30
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: PASS  (328s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+
+===== s48d =====
+s48d — Is there signal at full deployment? Drawdown rail present vs absent (2022-2026)
+claim DIAGNOSTIC | K=13 | frozen 2026-08-03T21:39:27 | sha 50bbcea427c73b46… | judge ON
+
+prior: The baseline arm is expected to FAIL clause (c) outright — §45 counted 54 closed trades here under a judge-on run and §40 counted 29 executions, so 30 is close to the boundary and may fall either side depending on how the run terminates. That is itself worth having on the record: the control condition in the period closest to today may not clear a minimum-trades bar that exists to stop noise being read as signal.
+The unblocked arm is expected to clear (a) and (c) easily — removing the constraint that blocked 99.43% of signals must raise deployment and trade count, and that part is arithmetic rather than a finding. Clause (b) is the one that carries information, and the base rate says it fails: EDGE stands at 0 for 13, and there is no reason removing a risk rail would create predictive power that was not there.
+THE READING RULE, COMMITTED BEFORE THE RUN, so that the outcome cannot select the experiment — the §46 trap, and the mistake §44's revised prior made. Across s48a-d taken together:
+(1) If the unblocked arm FAILS clause (b) in two or more of the four periods, then the strategies have no expressible edge on this universe even when fully deployed. The ambiguity census.py named resolves against the strategies, the 0-for-13 record is confirmed rather than confounded, and this licenses NO further EDGE registration on this universe — specifically, the drafted volatility-targeting spec is not registered.
+(2) If the unblocked arm CLEARS clause (b) in three or more periods, the ambiguity resolves the other way: the rail was masking measurement, and some share of the thirteen rejections were scoring a bot that was in cash. That licenses exactly one thing — a fresh EDGE registration re-testing the INCUMBENT at full deployment, spending budget as K=14. It does not license new machinery, and it does not license touching max_drawdown_pct.
+(3) Any other split is INDETERMINATE and licenses nothing. Saying so now is the point; a rule that resolves every possible outcome into a green light is not a rule.
+Either resolution is worth having. (1) is the more likely and is the more valuable of the two, because it converts "we do not know whether there is an edge" into "we know there is not", which is the first thing this project could act on decisively.
+
+  verified bars_wide_2022-01-01_2026-07-24.json.gz  sha256 081dc08727a8cd8e…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret   -7.71%  PF 0.367  maxDD 10.99%  trades    54  symbols  49  deploy   4.72%  (49s)
+  no_drawdown_rail         ret  +61.67%  PF 1.424  maxDD 16.65%  trades  3084  symbols 495  deploy  77.95%  (113s)
+
+  judge on baseline               sized 244673  cut 138709  vetoed  6031  truncated to 0   247
+  judge on no_drawdown_rail       sized  61337  cut  34728  vetoed  1485  truncated to 0  1347
+
+  buy-and-hold on this universe: +45.11%
+
+-- PRE-REGISTERED PASS MARK (no_drawdown_rail) --
+  [PASS] (a) deployment_at_least  77.95% deployed vs 25.0% required
+  [PASS] (b) beats_exposure_matched  +61.67% vs +35.16% (B&H +45.11% x 78.0% deployment)
+  [PASS] (c) min_trades  3084 vs 30
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: PASS  (163s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl
+

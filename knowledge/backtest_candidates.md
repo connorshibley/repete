@@ -4712,4 +4712,125 @@ which one it is would be period selection.
 
 *(Measured results follow below, written after the run.)*
 
+---
+
+### THE MEASUREMENT (2026-08-03, judge ON, full output `research/s48_run_2026-08-03.txt`)
+
+| period | arm | return | PF | maxDD | trades | symbols | deployment |
+|---|---|---|---|---|---|---|---|
+| 2000-2006 | baseline | +9.45% | 1.122 | 11.52% | 753 | 367 | 20.95% |
+| | **unblocked** | **+137.50%** | 1.553 | 22.23% | 3,974 | 498 | 74.22% |
+| 2007-2013 | baseline | +2.42% | 1.082 | 11.45% | 269 | 177 | 10.92% |
+| | **unblocked** | **+75.57%** | 1.366 | 33.84% | 3,592 | 500 | 75.96% |
+| 2014-2019 | baseline | +56.71% | 1.396 | 10.72% | 3,057 | 498 | 69.25% |
+| | **unblocked** | **+85.01%** | 1.471 | 11.74% | 3,785 | 498 | 84.01% |
+| 2022-2026 | baseline | **−7.71%** | **0.367** | 10.99% | 54 | 49 | **4.72%** |
+| | **unblocked** | **+61.67%** | 1.424 | 16.65% | 3,084 | 495 | 77.95% |
+
+**The control reproduced.** 2022-2026 baseline came back at −7.71%, PF 0.367,
+maxDD 10.99%, 54 trades — identical to the `s43d` figures §45 published. The
+diagnostic is measuring the same bot the record already describes.
+
+**One citation corrected while checking that.** The recorded census for the
+2022-2026 baseline is 245,212 signals with **237,522 blocked by drawdown =
+96.86%**, not the 99.43% quoted from §40's table in the pre-registration above.
+Both numbers are right for their own run: §40's entry census was scored
+**judge-off**, and §45 reported 96.86% for the same period **judge-on**, which
+is what s48 runs. The pre-registration text is left as written rather than
+edited — it quoted §40 accurately — and the judge-on figure is the one to use
+alongside these results.
+
+### The registered clauses: the unblocked arm passed 4 of 4
+
+| period | (a) deployment ≥25% | (b) beats_exposure_matched | (c) ≥30 trades |
+|---|---|---|---|
+| 2000-2006 | 74.22% ✓ | +137.50% vs +102.82% ✓ | 3,974 ✓ |
+| 2007-2013 | 75.96% ✓ | +75.57% vs +70.25% ✓ | 3,592 ✓ |
+| 2014-2019 | 84.01% ✓ | +85.01% vs +75.96% ✓ | 3,785 ✓ |
+| 2022-2026 | 77.95% ✓ | +61.67% vs +35.16% ✓ | 3,084 ✓ |
+
+**The prior was wrong.** It said the unblocked arm would trade far more and
+still fail (b). It cleared (b) in every period. Recorded plainly, because a
+prior that is quietly forgotten when it misses is not a prior.
+
+Under the pre-registered reading rule this is **outcome (2)**: ≥3 of 4. What
+that licenses is exactly one thing, quoted from the frozen spec — *"a fresh
+EDGE registration re-testing the INCUMBENT at full deployment, spending budget
+as K=14. It does not license new machinery, and it does not license touching
+`max_drawdown_pct`."*
+
+### AND THE PRE-REGISTERED FAILURE MODE IS REAL, AND ENORMOUS
+
+Every s48 spec listed survivorship third, and said it *"flatters the
+HIGHER-DEPLOYMENT arm more than the baseline — which biases clause (b) toward
+outcome (2) and therefore toward the more permissive reading."*
+
+That has been a stated direction on every gate since §41 and was never a size.
+It is now a size. `scripts/survivorship_check.py` measures it **from inside the
+snapshot**, needing no external data: SPY is in the universe, and an index
+ETF's price already reflects constituent changes, so the gap between the
+equal-weight 500 and SPY over identical bars *is* the inflation.
+
+| snapshot | SPY | equal-weight 500 | **inflation** |
+|---|---|---|---|
+| 2000-2006 | **+8.68%** | +138.74% | **+130.06pp** |
+| 2007-2013 | **+51.34%** | +96.80% | **+45.46pp** |
+| 2014-2019 | +97.97% | +101.94% | +3.97pp |
+| 2020-2026 | +154.94% | +140.26% | −14.68pp |
+| 2022-2026 | +64.39% | +54.80% | −9.59pp |
+
+**In 2000-2006 the snapshot's own benchmark says the market returned +138.54%.
+SPY, over the identical bars, returned +8.68%.** Today's 500 index members,
+back-projected to 2000, all survived the dot-com crash by construction. The
+inflation is largest in the two oldest periods and vanishes in the recent ones
+— exactly the gradient survivorship predicts, which is a strong check that this
+is the mechanism rather than a coincidence.
+
+### Where the outperformance actually lives
+
+`beats_exposure_matched` compares an arm against the snapshot's own
+buy-and-hold, so both sides carry the same survivorship and the clause is fair
+on its own terms. Setting the same returns against a **clean** benchmark asks a
+different and blunter question — would the owner have done better just holding
+the index:
+
+| period | unblocked | SPY | vs SPY | survivorship inflation |
+|---|---|---|---|---|
+| 2000-2006 | +137.50% | +8.68% | **+128.82pp** | **+130.06pp** |
+| 2007-2013 | +75.57% | +51.34% | **+24.23pp** | **+45.46pp** |
+| 2014-2019 | +85.01% | +97.97% | **−12.96pp** | +3.97pp |
+| 2022-2026 | +61.67% | +64.39% | **−2.72pp** | −9.59pp |
+
+**The outperformance appears only in the two periods whose benchmark is
+survivorship-poisoned, and disappears in both periods where it is not.** In
+2014-2019 and 2022-2026 — the two periods the universe has had least time to
+lose members — the fully-deployed bot *lost to SPY*.
+
+This is not a refutation of the clause result and is not offered as one. The
+bot also trades a survivor-only universe, so its own return is inflated too;
+the SPY column is harsher on the bot than a like-for-like comparison would be.
+Neither column alone settles it. What the pair establishes is narrower and
+firmer: **the (b) passes are not safe to read as evidence of an edge**, and the
+follow-up the rule licenses must be scored against a benchmark that is not
+built from survivors.
+
+### What this does and does not change
+
+- **Nothing is enabled. `max_drawdown_pct` stays at 10.0.** The unblocked arm's
+  drawdown was 22.23% / 33.84% / 11.74% / 16.65% against the owner's stated
+  10pp tolerance — the rail is doing the job it exists to do, and `census.py`'s
+  standing rule against loosening a rail on a diagnostic's say-so holds.
+- **The ambiguity §40 named is half-resolved.** "No edge found" and "no edge
+  expressible" are no longer indistinguishable: the bot demonstrably *can*
+  express far more when unblocked, and the shipped config was measuring a bot
+  in cash. Whether what it expresses is an *edge* is now the open question, and
+  the survivorship measurement says the current benchmark cannot answer it.
+- **No EDGE verdict is withdrawn, re-scored or revisited.** §41's precedent
+  stands. EDGE remains 0 for 13 and K stays 13; a DIAGNOSTIC spends no budget.
+- **The K=14 follow-up is the owner's decision, not an automatic next step** —
+  §44's precedent exactly, where §41 named its own legitimate follow-up and
+  refused to take it on its own authority. When registered it should score
+  against a survivorship-free benchmark, and `scripts/survivorship_check.py`
+  now exists to keep that honest.
+
 **Nothing enabled. No threshold moved. `mode: paper` unchanged.**
