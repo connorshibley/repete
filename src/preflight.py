@@ -192,6 +192,43 @@ def run(cfg: dict, account: dict | None = None) -> list[str]:
             f"would stop trading without saying why. Raise the heat cap, lower "
             f"the per-trade risk, or leave brackets on.")
 
+    # THE NET EXPOSURE INVERSION TRAP (Phase 1, 2026-08-04). risk.py:1150-1169
+    # reads `net_exposure_pct.max` as a ceiling on buys and `.min` as a floor
+    # on shorts — deliberately DIRECTIONAL, per the comment there, so that a
+    # floor can never block every buy the way a two-sided band would. That
+    # protection assumes `min < max`; an inverted band (e.g. `min: 120, max:
+    # 80`) is a two-sided outage instead — DEMONSTRATED: with those values,
+    # `projected > hi` refuses every buy that would move net above 80% and
+    # `projected < lo` refuses every short that would move net below 120%,
+    # which between them cover the entire number line either side of the
+    # band's (nonsensical) interior. The key ships commented out in
+    # config.yaml, so nothing today can hit this, but nothing would stop
+    # someone from uncommenting a doubled or swapped value later either —
+    # same shape as the heat inversion above, closed here rather than left
+    # documented.
+    band = r.get("net_exposure_pct")
+    if band is not None:
+        if not isinstance(band, dict):
+            fails.append(f"risk.net_exposure_pct must be a block with min/max, "
+                         f"got {band!r}")
+        else:
+            lo, hi = band.get("min"), band.get("max")
+            for name, v in (("min", lo), ("max", hi)):
+                if not isinstance(v, (int, float)) or isinstance(v, bool):
+                    fails.append(
+                        f"risk.net_exposure_pct.{name} missing or not a "
+                        f"number ({v!r}) — both min and max are required "
+                        f"once the block is present")
+            if (isinstance(lo, (int, float)) and not isinstance(lo, bool)
+                    and isinstance(hi, (int, float)) and not isinstance(hi, bool)
+                    and lo >= hi):
+                fails.append(
+                    f"risk.net_exposure_pct.min ({lo}) is not below "
+                    f".max ({hi}) — an inverted or equal band refuses both a "
+                    f"buy toward the ceiling and a short toward the floor, "
+                    f"which between them cover every order on either side of "
+                    f"the band: a two-sided outage instead of a 130/30 band")
+
     # The judge is optional, but claiming to have one and not having one is a
     # misconfiguration — and a quiet one. llm.review_signal() returns a clean
     # `approve` at full size when the key is absent, so trades run UNJUDGED at
