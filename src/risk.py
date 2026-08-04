@@ -1106,14 +1106,22 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                 and strategy_open >= strat_cap and symbol not in positions):
             raise RiskRejection(
                 f"max open positions for {strategy} reached ({strat_cap})", rail="strategy_slots")
-        existing = positions.get(symbol, {}).get("market_value", 0.0)
+        # abs(): Alpaca reports a SHORT's market_value as negative, so raw
+        # addition reads -$9,000 + $2,000 as a $7,000 position and the per-name
+        # cap stops binding on exactly the side where it matters. Magnitude is
+        # what concentration means.
+        existing = abs(positions.get(symbol, {}).get("market_value", 0.0))
         if existing + order_value > account["equity"] * r["max_position_pct"] / 100:
             raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}", rail="position_cap")
 
         recfg = r.get("regime_exposure") or {}
         if (recfg.get("enabled") and regime_label
                 and regime_label.startswith("down")):
-            gross = sum(p.get("market_value", 0.0) for p in positions.values())
+            # abs() for the same reason: a long and a short would otherwise net
+            # toward zero and a 100%-gross book would report as 0%. GROSS is a
+            # sum of magnitudes; net is a different number with its own rail.
+            gross = sum(abs(p.get("market_value", 0.0))
+                        for p in positions.values())
             cap = account["equity"] * recfg.get("down_max_gross_pct", 50) / 100
             if gross + order_value > cap:
                 raise RiskRejection(
