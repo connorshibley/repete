@@ -86,13 +86,30 @@ SELF_RULES = (
     # comparison runs in its favour. A FAIL is therefore decisive; a PASS is
     # not.
     "beats_benchmark_symbol",  # return >= benchmark_return_pct       [§50]
+    # §51. The RISK-ADJUSTED form of the rule above, and a different question:
+    # not "did it make more money" but "did it make more money PER UNIT OF
+    # DRAWDOWN". §50 measured the incumbent losing to SPY on absolute return in
+    # both periods where the benchmark is clean, while drawing down less than
+    # SPY in all four — so the two rules can and do disagree, and a spec using
+    # this one is NOT making the claim §50 rejected.
+    #
+    # Scored risk-MATCHED rather than as a bare ratio:
+    #
+    #     strategy_return x (benchmark_maxDD / strategy_maxDD) >= benchmark_return
+    #
+    # Algebraically the ratio comparison, but stated as "levered to the index's
+    # own drawdown, does it beat the index?" — which keeps the leverage
+    # assumption visible instead of buried inside a ratio. That assumption is
+    # load-bearing and false in general: a long equity book cannot be levered
+    # for free, and levering multiplies the tail beyond what maxDD measures.
+    "beats_benchmark_risk_adjusted",  # risk-matched return >= benchmark [§51]
 )
 
 # Rules that need a `symbol`. Validated rather than defaulted: a spec that
 # forgot to say which instrument it is racing would silently score against
 # whatever backtest.BENCHMARK_SYMBOL happened to be that week, and the frozen
 # hash would not record the difference.
-SYMBOL_RULES = ("beats_benchmark_symbol",)
+SYMBOL_RULES = ("beats_benchmark_symbol", "beats_benchmark_risk_adjusted")
 
 CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES
 
