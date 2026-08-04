@@ -5245,3 +5245,99 @@ included rather than dropped because excluding a conjunction's least favourable
 arm would be arm selection.
 
 *(Measured results follow below, written after the run.)*
+
+---
+
+### THE MEASUREMENT (2026-08-03, judge ON, full output `research/s51_run_2026-08-03.txt`)
+
+**VERDICT: PASS in all three universes. This is the first EDGE pass in fifteen
+claims.** The verdict stands and is not rescored — §41's precedent, and the
+whole point of freezing a pass mark. Everything below is what the number
+*means*, not a revision of whether it was cleared.
+
+| spec | universe | return | PF | maxDD | trades | deploy | clause (c) |
+|---|---|---|---|---|---|---|---|
+| s51a | 38 | +191.26% | 1.690 | 11.19% | 2,114 | 74.52% | +576.54% levered vs SPY +157.43% |
+| s51b | 68 | +136.94% | 1.469 | 9.90% | 3,087 | 77.55% | +466.14% levered vs +157.43% |
+| s51c | 500 | +98.39% | 1.418 | 17.05% | 4,489 | 78.38% | +194.62% levered vs +157.43% |
+
+Note before anything else: on **absolute** return only s51a beats SPY
+(+191.26% vs +157.43%). s51b and s51c both *lose* to the index, exactly as §50
+found. Nothing here contradicts §50.
+
+### AND THEN I TRIED TO BREAK IT. Three findings, two of them pre-registered.
+
+**1. s51a carries the worst survivorship in the entire project: +200.28pp.**
+
+| hold-out universe | SPY | equal-weight | inflation |
+|---|---|---|---|
+| **38 (s51a)** | +154.94% | **+355.23%** | **+200.28pp** |
+| 68 (s51b) | +154.94% | +246.06% | +91.11pp |
+| 500 (s51c) | +154.94% | +140.26% | **−14.68pp** |
+
+Worse than 2000-2006's +130.06pp, which §48 called enormous. The 38 names are
+in `config.yaml` **because they are today's winners** — NVDA, AVGO, LLY and the
+rest were selected by knowing how 2020-2026 turned out.
+
+**`s51a.yaml` called this arm "the most independent of the mined data and the
+most relevant to deployment". The relevance is right; the independence claim
+was wrong, and it is my error.** Unmined is not unbiased. s51c, which the spec
+called the weakest arm, is on this axis the only clean one.
+
+**2. The two drawdowns being compared are different events.** SPY's 33.72%
+maxDD is the COVID crash, **2020-02-19 → 2020-03-23**. Every arm's own maxDD is
+the 2022 bear market — peak Dec 2021 / Jan 2022, trough **2022-09-30**. The
+clause matches a *number*, not a *risk*. This is the pre-registered failure mode
+firing verbatim: *"maxDD is a single-path statistic… one realised sequence, not
+a distribution."*
+
+**3. On s51a the low drawdown is a startup artifact — but on s51c it is not.**
+Through the COVID window:
+
+| arm | bot equity move | SPY |
+|---|---|---|
+| s51a (38) | **−0.99%** | −33.72% |
+| s51c (500) | **−10.90%** | −33.72% |
+
+s51a's run was seven weeks old and barely deployed; it sat the crash out for
+reasons that have nothing to do with strategy, and that is what sets its 11.19%
+maxDD against SPY's 33.72%. **s51c was genuinely deployed and fell a third as
+far as the index.** That part is not an artifact — and it is *not what the claim
+tested*, so it licenses nothing and would need its own registration.
+
+### What §51 actually establishes
+
+**The pre-registered asymmetry is what saves this from being a false
+discovery.** Every spec said, before the run:
+
+> the STRATEGY still trades a survivor-selected universe… **A FAIL is DECISIVE
+> (it lost with a tailwind); a PASS is NOT.**
+
+A PASS arrived, and the caveat that made it non-decisive was already frozen in
+place. That is the machinery working exactly as designed — and it is the reason
+this section reads as "PASS, and here is why it does not mean what it looks
+like" rather than as "edge found".
+
+- **It is not more money.** s51b and s51c lose to SPY on absolute return.
+- **It is not survivorship-free.** The strategy trades survivors, and on s51a it
+  trades the most selected universe in the project.
+- **It is not replication.** One hold-out, and the comparison rests on a single
+  crash the bot partly sat out.
+- **The leverage framing is a normalisation, not a plan.** "+576.54% levered to
+  SPY's drawdown" would require ~3× on a long equity book, financed, through
+  margin calls that arrive at troughs.
+
+### Standing
+
+**Nothing enabled. `max_drawdown_pct` stays at 10.0. `mode: paper` unchanged.**
+No config value moves on a PROVISIONAL PASS, and `run_gate.py` says so itself:
+*"a recommendation, not an action."*
+
+**The EDGE record is now 1 PASS in 15 claims** — and the one pass is this,
+carrying the three qualifications above. Anyone quoting "first edge found"
+without them is quoting half a sentence.
+
+The honest next step, if the owner wants one, is a **registered replication on a
+universe that is not selected on the outcome** — a point-in-time index
+membership snapshot, which this repo does not currently have and cannot build
+from its existing data.
