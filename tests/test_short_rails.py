@@ -123,3 +123,62 @@ def test_a_sell_against_a_position_held_short_is_a_desync():
     with pytest.raises(risk.RiskRejection) as e:
         risk.pure_checks("sell", "TSLA", 10, 100.0, ACCOUNT, positions, _cfg())
     assert e.value.rail == "desync_sell"
+
+
+# ---- the net-exposure band ----
+
+BAND = {"net_exposure_pct": {"min": 80, "max": 120}}
+
+
+def test_a_short_that_would_push_net_below_the_floor_is_refused():
+    positions = {"AAPL": {"market_value": 85_000.0}}      # net 85%
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("short", "TSLA", 100, 100.0, ACCOUNT, positions,
+                         _cfg(**BAND))                     # -10% -> net 75%
+    assert e.value.rail == "net_exposure"
+
+
+def test_a_smaller_short_inside_the_band_is_allowed():
+    """The paired half: same book, same direction, smaller size."""
+    positions = {"AAPL": {"market_value": 85_000.0}}
+    risk.pure_checks("short", "TSLA", 10, 100.0, ACCOUNT, positions,
+                     _cfg(**BAND))                         # -1% -> net 84%
+
+
+def test_a_buy_that_would_push_net_above_the_ceiling_is_refused():
+    positions = {"AAPL": {"market_value": 118_000.0}}      # net 118%
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("buy", "MSFT", 50, 100.0, ACCOUNT, positions,
+                         _cfg(**BAND))                     # +5% -> net 123%
+    assert e.value.rail == "net_exposure"
+
+
+def test_a_smaller_buy_inside_the_band_is_allowed():
+    """The paired half missing from the ceiling case above: same book, same
+    direction, smaller size. Without this, the ceiling test could be tripping
+    on any threshold at all and nothing would tell you the rail also lets a
+    compliant buy through."""
+    positions = {"AAPL": {"market_value": 118_000.0}}
+    risk.pure_checks("buy", "MSFT", 10, 100.0, ACCOUNT, positions,
+                     _cfg(**BAND))                         # +1% -> net 119%
+
+
+def test_a_buy_is_never_blocked_by_the_FLOOR():
+    """THE LOAD-BEARING CASE. §48 measured deployment at 4.72%. If the floor
+    applied to buys, a bot below the band could never trade its way back in —
+    the rail would be an outage, and it would look like a working rail."""
+    risk.pure_checks("buy", "MSFT", 1, 100.0, ACCOUNT, {}, _cfg(**BAND))
+
+
+def test_a_cover_is_never_blocked_by_the_band():
+    """Exits always run."""
+    positions = {"TSLA": {"market_value": -50_000.0}}
+    risk.pure_checks("cover", "TSLA", 100, 100.0, ACCOUNT, positions,
+                     _cfg(**BAND))
+
+
+def test_the_band_is_off_when_unconfigured():
+    """Absent config must behave exactly as before, or this rail silently
+    changes every existing gate result."""
+    positions = {"AAPL": {"market_value": 500_000.0}}
+    risk.pure_checks("buy", "MSFT", 1, 100.0, ACCOUNT, positions, _cfg())

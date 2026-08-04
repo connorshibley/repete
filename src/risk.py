@@ -1047,6 +1047,16 @@ def correlated_position_count(cand_bars: list[dict], open_bars_map: dict,
     return count
 
 
+def net_exposure_pct(positions: dict, equity: float) -> float:
+    """Signed exposure as a percentage of equity: longs positive, shorts
+    negative. Distinct from GROSS, which sums magnitudes — a 130/30 book is
+    160% gross and 100% net, and the two rails answer different questions."""
+    if not equity:
+        return 0.0
+    return sum(p.get("market_value", 0.0)
+               for p in positions.values()) / equity * 100
+
+
 def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
                 regime_label: str | None = None,
@@ -1129,6 +1139,34 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                 raise RiskRejection(
                     f"down-regime exposure cap: gross ${gross + order_value:,.0f} "
                     f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity", rail="regime_exposure")
+
+        # NET exposure band (130/30). DIRECTIONAL ON PURPOSE: `max` constrains
+        # buys, `min` constrains shorts. A two-sided band would be an outage —
+        # §48 measured deployment at 4.72% with the drawdown rail engaged, and
+        # a floor applied to buys would reject every entry, leaving a book
+        # below the band permanently unable to climb back into it.
+        #
+        # An order that moves net TOWARD the band is never blocked.
+        band = r.get("net_exposure_pct") or {}
+        # `account["equity"]` guards the same way `net_exposure_pct` guards
+        # its own division: a zero (or missing) equity reading must not raise
+        # ZeroDivisionError out of a risk rail. In practice size_order() would
+        # already have floored qty to 0 and pure_checks raises zero_qty before
+        # this ever runs, so this is belt-and-suspenders, not a load-bearing
+        # path.
+        if band and account["equity"]:
+            net = net_exposure_pct(positions, account["equity"])
+            delta_pct = order_value / account["equity"] * 100
+            projected = net + (delta_pct if action == "buy" else -delta_pct)
+            hi, lo = band.get("max"), band.get("min")
+            if action == "buy" and hi is not None and projected > hi:
+                raise RiskRejection(
+                    f"net exposure band: buying would take net to "
+                    f"{projected:.1f}% (ceiling {hi}%)", rail="net_exposure")
+            if action == "short" and lo is not None and projected < lo:
+                raise RiskRejection(
+                    f"net exposure band: shorting would take net to "
+                    f"{projected:.1f}% (floor {lo}%)", rail="net_exposure")
 
     # SIGN, not presence: `symbol not in positions` passes for a symbol held
     # SHORT, and a "sell" against a short would not be a no-op — it would

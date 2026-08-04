@@ -296,18 +296,21 @@ def test_the_backtester_runs_under_FEWER_rails_than_live_and_the_gap_is_pinned()
     forces a deliberate decision and a divergence entry, rather than widening
     the gap silently and flattering the next set of results.
     """
-    # `desync_cover` was added 2026-08-04 by Phase 1 of the long/short work
-    # (the cover-side mirror of `desync_sell`). It lives in `pure_checks`, not
-    # `pre_trade_checks`, so BOTH the live bot and the backtester inherit it
-    # together — the pinned GAP between the two sets below does not widen, and
-    # no divergence entry in docs/divergences.md is needed. That is exactly
-    # the deliberate decision this test exists to force: a rail added here
-    # instead, to `pre_trade_checks`, WOULD widen the live-only gap and would
-    # require one.
+    # `desync_cover` and `net_exposure` were both added 2026-08-04 by Phase 1
+    # of the long/short work — `desync_cover` the cover-side mirror of
+    # `desync_sell`, `net_exposure` the directional 130/30 band. Both live in
+    # `pure_checks`, not `pre_trade_checks`, so BOTH the live bot and the
+    # backtester inherit them together — the pinned GAP between the two sets
+    # below does not widen, and neither needs a divergence entry in
+    # docs/divergences.md. That is exactly the deliberate decision this test
+    # exists to force: a rail added instead to `pre_trade_checks` WOULD widen
+    # the live-only gap and would require one. (Don't let this comment grow
+    # into a list of every rail ever added — the reasoning is what matters,
+    # not the roll call.)
     assert _rails_in("pure_checks") == {
         "zero_qty", "order_value_cap", "drawdown", "max_open_positions",
         "strategy_slots", "position_cap", "regime_exposure", "desync_sell",
-        "desync_cover"}
+        "desync_cover", "net_exposure"}
     assert _rails_in("pre_trade_checks") == {"halt", "daily_cap", "heat",
                                              "correlation"}
 
