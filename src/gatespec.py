@@ -73,7 +73,26 @@ SELF_RULES = (
     "beats_buy_hold",          # return >= buy_hold_return_pct
     "beats_exposure_matched",  # return >= buy_hold_return_pct * deployment
     "deployment_at_least",     # avg_deployment_pct >= `pct`          [§41]
+    # §50. The three benchmarks above ALL derive from the snapshot's own
+    # universe, and §48 measured that those universes are survivorship-
+    # poisoned by up to +130pp — 2000-2006's equal-weight buy-and-hold returns
+    # +138.74% where SPY over the identical bars returns +8.68%. Every gate
+    # from §14 onward has been scored against the inflated number.
+    #
+    # This rule scores against ONE named instrument instead. An index ETF's
+    # price already reflects constituent changes, so the benchmark carries no
+    # survivorship. Note the residual asymmetry, which §50 pre-registers rather
+    # than hides: the STRATEGY still trades a survivor-only universe, so the
+    # comparison runs in its favour. A FAIL is therefore decisive; a PASS is
+    # not.
+    "beats_benchmark_symbol",  # return >= benchmark_return_pct       [§50]
 )
+
+# Rules that need a `symbol`. Validated rather than defaulted: a spec that
+# forgot to say which instrument it is racing would silently score against
+# whatever backtest.BENCHMARK_SYMBOL happened to be that week, and the frozen
+# hash would not record the difference.
+SYMBOL_RULES = ("beats_benchmark_symbol",)
 
 CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES
 
@@ -160,6 +179,11 @@ def validate(spec: dict) -> None:
                   "deployment_at_least `pct` must be in (0, 100] — a threshold "
                   "of 0 would pass a bot that never invested, which is the "
                   "exact degenerate case §41 exists to rule out")
+        if clause["rule"] in SYMBOL_RULES:
+            _need(isinstance(clause.get("symbol"), str) and clause["symbol"],
+                  f"{clause['rule']} needs a `symbol` — the instrument being "
+                  "raced must be part of the frozen spec, not a default that "
+                  "can change underneath a registered claim")
 
     ids = [c["id"] for c in spec["clauses"]]
     _need(len(set(ids)) == len(ids), f"duplicate clause ids: {ids}")
