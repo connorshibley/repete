@@ -20,7 +20,7 @@ import logging
 import math
 from datetime import date, datetime, timezone
 
-from strategies.base import ENTRY_ACTIONS
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS
 
 log = logging.getLogger("risk")
 
@@ -1207,7 +1207,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Still raised for buys even though the cycle also blocks entries upstream.
     # That redundancy is deliberate: it is the last gate before an order, and it
     # holds even for a caller that never went through _run_cycle.
-    if action == "buy" and check_halt():
+    if action in ENTRY_ACTIONS and check_halt():
         raise RiskRejection("HALT file present — trading disabled", rail="halt")
     # §29: 0 disables. This is no longer a risk rail — it is a RUNAWAY GUARD.
     # Set well above observed demand (~15 buy signals/day live) so it never
@@ -1227,7 +1227,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # limit has enlarged risk, which is the shape PR #69 refused for the judge
     # and §31 refused for the drawdown breaker. Same reasoning, third rail.
     _cap_day = cfg["risk"].get("max_trades_per_day") or 0
-    if action == "buy" and _cap_day and _trades_today() >= _cap_day:
+    if action in ENTRY_ACTIONS and _cap_day and _trades_today() >= _cap_day:
         raise RiskRejection(f"max trades per day reached ({_cap_day})", rail="daily_cap")
 
     # Count THIS strategy's currently-open positions for its slot allocation.
@@ -1250,7 +1250,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
     # risk must stay under max_portfolio_heat_pct of equity. Entries only.
     heat_cap_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
-    if action == "buy" and heat_cap_pct > 0 and open_trades is not None:
+    if action in ENTRY_ACTIONS and heat_cap_pct > 0 and open_trades is not None:
         heat = portfolio_heat(open_trades, cfg, account["equity"])
         new_risk = (qty * max(price - candidate_stop, 0.0) if candidate_stop
                     else account["equity"]
@@ -1265,7 +1265,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Correlation heat cap (entries only; needs the cycle's bars). Fail-open
     # when bars are unavailable — the per-symbol cap above still applies.
     ccfg = cfg["risk"].get("correlation_cap") or {}
-    if (action == "buy" and ccfg.get("enabled") and bars_map
+    if (action in ENTRY_ACTIONS and ccfg.get("enabled") and bars_map
             and bars_map.get(symbol)):
         open_bars = {s: bars_map.get(s) for s in positions if s != symbol}
         n = correlated_position_count(bars_map[symbol], open_bars,
@@ -1277,5 +1277,10 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                 f"{symbol} (corr>={ccfg.get('threshold', 0.85)}) — "
                 f"co-moving names are one bet", rail="correlation")
 
-    if action == "sell":
+    # EXIT_ACTIONS, not just "sell": a "cover" closes a short the same way a
+    # "sell" closes a long, and gating on "sell" alone let a cover bypass the
+    # minimum holding period entirely — the swing guard's whole purpose,
+    # structurally impossible day-trading, would not have applied to the short
+    # side at all.
+    if action in EXIT_ACTIONS:
         swing_guard(entry_ts, cfg)
