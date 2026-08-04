@@ -104,6 +104,20 @@ class Result:
     deployment_zero_pct: float = 0.0   # § 40: share of bars fully in cash
     deployment_median_pct: float = 0.0
     deployment_max_pct: float = 0.0
+    # §50: a SURVIVORSHIP-FREE benchmark, alongside the poisoned one above.
+    # `buy_hold_return_pct` averages the whole snapshot universe, and §48
+    # measured what that costs: the wide snapshots are built from TODAY's index
+    # membership, so 2000-2006's equal-weight buy-and-hold returns +138.74%
+    # while SPY over the identical bars returns +8.68% — a +130pp gap that is
+    # pure survivorship. An index ETF's price already reflects constituent
+    # changes (names that failed left the index and took their losses with
+    # them), so a single-instrument benchmark carries none of it.
+    #
+    # None means "could not be computed" and must NEVER read as zero — a
+    # missing benchmark has to fail its clause, not quietly clear a bar of 0.0.
+    benchmark_symbol: str = ""
+    benchmark_return_pct: float | None = None
+    benchmark_max_drawdown_pct: float | None = None
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
@@ -187,6 +201,37 @@ def buy_and_hold_return(bars: list, slippage_bps: float, fee: float,
     if qty <= 0:
         return 0.0
     return ((sell - buy) * qty - 2 * fee) / cash * 100
+
+
+BENCHMARK_SYMBOL = "SPY"
+
+
+def benchmark_stats(sym_bars: dict, symbol: str, slippage_bps: float,
+                    fee: float, cash: float) -> tuple:
+    """(return_pct, max_drawdown_pct) for ONE instrument — the §50 benchmark.
+
+    Why a single instrument. `buy_hold_return_pct` averages the whole snapshot
+    universe, and §48 measured that those universes are built from today's
+    index membership: every name in them survived to 2026 by construction. The
+    result is a "market" that returned +138.74% over 2000-2006 while SPY over
+    the identical bars returned +8.68%. An index ETF's price already reflects
+    constituent changes, so it carries none of that inflation.
+
+    Charged the SAME slippage and fees as the universe benchmark, and entered
+    at the same bar, so the two are like-for-like in everything except which
+    instruments they hold. A benchmark scored frictionlessly against a strategy
+    that pays costs would be a bar nobody could clear.
+
+    Returns (None, None) when the symbol is absent or too short. Callers must
+    treat that as "cannot be measured" — `run_gate.evaluate` FAILS the clause,
+    on the §33 RUN 1 precedent that a silently skipped check reads as a passed
+    one.
+    """
+    bars = sym_bars.get(symbol)
+    if not bars or len(bars) < 2:
+        return None, None
+    return (round(buy_and_hold_return(bars, slippage_bps, fee, cash), 3),
+            round(buy_and_hold_drawdown({symbol: bars}), 3))
 
 
 # --------------------------------------------------------------- bar loading
@@ -577,6 +622,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     wins = [t for t in closed if t.pnl > 0]
     bh = (sum(buy_and_hold_return(b, slip, fee, start_cash / len(sym_bars))
               for b in sym_bars.values()) / len(sym_bars)) if sym_bars else 0.0
+    bm_ret, bm_dd = benchmark_stats(sym_bars, BENCHMARK_SYMBOL, slip, fee,
+                                    start_cash)
 
     return Result(
         params={**params, "strategy": strategy_name},
@@ -586,6 +633,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
         buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),
+        benchmark_symbol=BENCHMARK_SYMBOL,
+        benchmark_return_pct=bm_ret, benchmark_max_drawdown_pct=bm_dd,
         avg_deployment_pct=round(100 * sum(deployment) / len(deployment), 2)
         if deployment else 0.0,
         win_rate=round(len(wins) / len(closed), 3) if closed else 0.0,
@@ -1077,6 +1126,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     wins = [t for t in closed if t.pnl > 0]
     bh = (sum(buy_and_hold_return(b, slip, fee, start_cash / len(sym_bars))
               for b in sym_bars.values()) / len(sym_bars)) if sym_bars else 0.0
+    _bm_ret, _bm_dd = benchmark_stats(sym_bars, BENCHMARK_SYMBOL, slip, fee,
+                                      start_cash)
 
     return Result(
         params={"strategy": "ENSEMBLE",
@@ -1098,6 +1149,12 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
         buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),
+        # THE PATH EVERY GATE ACTUALLY TAKES. The single-strategy Result above
+        # is constructed separately, so a field added to only one of these two
+        # sites scores None everywhere it matters while looking correct in a
+        # unit test — there is a test asserting BOTH paths populate it.
+        benchmark_symbol=BENCHMARK_SYMBOL,
+        benchmark_return_pct=_bm_ret, benchmark_max_drawdown_pct=_bm_dd,
         avg_deployment_pct=round(100 * sum(deployment) / len(deployment), 2)
         if deployment else 0.0,
         win_rate=round(len(wins) / len(closed), 3) if closed else 0.0,

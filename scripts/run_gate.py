@@ -236,6 +236,34 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
             ok = cand_summary["total_return_pct"] >= bar
             detail = (f"{cand_summary['total_return_pct']:+.2f}% vs {bar:+.2f}% "
                       f"(B&H {bh:+.2f}% x {deploy:.1%} deployment)")
+        elif rule == "beats_benchmark_symbol":
+            # §50. THE SURVIVORSHIP-FREE BAR. Every other benchmark in this
+            # function derives from the snapshot's own universe, and §48
+            # measured those at up to +130pp of survivorship inflation
+            # (2000-2006: equal-weight +138.74%, SPY +8.68% over the same
+            # bars). This races ONE named instrument whose price already
+            # absorbs constituent changes.
+            sym = clause["symbol"]
+            bm = cand_summary.get("benchmark_return_pct")
+            if bm is None or cand_summary.get("benchmark_symbol") != sym:
+                # FAIL, never skip. §33 RUN 1 manufactured a VALIDATED verdict
+                # out of checks that quietly did not run; "could not be
+                # measured" must never read as "passed".
+                have = cand_summary.get("benchmark_symbol") or "none"
+                ok = False
+                detail = (f"benchmark {sym} unavailable (the run computed "
+                          f"{have!r}) — cannot score")
+            else:
+                ok = cand_summary["total_return_pct"] >= bm
+                dd = cand_summary.get("benchmark_max_drawdown_pct")
+                # maxDD is REPORTED, never gated: matched drawdown was §44's
+                # question and was rejected there. It is shown so a
+                # return-only pass cannot be misread as a deployable one.
+                detail = (f"{cand_summary['total_return_pct']:+.2f}% vs {sym} "
+                          f"{bm:+.2f}%")
+                if dd is not None:
+                    detail += (f" | maxDD {cand_summary['max_drawdown_pct']:.2f}%"
+                               f" vs {sym} {dd:.2f}% (reported, not gated)")
         elif rule == "deployment_at_least":
             # §41. Without this clause the latch fix could clear every risk
             # clause by changing nothing at all — a bot that still never
