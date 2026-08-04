@@ -20,6 +20,8 @@ import logging
 import math
 from datetime import date, datetime, timezone
 
+from strategies.base import ENTRY_ACTIONS
+
 log = logging.getLogger("risk")
 
 HALT_FILE = "HALT"
@@ -1065,7 +1067,7 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     if r.get("max_order_value_usd") and order_value > r["max_order_value_usd"]:
         raise RiskRejection(f"order value ${order_value:,.0f} exceeds cap ${r['max_order_value_usd']:,}", rail="order_value_cap")
 
-    if action == "buy":
+    if action in ENTRY_ACTIONS:
         # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26). Entries only — exits ALWAYS
         # run, because a rail that trapped you in a losing book while it fell
         # would be the opposite of a risk control.
@@ -1128,8 +1130,23 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                     f"down-regime exposure cap: gross ${gross + order_value:,.0f} "
                     f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity", rail="regime_exposure")
 
-    if action == "sell" and symbol not in positions:
-        raise RiskRejection(f"no position in {symbol} to sell (state desync guard)", rail="desync_sell")
+    # SIGN, not presence: `symbol not in positions` passes for a symbol held
+    # SHORT, and a "sell" against a short would not be a no-op — it would
+    # submit a SELL that ADDS to the short. Same bug class the abs() calls
+    # above exist to prevent, just checked at the sign level instead of the
+    # magnitude level. market_value <= 0 catches both causes: no position at
+    # all (0.0) and an existing short (negative).
+    if action == "sell" and positions.get(symbol, {}).get("market_value", 0.0) <= 0:
+        raise RiskRejection(f"no long position in {symbol} to sell — holding "
+                            f"none or short (state desync guard)", rail="desync_sell")
+
+    # The mirror. `symbol not in positions` passes for a symbol held LONG, and
+    # a "cover" against a long would not be a no-op — it would submit a BUY
+    # that ADDS to the long. market_value >= 0 catches both causes: no
+    # position at all (0.0) and an existing long (positive).
+    if action == "cover" and positions.get(symbol, {}).get("market_value", 0.0) >= 0:
+        raise RiskRejection(f"no short position in {symbol} to cover — holding "
+                            f"none or long (state desync guard)", rail="desync_cover")
 
 
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,

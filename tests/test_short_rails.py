@@ -65,3 +65,61 @@ def test_the_short_under_the_cap_is_permitted():
     cfg = _cfg(max_position_pct=10.0)
     positions = {"TSLA": {"market_value": -9_000.0}}
     risk.pure_checks("buy", "TSLA", 5, 100.0, ACCOUNT, positions, cfg)
+
+
+# ---- shorts are ENTRIES; covers are EXITS ----
+
+def test_a_short_passes_through_the_entry_rails():
+    """A short is an entry and must meet every entry rail. Gating the entry
+    block on `action == "buy"` would let shorts bypass the concentration cap,
+    the drawdown breaker and the slot limits entirely."""
+    cfg = _cfg(max_position_pct=10.0)
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("short", "TSLA", 200, 100.0, ACCOUNT, {}, cfg)
+    assert e.value.rail == "position_cap"
+
+
+def test_a_new_short_under_the_cap_is_permitted():
+    """The paired half: a short opening a brand-new position, sized so its
+    $5,000 order value stays under the $10,000 cap on $100k equity. Proves
+    the entry gate subjects a short to the concentration rail rather than
+    blocking every short outright."""
+    cfg = _cfg(max_position_pct=10.0)
+    risk.pure_checks("short", "TSLA", 50, 100.0, ACCOUNT, {}, cfg)
+
+
+def test_a_cover_with_no_position_is_a_desync():
+    """The mirror of the sell guard. Covering something you are not short is a
+    state desync, and sending it would OPEN a long."""
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("cover", "TSLA", 10, 100.0, ACCOUNT, {}, _cfg())
+    assert e.value.rail == "desync_cover"
+
+
+def test_a_cover_against_a_position_held_long_is_also_a_desync():
+    """Presence alone is not enough: TSLA IS in `positions` here, but held
+    LONG. `symbol not in positions` would pass this straight through, and the
+    cover would submit a BUY that ADDS TO the long — the guard has to check
+    the SIGN of the existing position, not merely whether one is on file."""
+    positions = {"TSLA": {"market_value": 5_000.0}}
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("cover", "TSLA", 10, 100.0, ACCOUNT, positions, _cfg())
+    assert e.value.rail == "desync_cover"
+
+
+def test_a_cover_against_a_genuine_short_is_allowed():
+    """The paired half — proves the guard passes a REAL short rather than
+    merely 'symbol is present in positions', which the long case above would
+    also have satisfied under a presence-only check."""
+    positions = {"TSLA": {"market_value": -5_000.0}}
+    risk.pure_checks("cover", "TSLA", 10, 100.0, ACCOUNT, positions, _cfg())
+
+
+def test_a_sell_against_a_position_held_short_is_a_desync():
+    """The mirror defect on the sell side: TSLA IS in `positions` here, but
+    held SHORT. `symbol not in positions` would pass this straight through,
+    and the sell would submit a SELL that ADDS TO the short."""
+    positions = {"TSLA": {"market_value": -5_000.0}}
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("sell", "TSLA", 10, 100.0, ACCOUNT, positions, _cfg())
+    assert e.value.rail == "desync_sell"

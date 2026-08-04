@@ -15,10 +15,17 @@ from dataclasses import dataclass, field
 @dataclass
 class Signal:
     symbol: str
-    action: str                 # "buy" | "sell" | "hold"
+    action: str                 # "buy" | "sell" | "short" | "cover" | "hold"
     reason: str                 # human-readable rationale
     indicators: dict = field(default_factory=dict)
     strategy: str = ""          # which strategy produced this signal
+
+
+#: Actions that OPEN or ADD TO risk. Every entry rail keys off this set, so a
+#: new direction added here is automatically subject to all of them — which is
+#: the opposite of the failure where `action == "buy"` let shorts bypass the
+#: concentration cap because nobody remembered to update the condition.
+ENTRY_ACTIONS = ("buy", "short")
 
 
 def sma(closes: list[float], period: int) -> float | None:
