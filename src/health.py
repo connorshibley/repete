@@ -44,6 +44,42 @@ MAX_HEARTBEAT_AGE_HOURS = 26
 CYCLE_HOUR_ET, CYCLE_MINUTE_ET = 15, 45
 
 
+def _et_date(ts: str) -> str:
+    """The EASTERN calendar date of an ISO timestamp, or "" if unreadable.
+
+    Why this exists (2026-08-03, found while §50 was running)
+    --------------------------------------------------------
+    `cycle_was_due` converts to America/New_York, because the cycle fires at
+    15:45 ET. The completion check did not: it compared `now.strftime()` — a
+    UTC date — against `record["ts"][:10]`, also UTC. Each half was internally
+    consistent and the two halves disagreed with each other.
+
+    Between 20:00 ET and midnight ET the UTC date has already rolled forward
+    while ET is still the same trading day. So every weekday evening:
+
+        cycle_was_due(now)        -> True   (ET: weekday, past 15:45)
+        cycle_completed_today     -> False  (looking for Aug 4 records on Aug 3)
+        => "cycle ran today but never completed"
+
+    `python src/health.py` therefore reported DEGRADED and exited non-zero
+    every weekday night, four hours a day, with nothing wrong. Observed live at
+    20:51 ET with the day's cycle sitting completed in the ledger.
+
+    This is the SAME CLASS of bug as the Monday false alarm fixed in PR #77 —
+    a staleness question answered in one timezone and a scheduling question
+    answered in another — which is why the fix is to make every date in this
+    module Eastern rather than to special-case the evening.
+    """
+    from zoneinfo import ZoneInfo
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+
+
 def cycle_was_due(now: datetime) -> bool:
     """Has today's trading cycle already been scheduled to run?
 
@@ -171,16 +207,19 @@ def status(cfg: dict | None = None, now: datetime | None = None,
             out["storage_backend"] = store_mod.current_backend()
             from ledger import Ledger
             records = Ledger(ledger_path).all_records()
-        today = now.strftime("%Y-%m-%d")
+        # EASTERN, not UTC — see `_et_date`. `cycle_was_due` has always been in
+        # ET because the cycle fires at 15:45 ET; this half was in UTC, and the
+        # two disagreed for the four hours between 20:00 ET and midnight ET.
+        today = _et_date(now.isoformat())
         last_equity = last_known_equity(records)
         for r in records:
             if r.get("type") != "event":
                 continue
             if r.get("event") == "cycle_complete":
                 out["last_cycle"] = r.get("ts")
-                if (r.get("ts") or "")[:10] == today:
+                if _et_date(r.get("ts") or "") == today:
                     out["cycle_completed_today"] = True
-            if (r.get("ts") or "")[:10] == today:
+            if _et_date(r.get("ts") or "") == today:
                 if r.get("event") == "cycle_crashed":
                     out["cycle_crashed_today"] = True
                 if r.get("event") == "degradation":
