@@ -37,10 +37,13 @@ def test_a_short_adds_to_gross_exposure_rather_than_cancelling_a_long():
 
 
 def test_the_same_book_under_the_cap_is_permitted():
-    """The paired half. A rail that blocked everything would also pass the
-    test above, and would be just as broken."""
+    """The paired half, varying only the dimension the rail measures: same
+    long + short book as above, sized so gross ($40k) stays under the $50k
+    cap. A rail that blocked everything would also pass the test above, and
+    would be just as broken."""
     cfg = _cfg(regime_exposure={"enabled": True, "down_max_gross_pct": 50})
-    positions = {"AAPL": {"market_value": 40_000.0}}
+    positions = {"AAPL": {"market_value": 20_000.0},
+                 "TSLA": {"market_value": -20_000.0}}
     risk.pure_checks("buy", "MSFT", 1, 1.0, ACCOUNT, positions, cfg,
                      regime_label="down_trend")
 
@@ -53,3 +56,12 @@ def test_the_concentration_cap_measures_a_short_by_magnitude():
     with pytest.raises(risk.RiskRejection) as e:
         risk.pure_checks("buy", "TSLA", 20, 100.0, ACCOUNT, positions, cfg)
     assert e.value.rail == "position_cap"
+
+
+def test_the_short_under_the_cap_is_permitted():
+    """The paired half: the same short, sized so $9,000 + $500 stays under
+    the $10,000 cap. Proves the rail measures magnitude without over-firing
+    on a short that is legitimately within bounds."""
+    cfg = _cfg(max_position_pct=10.0)
+    positions = {"TSLA": {"market_value": -9_000.0}}
+    risk.pure_checks("buy", "TSLA", 5, 100.0, ACCOUNT, positions, cfg)
