@@ -1,6 +1,14 @@
-# §50a — VOLATILITY TARGETING (2000-2006) — **DRAFT. NOT REGISTERED.**
+# VOLATILITY TARGETING (2000-2006) — **DRAFT. NOT REGISTERED. NO NUMBER.**
 #
 # ============================ READ THIS FIRST ============================
+# THIS DRAFT HOLDS NO SECTION NUMBER. It was written as "s50a", which was a
+# reservation, and register_gate.py's own docstring says why that was wrong:
+# "Reserving a number for a claim nobody has registered was the mistake;
+# numbers are assigned at registration, and a reservation is not a
+# registration." §50 was subsequently taken by the incumbent re-test, which
+# registered and ran first — the same "whichever registers first takes the
+# number" rule that renumbered §42->§43->§44. Renamed rather than renumbered,
+# so it cannot squat on the next number either.
 # This spec is COMPLETE and DELIBERATELY UNREGISTERED. It lives in
 # research/specs/drafts/, which scripts/register_gate.py cannot resolve.
 #
@@ -53,9 +61,9 @@
 # pretending an arm exists: the `set:` block below references a config path
 # that has no code behind it. That is deliberate — a draft that looked runnable
 # would invite someone to run it.
-id: s50a
+id: draft-vol-targeting
 claim: EDGE
-title: "Volatility targeting: higher risk-adjusted return at matched drawdown? (2000-2006) [DRAFT]"
+title: "Volatility targeting: higher risk-adjusted return at matched drawdown? (2000-2006) [DRAFT, unnumbered]"
 
 judge_model: true
 
@@ -65,10 +73,10 @@ snapshot:
 
 cash: 100000.0
 
-# WOULD BE K=15 AT THE EARLIEST, not 14. §48's rule reserved 14 for the
-# incumbent re-test. If that re-test is registered and run, this becomes 15;
-# if it is not, this stays a draft. The number is written here so that nobody
-# later assigns it 14 by reflex.
+# WOULD BE K=15 AT THE EARLIEST. §48's rule spent 14 on the incumbent
+# re-test, which is now §50 and registered. K is written here so nobody
+# later assigns this 14 by reflex; the actual value is fixed at ITS
+# registration, not here.
 bonferroni_k: 15
 
 arms:
