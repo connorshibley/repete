@@ -431,13 +431,14 @@ def test_multiplier_None_falls_back_to_one():
     assert a["multiplier"] == 1.0
 
 
-def test_multiplier_string_zero_is_pinned_not_silently_fixed_up():
+def test_multiplier_string_zero_falls_back_to_one():
     """Alpaca reports numeric account fields as strings (see `equity`/`cash`
     fixtures throughout this file), so a truthy-but-zero-valued string is a
-    real shape, not a contrived one. `"0" or 1` evaluates to `"0"` — the
-    `or` only rescues falsy Python values (None, 0, 0.0), not the string
-    "0" — so this reads as 0.0, NOT the 1.0 fallback. Pinned so a future
-    change to this line changes behaviour on purpose, not by accident."""
+    real shape, not a contrived one. The naive `float(raw or 1)` checks
+    truthiness of the RAW value — `"0" or 1` evaluates to `"0"`, so that
+    version reads this as 0.0. The parse-first fix checks the PARSED number
+    instead, so a string "0" lands on the same 1.0 safe default as a real
+    zero would."""
     import broker as broker_mod
 
     class _Acct:
@@ -447,7 +448,39 @@ def test_multiplier_string_zero_is_pinned_not_silently_fixed_up():
     b = object.__new__(broker_mod.Broker)
     b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
     a = b.account()
-    assert a["multiplier"] == 0.0
+    assert a["multiplier"] == 1.0
+
+
+def test_multiplier_negative_falls_back_to_one():
+    """A negative multiplier is not a real leverage ratio. Same class of
+    trap as string "0": `"-2" or 1` is also truthy, so only a check on the
+    parsed number catches this."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"; shorting_enabled = True; multiplier = "-2"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["multiplier"] == 1.0
+
+
+def test_multiplier_unparseable_falls_back_to_one():
+    """A garbled value (partial write, API change, anything) must not raise
+    ValueError out of account() — the whole cycle would abort on a field
+    nothing else depends on being precise."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"; shorting_enabled = True; multiplier = "abc"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["multiplier"] == 1.0
 
 
 # ---- preflight ----

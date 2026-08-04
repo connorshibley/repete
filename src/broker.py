@@ -30,6 +30,28 @@ _TIMEFRAMES = {
 }
 
 
+def _safe_multiplier(raw) -> float:
+    """Parse an account's `multiplier` defensively; 1.0 (no leverage, the
+    safe direction) is the fallback for anything that isn't a real positive
+    number.
+
+    THE TRAP: `float(raw or 1)` looks like a safe fallback but checks the
+    TRUTHINESS of the raw attribute, not the parsed number. Alpaca's SDK
+    returns numeric account fields as STRINGS throughout this module, and
+    the string "0" is truthy in Python — only an EMPTY string is falsy — so
+    `"0" or 1` evaluates to `"0"` and `float("0")` sails through as 0.0.
+    `multiplier` is exactly the kind of value a later phase divides by or
+    multiplies buying power against, so a silent 0.0 here would zero out
+    sizing or raise ZeroDivisionError far from its cause. The fix is to
+    parse FIRST and gate on the parsed number, not on the raw value.
+    """
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 1.0
+    return value if value > 0 else 1.0
+
+
 class Broker:
     def __init__(self, cfg: dict):
         key = os.environ.get("ALPACA_API_KEY")
@@ -66,7 +88,7 @@ class Broker:
             # order at a time, and the book reverts to long-only with nothing
             # anywhere saying why.
             "shorting_enabled": bool(getattr(a, "shorting_enabled", False)),
-            "multiplier": float(getattr(a, "multiplier", 1) or 1),
+            "multiplier": _safe_multiplier(getattr(a, "multiplier", None)),
         }
 
     def positions(self) -> dict:
