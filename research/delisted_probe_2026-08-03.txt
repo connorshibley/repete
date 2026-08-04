@@ -1,0 +1,39 @@
+$SIVB: possibly delisted; no timezone found
+
+1 Failed download:
+['SIVB']: possibly delisted; no timezone found
+$FRC: possibly delisted; no timezone found
+
+1 Failed download:
+['FRC']: possibly delisted; no timezone found
+$TWTR: possibly delisted; no timezone found
+
+1 Failed download:
+['TWTR']: possibly delisted; no timezone found
+$ATVI: possibly delisted; no timezone found
+
+1 Failed download:
+['ATVI']: possibly delisted; no timezone found
+DELISTED-COVERAGE PROBE
+======================================================================
+control AAPL: 1637 rows
+
+ticker  delisted      rows  pre-delisting  status
+SIVB    2023-03-10       0              0  MISSING — no history at all
+SBNY    2023-03-12     475              0  *** TICKER REUSE *** all 475 bars start 2024-08-15, after it died
+FRC     2023-05-01       0              0  MISSING — no history at all
+TWTR    2022-10-27       0              0  MISSING — no history at all
+ATVI    2023-10-13       0              0  MISSING — no history at all
+
+  check 1  coverage        : FAIL
+  check 2  no ticker reuse : FAIL
+
+REFUSED — a survivorship-free universe CANNOT be built from this source.
+  no history at all : SIVB, FRC, TWTR, ATVI — the losers are simply absent,
+                      which is the survivorship bias itself.
+  ticker reuse      : SBNY — returns bars that are NOT that
+                      company. Including these would be WORSE than the bias:
+                      the dataset would never observe the collapse while
+                      carrying the name of what collapsed.
+
+The EDGE freeze in scripts/register_gate.py stands. See §52 in knowledge/backtest_candidates.md.

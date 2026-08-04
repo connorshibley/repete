@@ -37,6 +37,70 @@ import gatespec as gs                                       # noqa: E402
 SPEC_DIR = "research/specs"
 VERDICTS = "research/verdicts.jsonl"
 
+# --------------------------------------------------------------- §52 EDGE FREEZE
+#
+# Every snapshot under this directory is survivor-selected. `build_snapshot.py`
+# sources its universe from `index_constituents()`, which reads CURRENT
+# Wikipedia membership — so the companies that failed are absent from all of
+# them by construction, not just from the four §48 happened to measure.
+#
+# §48 sized the bias (+130.06pp on 2000-2006: equal-weight +138.74% against
+# SPY's +8.68%). §51 then produced this project's only EDGE pass and showed the
+# bias was large enough to explain it — +200.28pp on the 38-name universe,
+# because those names are in config.yaml precisely BECAUSE they are today's
+# winners.
+#
+# `scripts/probe_delisted_coverage.py` asked whether the fix is buildable and
+# REFUSED: yfinance serves no history for SIVB, FRC, TWTR or ATVI, and returns
+# SBNY bars that all postdate the bank's seizure by seventeen months.
+#
+# So registering further EDGE claims on this data buys more chances at a false
+# positive without buying information. That is §33's argument — "continuing to
+# hunt arms is simply buying more chances for a false positive" — applied to the
+# DATA rather than to the selection procedure.
+#
+# DIAGNOSTIC, METHOD and CAPACITY are untouched. None of them claims an edge,
+# and §41's CAPACITY question (can the breaker re-close) is about deployment
+# rather than returns, so survivorship does not decide it.
+#
+# The override exists because a wall gets edited out of the script, while a
+# speed bump with an audit trail does not. Its reason is written into the
+# registration row, so a future reader sees the claim AND the excuse together.
+FROZEN_SNAPSHOT_DIR = "data/snapshots"
+FROZEN_CLAIMS = ("EDGE",)
+
+
+def freeze_violation(spec: dict) -> str | None:
+    """Why this spec may not be registered, or None if it may.
+
+    Pure and path-based on purpose: it must not depend on the snapshot file
+    being present, so the rule reads the same on a machine that has not
+    downloaded the data.
+    """
+    if spec.get("claim") not in FROZEN_CLAIMS:
+        return None
+    path = (spec.get("snapshot") or {}).get("path", "")
+    if not path.replace("\\", "/").startswith(FROZEN_SNAPSHOT_DIR + "/"):
+        return None
+    return (f"{spec['claim']} claims on {FROZEN_SNAPSHOT_DIR}/ are FROZEN "
+            f"(§52).\n\n"
+            f"  snapshot: {path}\n\n"
+            f"Every snapshot there is built from CURRENT index membership, so "
+            f"the companies\nthat failed are missing by construction. §48 sized "
+            f"that bias at up to +130pp;\n§51 showed it was large enough to "
+            f"explain this project's only EDGE pass.\n"
+            f"`scripts/probe_delisted_coverage.py` then REFUSED: the vendor "
+            f"serves no\npre-delisting history for SIVB/FRC/TWTR/ATVI, and "
+            f"SBNY's bars all postdate its\nseizure by seventeen months.\n\n"
+            f"Registering another EDGE claim on this data buys more chances at "
+            f"a false\npositive without buying information.\n\n"
+            f"Still allowed : DIAGNOSTIC, METHOD, CAPACITY\n"
+            f"Lifts the freeze: a source that passes "
+            f"probe_delisted_coverage.py\n"
+            f"To proceed anyway:\n"
+            f"  register_gate.py <id> --override-freeze \"<why this claim is "
+            f"sound regardless>\"")
+
 
 def spec_path(spec_id: str) -> str:
     return os.path.join(SPEC_DIR, f"{spec_id}.yaml")
@@ -56,6 +120,9 @@ def main() -> int:
     p.add_argument("spec_id")
     p.add_argument("--registrations", default=gs.REGISTRATIONS)
     p.add_argument("--verdicts", default=VERDICTS)
+    p.add_argument("--override-freeze", metavar="REASON", default=None,
+                   help="register despite the §52 EDGE freeze. The reason is "
+                        "recorded in the registration row.")
     args = p.parse_args()
 
     spec = gs.load(spec_path(args.spec_id))
@@ -113,10 +180,31 @@ def main() -> int:
         for line in gs.diff_fields(prior["spec"], spec):
             print(f"    {line}")
 
+    # §52. Deliberately AFTER the already-registered-unchanged early return and
+    # after the verdict check: an existing registration must stay re-runnable
+    # and idempotent, and a moved goalpost must still report as a moved
+    # goalpost rather than as a freeze. This only ever blocks a NEW claim, or a
+    # changed one — which is a new goalpost anyway.
+    blocked = freeze_violation(spec)
+    if blocked and not args.override_freeze:
+        raise SystemExit(f"REFUSING to register {args.spec_id}: {blocked}")
+    if blocked:
+        reason = args.override_freeze.strip()
+        if len(reason) < 20:
+            raise SystemExit(
+                f"REFUSING to register {args.spec_id}: --override-freeze needs "
+                f"a REASON, not a token.\nGot {reason!r}. Write the argument "
+                f"you would have to defend to a reader who\nfinds this row in "
+                f"registrations.jsonl a year from now.")
+        print("  §52 FREEZE OVERRIDDEN — recorded in the registration row:")
+        print(f"    {reason}")
+
     os.makedirs(os.path.dirname(args.registrations) or ".", exist_ok=True)
     rec = {"id": args.spec_id, "spec_sha256": digest,
            "registered_at": datetime.now(timezone.utc).isoformat(),
            "spec": spec}
+    if blocked:
+        rec["freeze_override"] = args.override_freeze.strip()
     with open(args.registrations, "a") as f:
         f.write(json.dumps(rec, sort_keys=True) + "\n")
 
