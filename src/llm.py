@@ -27,6 +27,15 @@ def _msg_text(msg) -> str:
     return llm_client._text(msg)
 
 
+def _clamp_scale(verdict: dict) -> dict:
+    """Invariant #2, in one place. The LLM may only VETO or DOWNSIZE — never
+    enlarge, and never reverse. Extracted from an inline expression so it can
+    be tested directly; a rule this important should not be reachable only
+    through a live model call."""
+    verdict["scale"] = min(max(float(verdict.get("scale", 1.0)), 0.0), 1.0)
+    return verdict
+
+
 def _key_present(cfg: dict) -> bool:
     """Is the configured provider's key set? Provider-aware since 2026-07-27 —
     was a hard-coded ANTHROPIC_API_KEY lookup in four places."""
@@ -139,8 +148,7 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     try:
         start, end = text.find("{"), text.rfind("}") + 1
         verdict = json.loads(text[start:end])
-        # Clamp: the LLM can only reduce, never enlarge.
-        verdict["scale"] = min(max(float(verdict.get("scale", 1.0)), 0.0), 1.0)
+        verdict = _clamp_scale(verdict)
         if verdict.get("verdict") not in ("approve", "downsize", "veto"):
             # A reply arrived and parsed, but names a verdict the judge is not
             # allowed to return. Until 2026-08-02 this returned the bare

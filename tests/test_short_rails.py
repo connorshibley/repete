@@ -523,3 +523,59 @@ def test_preflight_still_works_with_no_account_argument():
     import preflight
     fails = preflight.run(_short_cfg(False))
     assert not any("shorting" in f for f in fails)
+
+
+# ---- invariant #2 holds on the short side ----
+
+@pytest.mark.parametrize("raw,expected", [
+    (1.5, 1.0),      # the judge cannot enlarge
+    (-0.5, 0.0),     # nor flip the sign
+    (0.4, 0.4),      # a genuine downsize survives
+    (0.0, 0.0),      # veto boundary
+    (1.0, 1.0),      # full-size approve boundary
+])
+def test_the_judge_scale_is_clamped_into_zero_to_one(raw, expected):
+    """Invariant #2: the LLM may only VETO or DOWNSIZE, never enlarge or
+    invent. A scale above 1.0 would enlarge; a negative one would REVERSE the
+    trade, turning a downsize into an opposite-direction entry."""
+    import llm
+    v = llm._clamp_scale({"verdict": "downsize", "scale": raw})
+    assert v["scale"] == expected
+
+
+def test_a_missing_scale_key_defaults_to_full_size():
+    """Mirrors the function's own default (verdict.get("scale", 1.0)). A
+    judge reply that parses but omits scale must become an approval, not a
+    silent 0 that would look like an unreported veto."""
+    import llm
+    v = llm._clamp_scale({"verdict": "approve"})
+    assert v["scale"] == 1.0
+
+
+def test_a_non_numeric_scale_raises_rather_than_silently_passing_through():
+    """A garbled scale must fail LOUD via float()'s own ValueError, not
+    coerce into some unclamped value that could slip outside 0-1 undetected."""
+    import llm
+    with pytest.raises(ValueError):
+        llm._clamp_scale({"verdict": "downsize", "scale": "not-a-number"})
+
+
+def test_downsizing_a_shorts_full_qty_never_exceeds_or_reverses_it():
+    """The structural guarantee behind the whole phase, exercised through real
+    repo code rather than asserted as arithmetic on a local variable.
+    `risk.size_order` takes NO direction argument — it cannot distinguish a
+    long from a short, so its output can never carry a sign; the same
+    full_qty backs either side. Feeding that real full_qty through the real
+    `llm._clamp_scale` and main.py's actual formula (`int(full_qty * scale)`,
+    src/main.py:1152) proves the combination can only shrink toward zero. If
+    `_clamp_scale` were removed, or if `size_order` ever grew a side
+    parameter and started returning a signed quantity, this is what fails."""
+    import llm
+    account = {"equity": 100_000.0, "buying_power": 100_000.0}
+    cfg = {"risk": {"risk_per_trade_pct": 10.0, "max_position_pct": 50.0}}
+    full_qty = risk.size_order(account, 100.0, cfg)
+    assert full_qty == 100                      # sanity on the fixture itself
+    for raw in (1.5, -0.5, 0.4, 0.0, 1.0):
+        scale = llm._clamp_scale({"verdict": "downsize", "scale": raw})["scale"]
+        qty = int(full_qty * scale)
+        assert 0 <= qty <= full_qty
