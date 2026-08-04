@@ -84,8 +84,17 @@ def anthropic_key_shape_fail(value: str) -> str | None:
     return llm_client.key_shape_fail(value, llm_client.PROVIDERS["anthropic"])
 
 
-def run(cfg: dict) -> list[str]:
-    """All failures found (empty list = clear to trade)."""
+def run(cfg: dict, account: dict | None = None) -> list[str]:
+    """All failures found (empty list = clear to trade).
+
+    `account` is OPTIONAL and defaults to None so every existing caller
+    (cfg only) keeps working unchanged. When supplied, it answers a question
+    config alone cannot: is this brokerage account permitted to do what the
+    config tells the bot to do? Config can be internally consistent — a
+    strategy configured to short — while the account it will actually trade
+    on cannot short at all; only the broker's own capability flags can catch
+    that, so it is passed in rather than inferred from cfg.
+    """
     fails: list[str] = []
 
     r = cfg.get("risk")
@@ -264,6 +273,19 @@ def run(cfg: dict) -> list[str]:
     if os.path.isdir(mem_dir) and not os.access(mem_dir, os.W_OK):
         fails.append(f"memory dir {mem_dir} not writable")
     fails.extend(_ledger_tail_fails(cfg, ledger_path))
+
+    # A bot configured to short on an account that cannot short does not fail
+    # loudly — it fails one order at a time, at submission, and quietly runs
+    # long-only. Preflight's polarity is FAIL SAFE, so this is a refusal.
+    if account is not None and not account.get("shorting_enabled", False):
+        shorting = [name for name, s in (cfg.get("strategies") or {}).items()
+                    if s.get("enabled") and s.get("short_bottom_fraction")]
+        if shorting:
+            fails.append(
+                f"shorting is disabled on this brokerage account, but "
+                f"{', '.join(sorted(shorting))} is configured to short "
+                f"(short_bottom_fraction). Enable margin/shorting at the "
+                f"broker, or unset short_bottom_fraction.")
     return fails
 
 

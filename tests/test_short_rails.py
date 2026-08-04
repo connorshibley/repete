@@ -448,3 +448,45 @@ def test_multiplier_string_zero_is_pinned_not_silently_fixed_up():
     b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
     a = b.account()
     assert a["multiplier"] == 0.0
+
+
+# ---- preflight ----
+
+def _short_cfg(enabled):
+    return {"risk": {"risk_per_trade_pct": 1.0, "max_position_pct": 10.0,
+                     "daily_loss_limit_pct": 5.0, "min_holding_days": 1,
+                     "max_order_value_usd": 0, "max_trades_per_day": 0,
+                     "max_open_positions": 0},
+            "strategies": {"xsmom": {"enabled": enabled,
+                                     "short_bottom_fraction": 0.25}}}
+
+
+def test_preflight_refuses_shorts_when_the_broker_forbids_them():
+    import preflight
+    fails = preflight.run(_short_cfg(True),
+                          account={"shorting_enabled": False})
+    assert any("shorting" in f for f in fails)
+
+
+def test_preflight_is_silent_when_the_broker_allows_shorts():
+    import preflight
+    fails = preflight.run(_short_cfg(True),
+                          account={"shorting_enabled": True})
+    assert not any("shorting" in f for f in fails)
+
+
+def test_preflight_is_silent_when_no_strategy_shorts():
+    """The paired half that matters most right now: Phase 1 ships with shorts
+    OFF, so this check must be completely inert until Phase 2."""
+    import preflight
+    fails = preflight.run(_short_cfg(False),
+                          account={"shorting_enabled": False})
+    assert not any("shorting" in f for f in fails)
+
+
+def test_preflight_still_works_with_no_account_argument():
+    """Every existing caller passes cfg only. The signature must stay
+    backward-compatible or the cycle aborts at main.py's preflight call."""
+    import preflight
+    fails = preflight.run(_short_cfg(False))
+    assert not any("shorting" in f for f in fails)
