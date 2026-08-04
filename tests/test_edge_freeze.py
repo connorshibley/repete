@@ -101,8 +101,12 @@ def test_the_check_does_not_need_the_file_to_exist():
 # ------------------------------------------ end-to-end through the CLI
 
 def _run(*args, cwd=None):
+    # sys.executable, not a hardcoded .venv path — the repo's own convention
+    # (tests/test_alert_delivery.py, test_alerts_are_silent_in_tests.py). CI
+    # runs a bare interpreter with no .venv, and hardcoding one made these
+    # tests pass locally and fail in CI, which is the worst of both.
     return subprocess.run(
-        [".venv/bin/python", "scripts/register_gate.py", *args],
+        [sys.executable, "scripts/register_gate.py", *args],
         capture_output=True, text=True, cwd=cwd or ".")
 
 
