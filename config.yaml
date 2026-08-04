@@ -554,6 +554,27 @@ llm:                   # optional judgment layer (Anthropic API)
                           # ENLARGE risk through the reviewer's absence.
   knowledge_path: knowledge/principles.md  # curated external principles fed to the
                           # review prompt, labeled unverified; comment out to disable
+  knowledge_max_context_chars: 1000
+                          # OWN budget (2026-08-04), same value the derived
+                          # `learning.max_context_chars // 4` produced — so this
+                          # changes nothing today and is here to make the
+                          # constraint VISIBLE. It was invisible and nearly
+                          # binding: principles.md had reached 906 of 1000 chars,
+                          # and the next principle added would have been dropped
+                          # off the end with no error. Same trap
+                          # news.memory.max_context_chars exists to avoid.
+                          #
+                          # DO NOT RAISE IT casually. context_for_llm caps the
+                          # WHOLE memory block at learning.max_context_chars and
+                          # the sub-budgets already oversubscribe that total;
+                          # knowledge is assembled BEFORE the scoreboard,
+                          # calibration and CURRENT REGIME, so every extra char
+                          # here comes off the tail. Widening this buys
+                          # principles by losing the regime label.
+                          #
+                          # tests/test_principles_context.py fails if the file
+                          # outgrows this, so truncation is a red build rather
+                          # than a silently shorter prompt.
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
 
 news:                  # market awareness (Alpaca News API + LLM distill),
@@ -680,6 +701,46 @@ news:                  # market awareness (Alpaca News API + LLM distill),
         Markets:   https://www.ft.com/markets?format=rss
         Companies: https://www.ft.com/companies?format=rss
         US:        https://www.ft.com/world/us?format=rss
+    Fed:                 # THE PRIMARY SOURCE, not a commentator on it. Verified
+                         # 2026-08-04 through market_context._fetch_rss_source:
+                         # 4 items over a 168h window, including "Federal Reserve
+                         # issues FOMC statement" (Wed 29 Jul 2026 18:00 GMT).
+                         #
+                         # AT THE STANDARD max_age_hours: 36 IT RETURNS ZERO ON A
+                         # QUIET WEEK, and that is the intended behaviour, not a
+                         # broken feed. Measured the same day: 0 items at 36h,
+                         # 0 at 72h, 4 at 168h. The Fed publishes ~8 FOMC
+                         # statements a year; on the days that matter the
+                         # statement is minutes old and lands well inside 36h.
+                         #
+                         # 36h AND NOT 168h ON PURPOSE. llm.py's distiller prompt
+                         # is headed "HEADLINES (last 24h)". A week-wide window
+                         # would put six-day-old macro in a payload whose own
+                         # header says otherwise — the item carries a true `ts`,
+                         # so the prompt would contradict its own data and the
+                         # model would have to pick. Widening this means fixing
+                         # that prompt first, which is a live LLM change with no
+                         # gate in front of it.
+                         #
+                         # AN EMPTY SOURCE COSTS NOTHING. Verified against
+                         # merge_budget: with Fed present-but-empty the merge is
+                         # byte-identical to Fed absent (alpaca 30 / rss 20); a
+                         # live Fed takes from the RSS reserve, not from Alpaca.
+      enabled: true
+      max_items: 4       # low volume by nature — a cap this size cannot crowd
+      max_per_feed: 2    # the wires out even on a heavy Fed week
+      max_age_hours: 36
+      feeds:
+        Monetary: https://www.federalreserve.gov/feeds/press_monetary.xml
+        Press:    https://www.federalreserve.gov/feeds/press_all.xml
+    # REQUESTED AND REJECTED, 2026-08-04 — both tested the same way, neither usable:
+    #   SEC EDGAR HTTP 403 on the getcurrent 8-K atom feed. The SEC requires a
+    #             declared User-Agent carrying a real contact address and
+    #             rejects the browser UA in market_context._UA. Supplying one
+    #             means putting the owner's email in config and a per-source UA
+    #             in the fetcher — and the 8-K firehose is every filer's every
+    #             filing, which is noise this bot has no way to rank.
+    #   BLS       HTTP 403 on bls_latest.rss, same cause.
     # REQUESTED AND REJECTED, 2026-07-29 — each tested, none usable:
     #   Reuters   401 on every path. Blocked to non-subscribers.
     #   Barron's  404 on every Dow Jones path (RSSBarrons*, bar_topstories,
@@ -691,7 +752,7 @@ news:                  # market awareness (Alpaca News API + LLM distill),
     #             nothing, silently, forever. Our parser rejects it (`not
     #             well-formed`) and W6-A1 now RECORDS that rejection, which is
     #             the only reason it would ever be noticed.
-    # Do not re-add any of the three without re-testing through
+    # Do not re-add any of the five without re-testing through
     # market_context._fetch_rss_source and pasting the item count here.
 
 x_posting:                # despite the name, this section is the BLOG + JOURNAL

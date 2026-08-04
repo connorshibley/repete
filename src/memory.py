@@ -35,7 +35,8 @@ class Memory:
         self.judgments = JudgmentStore(self.lcfg.get("judgments_path",
                                                      "memory/judgments.jsonl"))
         self.path = self.cfg["learnings_path"]  # rendered view, kept for compat
-        self.knowledge_path = cfg.get("llm", {}).get("knowledge_path")
+        self.llm_cfg = cfg.get("llm", {})
+        self.knowledge_path = self.llm_cfg.get("knowledge_path")
         self.news_cfg = cfg.get("news", {})
 
     # ---- write ----
@@ -120,10 +121,35 @@ class Memory:
             keep_ids.add(id(t))
         return [t for t in ranked if id(t) in keep_ids][:n]
 
+    def knowledge_budget(self) -> int:
+        """Chars this block may occupy.
+
+        Its OWN budget as of 2026-08-04, defaulting to the historical
+        `learning.max_context_chars // 4` so an unset config is byte-identical
+        to before. Named rather than derived because the derived form hid how
+        tight it was: `principles.md` had reached 906 of 1000 chars and the next
+        principle anyone added would have been silently dropped — the same trap
+        `news.memory.max_context_chars` was given its own budget to avoid.
+
+        DELIBERATELY NOT RAISED. `context_for_llm` caps the WHOLE block at
+        `learning.max_context_chars`, and the sub-budgets already oversubscribe
+        it. Knowledge is assembled before the scoreboard, calibration and
+        CURRENT REGIME, so every extra char here comes off the TAIL — widening
+        this block would buy principles by losing the regime label.
+        """
+        fallback = self.lcfg.get("max_context_chars", 4000) // 4
+        return int(self.llm_cfg.get("knowledge_max_context_chars") or fallback)
+
     def knowledge_block(self) -> str:
         """Static curated principles (knowledge/principles.md), config-gated.
         External and unverified — labeled so the judge weighs it below
-        realized evidence. Missing/unreadable file degrades to empty."""
+        realized evidence. Missing/unreadable file degrades to empty.
+
+        Divergence #15: the live judge reads this and `judge_model` cannot —
+        it is a distribution stand-in with no prompt for text to attach to. Safe
+        in direction only because invariant #2 lets the judge veto or downsize
+        and never enlarge, so a principle can subtract live trades and never add
+        one."""
         if not self.knowledge_path:
             return ""
         try:
@@ -133,9 +159,8 @@ class Memory:
             return ""
         if not text:
             return ""
-        cap = self.lcfg.get("max_context_chars", 4000) // 4
         return ("KNOWLEDGE (external, unverified — weigh below realized "
-                "evidence):\n" + text[:cap])
+                "evidence):\n" + text[:self.knowledge_budget()])
 
     def market_context_block(self, symbol: str | None = None) -> str:
         """Today's news context (memory/market_context.json), labeled as
