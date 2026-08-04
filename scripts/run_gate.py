@@ -264,6 +264,45 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
                 if dd is not None:
                     detail += (f" | maxDD {cand_summary['max_drawdown_pct']:.2f}%"
                                f" vs {sym} {dd:.2f}% (reported, not gated)")
+        elif rule == "beats_benchmark_risk_adjusted":
+            # §51. A DIFFERENT QUESTION FROM THE RULE ABOVE — not "did it make
+            # more money" but "did it make more money PER UNIT OF DRAWDOWN".
+            # §50 found the incumbent losing to SPY on absolute return in both
+            # periods where the benchmark is clean, while drawing down less
+            # than SPY in all four. So these two rules genuinely disagree, and
+            # a PASS here is NOT the claim §50 rejected.
+            #
+            # Risk-MATCHED, not a bare ratio: scale the strategy's return by
+            # the drawdown gap and ask whether it then clears the benchmark.
+            # Same arithmetic, but it keeps the leverage assumption visible.
+            sym = clause["symbol"]
+            bm = cand_summary.get("benchmark_return_pct")
+            bdd = cand_summary.get("benchmark_max_drawdown_pct")
+            sdd = cand_summary.get("max_drawdown_pct")
+            if bm is None or bdd is None or cand_summary.get(
+                    "benchmark_symbol") != sym:
+                have = cand_summary.get("benchmark_symbol") or "none"
+                ok = False
+                detail = (f"benchmark {sym} unavailable (the run computed "
+                          f"{have!r}) — cannot score")
+            elif not bdd:
+                # Nothing to match against. Reported rather than treated as an
+                # infinitely easy bar.
+                ok = False
+                detail = f"{sym} drawdown is 0 — no risk to match, cannot score"
+            elif not sdd:
+                # The scale factor is undefined. A multi-year arm with zero
+                # drawdown is a bug or a bot that never traded, not an infinite
+                # edge — and (a)/(b) would normally have caught it first.
+                ok = False
+                detail = ("strategy drawdown is 0 — scale factor undefined, "
+                          "cannot score")
+            else:
+                matched = cand_summary["total_return_pct"] * (bdd / sdd)
+                ok = matched >= bm
+                detail = (f"{cand_summary['total_return_pct']:+.2f}% at "
+                          f"{sdd:.2f}% maxDD -> {matched:+.2f}% levered to "
+                          f"{sym}'s {bdd:.2f}% maxDD, vs {sym} {bm:+.2f}%")
         elif rule == "deployment_at_least":
             # §41. Without this clause the latch fix could clear every risk
             # clause by changing nothing at all — a bot that still never
