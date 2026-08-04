@@ -4,16 +4,24 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twelve such differences have been found. Until 2026-07-28 they existed **only as
+Fifteen such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-07-29: none.** That is a statement about the twelve found, not
-a claim that twelve is all there are. #10, #11 and #12 were all discovered by
-reading code for an adjacent task, within four days of this register being
-created — and #12 had been sitting in `data/snapshots/MANIFEST.json` in plain
-English the whole time.
+**Open as of 2026-08-04: #13, #14 and #15.** All three are open *by
+construction* rather than by defect — a sampling fact about the live record, and
+two judge inputs the simulator has no mechanism to represent.
+
+That count has been wrong before, in the direction that matters. This file said
+**"Open as of 2026-07-29: none"** while #15 had been open since the initial
+commit on 2026-07-16 — through the creation of this very register — and nobody
+noticed for nineteen days. So read any "open as of" line as a statement about
+what has been *found*, never as a claim that the list is complete. #10, #11 and
+#12 were all discovered by reading code for an adjacent task within four days of
+this register being created; #12 had been sitting in
+`data/snapshots/MANIFEST.json` in plain English the whole time; and #15 was found
+while writing `.claude/skills/`.
 
 **A divergence is CLOSED only when a test would fail if it reopened.** "Fixed in
 code" is not closed; the repo has been wrong about that before.
@@ -284,3 +292,94 @@ is not restated here. The outcome half exists
 to produce the two populations a §46 would compare — trades entered with news
 present versus without — and there are currently **4 closed trades**. A gate
 scored on 4 trades is theatre, so no gate is registered.
+## #15 — the live judge reads curated principles; the backtest's judge model cannot
+
+**Registered 2026-08-04. Deliberate, open by construction — and open since
+2026-07-16, which is the part worth reading.**
+
+`memory.knowledge_block()` reads `knowledge/principles.md` (config
+`llm.knowledge_path`) and prefixes it *"KNOWLEDGE (external, unverified — weigh
+below realized evidence)"*. It goes into `memory.context_for_llm()`, so every
+live judge call has seen it since the first commit.
+
+`backtest.py` never imports `llm` — stated in its own docstring — and drives
+`judge_model` instead. That module is a **distribution** stand-in: it reproduces
+how often the judge cuts and by how much, from a hash of
+`(symbol, timestamp, salt)`. It has no prompt, no text, and no reasoning. It
+cannot represent a principle at all, in either direction. This is not a gap that
+better modelling closes; there is nothing in `judge_model` for a principle to
+attach to.
+
+### Why it took until now to appear here
+
+It did not open today. It opened on 2026-07-16 with the initial commit, sat
+through the creation of this register on 2026-07-28, and was not caught when
+that register recorded **"Open as of 2026-07-29: none."** That statement was
+wrong, and the register's own header already says why it might be — *"a
+statement about the twelve found, not a claim that twelve is all there are."*
+Three of the first twelve were found by reading code for an adjacent task; so
+was this one, while writing `.claude/skills/`.
+
+The entry is dated by when it was **registered**, not by when it opened, and
+both dates are given because only one of them is flattering.
+
+### What this invalidates, precisely
+
+Every backtest number this project has ever produced describes a judge with
+**strictly less context** than the live one — not from 2026-07-30 as #14 says of
+news, but from the beginning.
+
+The direction is the same as #14's, and for the same reason:
+
+- the sim judge cannot veto on a principle, so the sim approves trades live may
+  refuse — backtests are, if anything, **optimistic** relative to live;
+- it is not symmetric. Under invariant #2 the judge may only VETO or DOWNSIZE
+  and may never enlarge or create a trade, so a principle can subtract live
+  trades and can never add one.
+
+That asymmetry is the whole reason `knowledge/principles.md` may be edited
+without a gate in front of it: the worst case is a live bot that trades less
+than its backtest, which is the safe direction to be wrong in. **It is not a
+licence to put anything there.** A principle that induces a veto the evidence
+does not support still costs real trades; it just cannot cost them in a way a
+backtest would flatter.
+
+### The budget it shares
+
+`knowledge_block()` caps at `learning.max_context_chars // 4`. It has no budget
+of its own — it takes a quarter of learning's. Growing `principles.md` past that
+cap silently truncates the tail rather than failing, so length is a real
+constraint and not a style preference. (This is the same trap
+`news.memory.max_context_chars` was given its own budget to avoid.)
+
+### What would close this
+
+Nothing available. Closing it requires the real judge in the simulator, which
+`backtest.py` refuses by design — a model call per bar would be slow,
+non-reproducible, and contaminated by hindsight absorbed in training. Both of
+the honest exits are the same shape as #14's:
+
+1. **A judge model that reads text**, which would reintroduce every problem
+   `judge_model.py`'s docstring lists; or
+2. **`llm.knowledge_path` unset**, which restores byte-identical judge context.
+   That is asserted by
+   `tests/test_principles_context.py::test_unset_knowledge_path_gives_byte_identical_context`,
+   not merely intended, and it is the rollback path.
+
+### The test that would fail if this silently closed
+
+`test_unset_knowledge_path_gives_byte_identical_context` fails if the block
+stops being suppressible, and
+`test_principles_do_not_shrink_the_lesson_block` fails if it starts displacing
+other context. Neither can detect a simulator that *claims* to model principles
+without doing so — which is why closing this needs (1), not a code change.
+
+### Not a claim of value
+
+**This is not an EDGE claim and nothing here is gated.** The EDGE tally is
+unchanged; `knowledge/backtest_candidates.md` owns that count. Unlike news
+memory, this one does not even produce two populations a future gate could
+compare — the principles apply to every judgment, so there is no
+without-principles arm in the live record. It is ungateable by construction as
+well as unmodelled, and it is recorded here so that is a stated fact rather than
+an oversight.
