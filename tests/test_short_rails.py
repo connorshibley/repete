@@ -363,3 +363,88 @@ def test_a_long_brackets_return_value_still_reports_its_side_as_buy():
     fake = _FakeTrading()
     result = _broker_with(fake).bracket_market_order("AAPL", 10, stop_price=90.0)
     assert result["side"] == "buy"
+
+
+# ---- can this account even short? ----
+
+def test_the_account_reports_shorting_capability():
+    """Without this, a broker that forbids shorting fails every short order
+    one at a time, at submission, forever — and the book quietly reverts to
+    long-only with nothing saying so."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "200000"; shorting_enabled = True; multiplier = "2"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["shorting_enabled"] is True
+    assert a["multiplier"] == 2.0
+
+
+def test_a_broker_that_omits_the_fields_reads_as_NOT_shortable():
+    """Fail closed. An unknown capability must not read as permission."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["shorting_enabled"] is False
+    assert a["multiplier"] == 1.0
+
+
+def test_a_broker_that_explicitly_reports_shorting_disabled_reads_as_NOT_shortable():
+    """The paired half of the capability test: `shorting_enabled` present and
+    explicitly False must read the same as absent, not as some third state."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"; shorting_enabled = False; multiplier = "1"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["shorting_enabled"] is False
+    assert a["multiplier"] == 1.0
+
+
+def test_multiplier_None_falls_back_to_one():
+    """`multiplier` present but explicitly None (distinct from the attribute
+    being absent entirely) must not become `float(None)`, which raises — it
+    must fall back the same as a missing field."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"; shorting_enabled = True; multiplier = None
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["multiplier"] == 1.0
+
+
+def test_multiplier_string_zero_is_pinned_not_silently_fixed_up():
+    """Alpaca reports numeric account fields as strings (see `equity`/`cash`
+    fixtures throughout this file), so a truthy-but-zero-valued string is a
+    real shape, not a contrived one. `"0" or 1` evaluates to `"0"` — the
+    `or` only rescues falsy Python values (None, 0, 0.0), not the string
+    "0" — so this reads as 0.0, NOT the 1.0 fallback. Pinned so a future
+    change to this line changes behaviour on purpose, not by accident."""
+    import broker as broker_mod
+
+    class _Acct:
+        equity = "100000"; cash = "50000"; last_equity = "99000"
+        buying_power = "100000"; shorting_enabled = True; multiplier = "0"
+
+    b = object.__new__(broker_mod.Broker)
+    b.trading = type("T", (), {"get_account": lambda self: _Acct()})()
+    a = b.account()
+    assert a["multiplier"] == 0.0

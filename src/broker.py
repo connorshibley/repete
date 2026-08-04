@@ -60,6 +60,13 @@ class Broker:
             "cash": float(a.cash),
             "last_equity": float(a.last_equity),  # equity at previous close
             "buying_power": float(a.buying_power),
+            # FAIL CLOSED. `getattr` default False, not True: an account whose
+            # capability we cannot read must not be assumed to have it. A
+            # cash account silently rejects every short at submission, one
+            # order at a time, and the book reverts to long-only with nothing
+            # anywhere saying why.
+            "shorting_enabled": bool(getattr(a, "shorting_enabled", False)),
+            "multiplier": float(getattr(a, "multiplier", 1) or 1),
         }
 
     def positions(self) -> dict:
