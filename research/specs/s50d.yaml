@@ -1,0 +1,161 @@
+# §50d — THE INCUMBENT AT FULL DEPLOYMENT, vs A SURVIVORSHIP-FREE BENCHMARK (2022-2026)
+#
+# ONE CLAIM IN FOUR FILES, written and frozen TOGETHER before any is run — the
+# §37/§41/§44/§48 convention. Conjunction: one clause failure in one period
+# sinks the whole claim. Running one period and reporting it would be period
+# selection.
+#
+# WHAT LICENSES THIS. §48's reading rule, frozen before its run and quoted
+# exactly: "a fresh EDGE registration re-testing the INCUMBENT at full
+# deployment, spending budget as K=14. It does not license new machinery, and
+# it does not license touching max_drawdown_pct." §48 came back outcome (2) —
+# the unblocked arm cleared beats_exposure_matched in 4 of 4 — and the owner
+# made the call to register this on 2026-08-03.
+#
+# `risk.max_drawdown_pct: 0` IS THE ARM, NOT A PROPOSAL. §48's rule barred
+# TOUCHING the shipped value, and "at full deployment" requires the rail off in
+# the SIMULATION. config.yaml still ships 10.0 and nothing here changes that.
+#
+# WHY THE BENCHMARK HAD TO CHANGE. Every clause rule that existed before this
+# spec scored against the SNAPSHOT'S OWN universe, and §48 measured what that
+# is worth. Survivorship inflation in THIS period: -9.59pp.
+#
+# THIS PERIOD IS CLOSEST TO THE CURRENT REGIME, and it is the ONLY one where
+# clause (b) passes — §48 measured +61.67% against a universe buy-and-hold of
+# +45.11%. It is also the period where survivorship runs the OTHER WAY: the
+# inflation is -9.59pp, because mega-cap concentration meant cap-weighted SPY
+# beat the equal-weight average. So here (c) is a HARDER bar than (b), not an
+# easier one, and the two clauses swap roles relative to the older periods.
+#
+# §45 recorded divergence #13 about this period: live is currently trading in
+# the quiet-latch regime that the backtest says is ~3% of the time, so nothing
+# here predicts what the live bot does next month.
+#
+# THE OUTCOME OF THIS CLAIM IS ALREADY PREDICTABLE. See `prior` — it is
+# computable from numbers §48 published. That is disclosed rather than hidden,
+# and the owner registered it knowing so.
+id: s50d
+claim: EDGE
+title: "Incumbent at full deployment vs a survivorship-free benchmark (2022-2026)"
+
+# Judge ON, matching live and matching §48 — whose numbers this must reproduce.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2022-01-01_2026-07-24.json.gz
+  sha256: 081dc08727a8cd8e1dc4726625b1fab02cb3b7d8c1489849a69327950c4adc8d
+
+cash: 100000.0
+
+# K=14. §48's rule named this number, and spending it is the CONSERVATIVE
+# direction: the Bonferroni count penalises searching, so recording a
+# fourteenth claim makes every FUTURE claim face a stricter significance bar.
+# Declining to spend it would make the record look less searched than it is.
+bonferroni_k: 14
+
+# SINGLE ARM, following §39, which "puts the BASELINE ITSELF on trial against
+# benchmarks from its own run". Every clause below is a SELF rule, so there is
+# nothing to compare against; a second arm would invite reading this as a
+# comparison it is not. This arm is configurationally IDENTICAL to §48's
+# `no_drawdown_rail` arm, which is what makes the reproduction check in the
+# results section free.
+arms:
+  - name: baseline
+    set:
+      risk.max_drawdown_pct: 0
+
+clauses:
+  # The claim is about FULL deployment. Without this a bot that reverted to
+  # sitting in cash could clear the return clauses on a handful of trades.
+  - {id: a, rule: deployment_at_least, pct: 25}
+
+  # SURVIVORSHIP-MATCHED. Strategy and benchmark draw from the same survivor
+  # pool, so the bias cancels — but the benchmark is not an investable thing.
+  - {id: b, rule: beats_buy_hold}
+
+  # SURVIVORSHIP-FREE. SPY's price already absorbs constituent changes. New
+  # rule, added for this claim; see the header and `failure_modes`.
+  - {id: c, rule: beats_benchmark_symbol, symbol: SPY}
+
+  # Without this an arm with a handful of trades could clear (b) and (c) on
+  # noise.
+  - {id: d, rule: min_trades, n: 30}
+
+prior: >-
+  REJECTED, and unusually this is not merely expected but ARITHMETIC. §48
+  published this exact arm's return on this exact snapshot: +61.67%.
+  (b) PASSES here — the only period where it does — at +61.67% against a
+  universe buy-and-hold of +45.11%. (c) fails: SPY returned +63.52% over these
+  bars as the harness measures it (charging the same slippage and fees; the
+  raw close-to-close figure is +64.39%). The margin is 1.85pp, the narrowest
+  of any clause in this claim, and it is the one number here that could
+  plausibly land either side. If it passes, this period passes all four
+  clauses — and the conjunction is still REJECTED by the other three.
+
+  Across all four periods, using only numbers §48 published plus SPY measured
+  by scripts/survivorship_check.py: (b) fails in 2000-2006, 2007-2013 and
+  2014-2019; (c) fails in 2014-2019 and 2022-2026. EVERY PERIOD FAILS AT LEAST
+  ONE CLAUSE. The expected verdict is REJECTED in all four.
+
+  WHY REGISTER A FOREGONE CLAIM, stated plainly so nobody later reads "0 for
+  14" as fourteen independent tests. Two reasons, and the owner made this call
+  on 2026-08-03 with the predicted outcome in front of them:
+
+  (1) Spending K is the CONSERVATIVE direction. The Bonferroni count exists to
+  penalise searching; a fourteenth recorded claim makes every future claim face
+  a stricter bar. Declining to spend it — for instance by relabelling this
+  METHOD to protect the EDGE record — would make the project look less searched
+  than it is, which is the failure mode this whole ledger exists to prevent.
+
+  (2) It converts a number in prose into a machine-checked clause. The SPY
+  comparison currently lives only in §48's write-up and an ad-hoc script.
+  After this it is a frozen rule inside the harness that every later claim can
+  use, and the survivorship correction stops depending on somebody remembering
+  to apply it.
+
+  What would genuinely surprise me: clause (a) or (d) failing, which would mean
+  the arm did not reproduce §48 and the run is void; or (b) passing here, which
+  would mean the simulator moved under the new benchmark fields. Either is a
+  reproduction failure, not a result, and voids the claim rather than passing
+  it.
+
+failure_modes:
+  - >-
+    THE RESIDUAL SURVIVORSHIP RUNS IN THE STRATEGY'S FAVOUR, and clause (c)
+    does NOT remove it. SPY as a benchmark is survivorship-free, but the BOT
+    still trades a survivor-only universe: it picks from 500 names all of which
+    reached 2026. So the comparison is biased toward the strategy. The
+    consequence is asymmetric and is the single most important line in this
+    spec: a FAIL on (c) is DECISIVE — it lost with a tailwind — while a PASS on
+    (c) is NOT, because the tailwind could account for it. No result here can
+    be read as "survivorship has been handled".
+  - >-
+    CLAUSE (b) AND CLAUSE (c) MEASURE DIFFERENT THINGS AND CAN DISAGREE, and in
+    this period they do: (b) fails while (c) passes. That is not a contradiction
+    — (b) is survivorship-matched and (c) is survivorship-free — but a reader
+    who quotes only the passing one gets the opposite impression of the claim.
+    They are a pair and must be reported together.
+  - >-
+    DRAWDOWN IS REPORTED, NOT GATED. §48 measured this arm at 16.65% maxDD in
+    this period, against the owner's stated 10pp tolerance. Matched drawdown
+    was §44's question and was REJECTED there; re-gating it here would re-run
+    §44 under a new number, and §41's precedent separates risk clauses from
+    return clauses. So a PASS on this claim would mean "beat both benchmarks on
+    return", NOT "is deployable". Nothing here can enable anything.
+  - >-
+    SPY IS INSIDE THE TRADED UNIVERSE, so the benchmark is one of the
+    instruments the strategy may hold. That is not a defect — it is what makes
+    the comparison investable — but it means a period where the bot was heavily
+    in SPY will show a return close to the benchmark for a mechanical reason
+    rather than a skill-related one.
+  - >-
+    THE BENCHMARK IS NEW CODE ON ITS FIRST REGISTERED USE. `benchmark_stats`
+    and the `beats_benchmark_symbol` rule were written for this claim. They are
+    mutation-tested and the arm must reproduce §48's published return exactly,
+    which is the guard against them having perturbed the simulator — but a
+    first use is a first use, and a surprising number here should be suspected
+    of being a bug before it is believed as a finding.
+  - >-
+    ONE PERIOD IS NOT THE CLAIM. s50a-d are a conjunction. A striking result in
+    this period alone is a period-selection story, which is the failure §37,
+    §44 and §48 were all structured to avoid.
