@@ -5341,3 +5341,87 @@ The honest next step, if the owner wants one, is a **registered replication on a
 universe that is not selected on the outcome** — a point-in-time index
 membership snapshot, which this repo does not currently have and cannot build
 from its existing data.
+
+---
+
+## §52 CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and the EDGE budget is FROZEN
+
+**2026-08-03.** §51's write-up named the honest next step: *"a registered
+replication on a universe that is not selected on the outcome — point-in-time
+index membership, which this repo does not currently have and cannot build from
+its existing data."*
+
+That was a guess. `scripts/probe_delisted_coverage.py` measured it, on the §46
+precedent: probe before writing a claim that depends on the data, and **exit
+non-zero with a refusal** if the data cannot carry it.
+
+### The probe REFUSED, for two separate reasons
+
+| ticker | fate | rows | pre-delisting | |
+|---|---|---|---|---|
+| SIVB | SVB Financial, seized Mar 2023 | **0** | 0 | missing |
+| FRC | First Republic, seized May 2023 | **0** | 0 | missing |
+| TWTR | taken private Oct 2022 | **0** | 0 | missing |
+| ATVI | acquired Oct 2023 | **0** | 0 | missing |
+| **SBNY** | Signature Bank, seized **2023-03-12** | **475** | **0** | **TICKER REUSE** |
+| *AAPL (control)* | alive | 1,637 | — | fetch path works |
+
+**Check 1 — coverage: FAIL.** Four of five delisted names return nothing at all.
+A point-in-time universe needs exactly those companies; without their prices the
+losers are simply absent, which *is* the survivorship bias.
+
+**Check 2 — ticker reuse: FAIL, and this is the one that matters.** SBNY returns
+475 bars — **all of them starting 2024-08-15**, seventeen months after the bank
+was seized, on exchange PNK, still labelled *"Signature Bank"*.
+
+A builder that asked only *"did we get bars for this delisted name?"* **passes**,
+splices in an OTC successor, and produces a dataset that never observes the
+collapse while carrying the name of the company that collapsed. **That is not
+survivorship bias — it is fabricated history wearing the costume of the fix,
+and it would be worse than doing nothing.**
+
+A control is included so that "everything returned zero" cannot be misread as
+vendor coverage when it is really a broken network. The control returned 1,637
+rows, so the refusal is a measurement.
+
+### THE FREEZE — pre-committed, and mechanical
+
+`scripts/register_gate.py` now **refuses `claim: EDGE` on any snapshot under
+`data/snapshots/`.**
+
+Every snapshot there is built by `build_snapshot.py` from
+`index_constituents()`, which reads **current** Wikipedia membership — so all of
+them are survivor-selected, not just the four §48 measured. §48 sized the bias
+at up to **+130.06pp**; §51 showed it was large enough to explain this project's
+only EDGE pass (**+200.28pp** on the 38-name universe).
+
+Registering further EDGE claims on this data **buys more chances at a false
+positive without buying information**. That is §33's argument — *"continuing to
+hunt arms is simply buying more chances for a false positive"* — applied to the
+**data** rather than to the selection procedure.
+
+| | |
+|---|---|
+| **Still allowed** | DIAGNOSTIC, METHOD, CAPACITY — none claims an edge, and §41's capacity question is about deployment rather than returns |
+| **Lifts the freeze** | any source that passes `probe_delisted_coverage.py` |
+| **Override** | `--override-freeze "<reason>"`, and the reason is written into `registrations.jsonl` beside the claim |
+
+The override exists because **a wall gets edited out of the script; a speed bump
+with an audit trail does not.** A reason under twenty characters is refused, so
+the row a future reader finds contains an argument rather than a shrug.
+
+This is the §36 pattern: *"today that discipline is a habit backed by a git
+commit. Here it becomes mechanical."*
+
+### Blocked on the owner
+
+**A data vendor with verified delisted history** — Norgate, Sharadar (Nasdaq
+Data Link), Polygon, or CRSP. Same shape as §46's FMP decision, and not mine to
+make. The probe is the acceptance test: point `--source` at a candidate and it
+answers on the same two questions.
+
+Until then the freeze holds, and **that is the intended outcome rather than a
+side effect.**
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+1 pass in 15, and that one pass carries §51's survivorship qualification.**
