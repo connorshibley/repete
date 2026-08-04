@@ -5134,3 +5134,114 @@ Three things must be said about that, in this order:
 
 **Nothing enabled. `max_drawdown_pct` stays at 10.0. `mode: paper` unchanged.
 EDGE 0 for 14; K is now 14.**
+
+---
+
+## §51 — IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? (EDGE, K=15, pre-registered 2026-08-03)
+
+**Claim type: EDGE. K=15.** Specs `research/specs/s51a-c.yaml`, written and
+frozen **together** before any was run. Conjunction — one clause failure in one
+universe sinks the claim.
+
+| spec | snapshot | symbols | frozen sha256 |
+|---|---|---|---|
+| s51a | `bars_2020-01-01_2026-07-10` | **38 — the live universe** | `d66a71ccdd4ac25f…` |
+| s51b | `bars_..._u60` | 68 | `0bde3c957c4beab3…` |
+| s51c | `bars_wide_2020-01-01_2026-07-10` | 500 | `4203e070c3600ea9…` |
+
+### What licenses this
+
+§50's results recorded an observation its own prior had not anticipated — the
+incumbent drew down **less than SPY in all four periods**, with a better
+return-per-unit-of-drawdown in all four, including 2014-2019 where it *lost* on
+return — and then refused to act on it:
+
+> it **licenses nothing**… whether a lower-drawdown, lower-return profile
+> constitutes an edge is a *different question*, it needs a risk-adjusted pass
+> mark fixed in advance, and anyone pursuing it starts from a fresh
+> registration at **K=15**.
+
+Owner call, 2026-08-03.
+
+### THE OBSERVATION IS POST-HOC. That is the central problem.
+
+It was read off §50's output. Testing it on the four periods that produced it
+would be testing a hypothesis on the data that generated it — **and the outcome
+is already computable: it passes 4 of 4.** That would hand this project its
+first EDGE pass out of a circular claim, which is precisely the §33 RUN 1 story.
+
+### And the observed margin tracks survivorship almost exactly
+
+| period | bot return/maxDD | SPY return/maxDD | ratio | survivorship inflation |
+|---|---|---|---|---|
+| 2000-2006 | 6.19 | 0.21 | **29.36×** | +130.06pp |
+| 2007-2013 | 2.23 | 0.93 | **2.40×** | +45.46pp |
+| 2014-2019 | 7.24 | 5.03 | **1.44×** | +3.97pp |
+| 2022-2026 | 3.70 | 2.59 | **1.43×** | −9.59pp |
+
+The advantage collapses from 29× to 1.43× as the inflation §48 measured goes to
+zero — what a survivorship story predicts and a real-edge story does not. **But
+it collapses *to* ~1.43×, not to 1.0×**, and both clean periods land in the same
+place. That residual is the open question.
+
+### So it is scored on data no registration has ever touched
+
+Each of the four wide periods has been scored **six times** (§39, §41, §43, §44,
+§48, §50). These three snapshots have **never appeared in
+`research/registrations.jsonl`**. s51a is additionally the 38-symbol universe the
+live bot actually trades — §49 established the wide snapshots contain no sector
+ETFs and are therefore *not* the live universe.
+
+**The outcome was not computed before freezing.** That is what distinguishes §51
+from §50, which was deliberately registered as foregone. Specs written, hashed
+and committed before any number from these snapshots was looked at.
+
+### The claim
+
+Single arm following §39, configurationally **identical to §48's
+`no_drawdown_rail` and §50's arm** — the same bot at full deployment, measured a
+third way. `risk.max_drawdown_pct: 0` is the arm, not a proposal; `config.yaml`
+still ships 10.0.
+
+| clause | rule |
+|---|---|
+| a | `deployment_at_least: 25` |
+| b | `min_trades: 30` |
+| c | `beats_benchmark_risk_adjusted: SPY` — *levered to SPY's own drawdown, does it beat SPY?* |
+
+**`beats_benchmark_symbol` is deliberately absent.** §50 already rejected
+absolute return against SPY; including it would re-run §50 under a new number.
+
+### The prior
+
+**Genuinely uncertain — the first claim here whose answer I do not know before
+the run.** Honest expectation REJECTED at roughly 60/40, on a base rate of EDGE
+0 for 14, stated as a weak prior rather than dressed up in either direction.
+
+A failure of (a) or (b) would be a mechanical or data problem, not evidence
+about risk-adjusted performance, and voids that arm rather than rejecting the
+claim on its merits.
+
+### What a PASS would and would not mean
+
+- **NOT more money.** §50 established this exact arm loses to SPY on absolute
+  return in both clean periods. A pass means choosing lower returns for lower
+  drawdown — a defensible preference, not an edge in the sense the other
+  thirteen claims used the word.
+- **NOT survivorship-free.** The strategy still trades a survivor-selected
+  universe, so §50's asymmetry holds: **a FAIL is decisive, a PASS is not.**
+- **NOT replication.** One hold-out promotes a post-hoc observation to "survived
+  one out-of-sample test", nothing more. It licenses no config change and no
+  further claim without its own registration.
+- The risk-matched comparison **assumes costless leverage**, which is false: a
+  long equity book cannot be levered for free, faces margin calls precisely at
+  drawdown troughs, and levering multiplies the tail beyond what maxDD measures.
+
+**Hold-out caveat:** the 2020-2026 window overlaps the mined 2022-2026, so this
+is out-of-sample for the *universe* and the *question*, not the calendar. The
+genuinely unmined stretch is 2020-2021, the COVID crash. s51c is the weakest arm
+— it shares both its universe and half its window with s48d/s50d — and is
+included rather than dropped because excluding a conjunction's least favourable
+arm would be arm selection.
+
+*(Measured results follow below, written after the run.)*

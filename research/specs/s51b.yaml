@@ -1,0 +1,152 @@
+# §51b — IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? (68 symbols)
+#
+# ONE CLAIM IN THREE FILES, written and frozen TOGETHER before any is run.
+# Conjunction: one clause failure in one universe sinks the claim. Unlike
+# §37/§44/§48/§50 the conjunction is across UNIVERSES, not periods — see
+# `failure_modes`, where that weakness is stated rather than glossed.
+#
+# WHAT LICENSES THIS. §50's results section recorded an observation its own
+# prior had not anticipated — the incumbent drew down LESS than SPY in all four
+# periods, with a better return-per-unit-of-drawdown in all four, including
+# 2014-2019 where it LOST on return — and then refused to act on it: "it
+# licenses nothing... whether a lower-drawdown, lower-return profile
+# constitutes an edge is a DIFFERENT question, it needs a risk-adjusted pass
+# mark fixed in advance, and anyone pursuing it starts from a fresh
+# registration at K=15." The owner made that call on 2026-08-03.
+#
+# THE OBSERVATION IS POST-HOC, AND THAT IS THE CENTRAL PROBLEM. It was read off
+# §50's output. Testing it on the four periods that produced it would be
+# testing a hypothesis on the data that generated it — and the outcome is
+# already computable: it passes 4 of 4. That would hand this project its first
+# EDGE pass out of a circular claim, which is exactly the §33 RUN 1 story.
+#
+# SO IT IS SCORED ON DATA NO REGISTRATION HAS EVER TOUCHED. This snapshot has
+# never appeared in research/registrations.jsonl, while each of the four wide
+# periods has been scored SIX times (§39, §41, §43, §44, §48, §50). It is the
+# 68-symbol universe: the live 38 plus a further thirty names, so it tests
+# whether the effect survives WIDENING the universe beyond what the bot
+# actually trades. Of the three arms it is intermediate in independence —
+# a universe never scored, but closer to the wide snapshots than s51a is.
+#
+# THE OUTCOME WAS NOT COMPUTED BEFORE FREEZING. That is what distinguishes §51
+# from §50, which was deliberately registered as foregone. These specs were
+# written, hashed and committed before any number from these snapshots was
+# looked at.
+id: s51b
+claim: EDGE
+title: "Risk-adjusted vs SPY at full deployment (68 symbols)"
+
+# Judge ON, matching live and matching §48/§50.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_2020-01-01_2026-07-10_u60.json.gz
+  sha256: 2ee392ae494c555c7f22de59682c2159582ab89651963904dfe63faafd738541
+
+cash: 100000.0
+
+# K=15. §50's results section named this number. Fourteen claims precede it.
+bonferroni_k: 15
+
+# SINGLE ARM, following §39, and configurationally IDENTICAL to §48's
+# `no_drawdown_rail` and §50's arm — the subject is the same bot at full
+# deployment, so the three claims are about one thing measured three ways.
+#
+# `risk.max_drawdown_pct: 0` IS THE ARM, NOT A PROPOSAL. §48's rule barred
+# TOUCHING the shipped value and config.yaml still ships 10.0.
+arms:
+  - name: baseline
+    set:
+      risk.max_drawdown_pct: 0
+
+clauses:
+  # The claim is about FULL deployment. Without this, an arm that reverted to
+  # sitting in cash could post a flattering drawdown and clear (c) trivially —
+  # the degenerate case §41 added this rule for.
+  - {id: a, rule: deployment_at_least, pct: 25}
+
+  # So (c) cannot clear on a handful of trades.
+  - {id: b, rule: min_trades, n: 30}
+
+  # THE CLAIM. Risk-matched: the strategy's return scaled by the drawdown gap
+  # must clear the benchmark's return. "Levered to SPY's own drawdown, does it
+  # beat SPY?"
+  - {id: c, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+# DELIBERATELY ABSENT: `beats_benchmark_symbol`. §50 already tested and
+# REJECTED absolute return against SPY; including it here would re-run §50
+# under a new number. The consequence is the single most important caveat on
+# this claim and is repeated in `failure_modes`: A PASS MEANS BETTER
+# RISK-ADJUSTED RETURN, NOT MORE MONEY.
+
+prior: >-
+  GENUINELY UNCERTAIN — the first claim in this project whose answer I do not
+  know before the run, and that is the point of registering it this way.
+
+  The evidence pulls both ways. Against: the observed advantage tracks
+  survivorship almost exactly. Using §50's returns and drawdowns with the
+  inflation figures from scripts/survivorship_check.py, the bot's
+  return-per-drawdown over SPY's runs 29.36x at +130.06pp of inflation, 2.40x
+  at +45.46pp, 1.44x at +3.97pp and 1.43x at -9.59pp. The margin collapses as
+  the artifact goes to zero, which is what a survivorship story predicts and
+  what a real-edge story does not.
+
+  For: it collapses TO ~1.43x, not to 1.0x. Both periods where the benchmark is
+  clean land in the same place, which is not what pure artifact looks like
+  either. Something of that size may survive.
+
+  So the honest expectation is REJECTED, at maybe 60/40, on a base rate of EDGE
+  0 for 14 — a weaker prior than any previous claim here, deliberately stated
+  as such rather than dressed up in either direction.
+
+  What would genuinely surprise me: clause (a) or (b) failing on this universe.
+  68 symbols over six and a half years at full deployment should produce
+  hundreds of trades; a failure there is a mechanical or data problem, not
+  evidence about risk-adjusted performance, and it voids this arm rather than
+  rejecting the claim on its merits.
+
+failure_modes:
+  - >-
+    THE HOLD-OUT IS PARTIAL, NOT CLEAN. The 2020-01-01 to 2026-07-10 window
+    overlaps the mined 2022-2026 snapshot, so roughly two thirds of this
+    calendar range has been scored before — just never on this universe, and
+    never for this hypothesis. The genuinely unmined part is 2020-2021, which
+    contains the COVID crash. A result here is out-of-sample with respect to
+    the UNIVERSE and to the QUESTION, not with respect to the calendar.
+  - >-
+    THE SAME ASYMMETRY §50 PRE-REGISTERED STILL APPLIES, and this rule does not
+    remove it. SPY as a benchmark is survivorship-free, but the STRATEGY still
+    trades a survivor-selected universe, so its return — and therefore its
+    risk-adjusted return — is inflated in its own favour. A FAIL is DECISIVE
+    (it lost with a tailwind); a PASS is NOT.
+  - >-
+    A PASS MEANS BETTER RISK-ADJUSTED RETURN, NOT MORE MONEY. §50 established
+    that this exact arm LOSES to SPY on absolute return in both periods where
+    the benchmark is clean. Adopting anything on the strength of this claim
+    would be choosing lower returns for lower drawdown. That may be a
+    defensible preference, but it is a preference and not an edge in the sense
+    the other thirteen claims used the word.
+  - >-
+    THE RISK-MATCHED COMPARISON ASSUMES COSTLESS LEVERAGE, and that assumption
+    is false. Scaling a return by (benchmark maxDD / strategy maxDD) is
+    arithmetic; actually achieving it would require levering a long equity book,
+    which costs financing, faces margin calls precisely at drawdown troughs, and
+    multiplies the tail beyond anything maxDD measures. The clause is a
+    normalisation, not a trading plan.
+  - >-
+    MAX DRAWDOWN IS A SINGLE-PATH STATISTIC. It is one realised sequence, not a
+    distribution, and it is systematically understated by short samples and by
+    survivorship. A strategy can post a low historical maxDD and carry fat
+    tails that never happened to fire in these bars. Nothing in this claim
+    measures tail risk.
+  - >-
+    THREE UNIVERSES OVER ONE CALENDAR WINDOW ARE CORRELATED. This conjunction
+    is a universe-robustness check, not three independent tests, and it is
+    weaker than the four-period conjunctions §37/§44/§48/§50 used. s51c is the
+    weakest arm of the three: it shares both its universe and half its window
+    with s48d/s50d.
+  - >-
+    ONE HOLD-OUT IS CONFIRMATION, NOT REPLICATION. This claim can promote a
+    post-hoc observation to "survived one out-of-sample test". It cannot
+    promote it to "established", and a PASS licenses no config change, no
+    enablement, and no further claim without its own registration.
