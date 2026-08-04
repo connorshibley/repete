@@ -182,3 +182,184 @@ def test_the_band_is_off_when_unconfigured():
     changes every existing gate result."""
     positions = {"AAPL": {"market_value": 500_000.0}}
     risk.pure_checks("buy", "MSFT", 1, 100.0, ACCOUNT, positions, _cfg())
+
+
+# ---- brackets on the short side ----
+
+class _FakeTrading:
+    """Captures the request instead of sending it. No network, ever."""
+
+    def __init__(self):
+        self.requests = []
+
+    def submit_order(self, req):
+        self.requests.append(req)
+        return type("O", (), {"id": "order-1", "status": "accepted",
+                              "legs": []})()
+
+
+def _broker_with(fake):
+    import broker as broker_mod
+    b = object.__new__(broker_mod.Broker)      # no __init__, no credentials
+    b.trading = fake
+    return b
+
+
+def test_a_short_bracket_submits_a_SELL_not_a_BUY():
+    """The hardcoded side. A short routed through this today opens a LONG."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order(
+        "TSLA", 10, stop_price=110.0, side="short", entry_price=100.0)
+    assert fake.requests[0].side == OrderSide.SELL
+
+
+def test_a_long_bracket_still_submits_a_BUY():
+    """The paired half — the default must not move."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order("AAPL", 10, stop_price=90.0)
+    assert fake.requests[0].side == OrderSide.BUY
+
+
+def test_a_short_bracket_refuses_a_stop_BELOW_the_entry():
+    """Geometry, and it is not cosmetic. A short's stop sits ABOVE entry; a
+    stop below it can never trigger, so the position would be unprotected while
+    appearing bracketed — the worst of both."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="above"):
+        _broker_with(fake).bracket_market_order(
+            "TSLA", 10, stop_price=90.0, side="short", entry_price=100.0)
+    assert fake.requests == []
+
+
+def test_a_long_bracket_refuses_a_stop_ABOVE_the_entry():
+    """The mirror."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="below"):
+        _broker_with(fake).bracket_market_order(
+            "AAPL", 10, stop_price=110.0, side="buy", entry_price=100.0)
+    assert fake.requests == []
+
+
+def test_a_short_bracket_accepts_a_stop_ABOVE_the_entry():
+    """The paired half of the short-stop refusal above — a correctly-placed
+    short stop must not be caught by the same check that blocks a bad one."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order(
+        "TSLA", 10, stop_price=110.0, side="short", entry_price=100.0)
+    assert fake.requests[0].side == OrderSide.SELL
+
+
+def test_a_long_bracket_accepts_a_stop_BELOW_the_entry():
+    """The paired half of the long-stop refusal above."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order(
+        "AAPL", 10, stop_price=90.0, side="buy", entry_price=100.0)
+    assert fake.requests[0].side == OrderSide.BUY
+
+
+def test_the_geometry_check_is_skipped_for_a_long_when_entry_price_is_omitted():
+    """`entry_price` stays OPTIONAL for "buy" — src/main.py's only live call
+    site never supplies one, and Phase 1 promises byte-identical live
+    behaviour. A long submitted without it must still go through, unchecked,
+    exactly as it does today."""
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order("AAPL", 10, stop_price=90.0)
+    assert len(fake.requests) == 1
+
+
+def test_a_short_bracket_without_an_entry_price_is_refused():
+    """`entry_price` is REQUIRED for "short" — this is the hazard the task
+    exists to eliminate. Without it there is nothing to check the stop
+    against, and an unchecked short's loss is unbounded."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="entry_price"):
+        _broker_with(fake).bracket_market_order(
+            "TSLA", 10, stop_price=110.0, side="short")
+    assert fake.requests == []
+
+
+def test_a_short_bracket_WITH_an_entry_price_is_still_accepted():
+    """The paired half — requiring entry_price for a short must not become
+    refusing every short."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).bracket_market_order(
+        "TSLA", 10, stop_price=110.0, side="short", entry_price=100.0)
+    assert fake.requests[0].side == OrderSide.SELL
+
+
+def test_a_short_with_entry_price_ZERO_is_refused():
+    """0.0 passes `entry_price is not None`, so without this check a failed
+    quote lookup that defaults to zero would slip a short through with the
+    geometry check trivially satisfied for every stop — validated-looking,
+    unvalidated in fact."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="non-positive"):
+        _broker_with(fake).bracket_market_order(
+            "TSLA", 10, stop_price=110.0, side="short", entry_price=0.0)
+    assert fake.requests == []
+
+
+def test_a_long_with_entry_price_ZERO_is_also_refused():
+    """The mirror: 0.0 would make the long's `stop_price >= entry_price`
+    check always true, spuriously refusing every otherwise-good long stop.
+    That failure mode fails safe, but it is still wrong — a caller passing
+    a placeholder zero should get a clear error, not an inscrutable one."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="non-positive"):
+        _broker_with(fake).bracket_market_order(
+            "AAPL", 10, stop_price=90.0, side="buy", entry_price=0.0)
+    assert fake.requests == []
+
+
+def test_a_short_stop_EQUAL_to_entry_is_refused():
+    """The boundary itself. Every other geometry test sits 10 away from
+    entry, which cannot tell <= from < — a stop that exactly equals entry
+    triggers on any move and must be refused, not waved through."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="above"):
+        _broker_with(fake).bracket_market_order(
+            "TSLA", 10, stop_price=100.0, side="short", entry_price=100.0)
+    assert fake.requests == []
+
+
+def test_a_long_stop_EQUAL_to_entry_is_refused():
+    """The mirror boundary, on the long side."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="below"):
+        _broker_with(fake).bracket_market_order(
+            "AAPL", 10, stop_price=100.0, side="buy", entry_price=100.0)
+    assert fake.requests == []
+
+
+def test_a_bracket_refuses_an_unknown_side():
+    """"sell" used to be accepted here as a short alias and no longer is —
+    this also covers any other typo. A function whose entire job is picking
+    the side of a directional bet must not fall through to a silent BUY."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="sell"):
+        _broker_with(fake).bracket_market_order(
+            "AAPL", 10, stop_price=90.0, side="sell")
+    assert fake.requests == []
+
+
+def test_a_short_brackets_return_value_reports_its_own_side_as_short():
+    """The request sent to Alpaca is only half of it — the return dict is what
+    main.py's ledger and trade-plan narration read. A hardcoded "buy" here
+    would send the correct order while every downstream record still called
+    it a long."""
+    fake = _FakeTrading()
+    result = _broker_with(fake).bracket_market_order(
+        "TSLA", 10, stop_price=110.0, side="short", entry_price=100.0)
+    assert result["side"] == "short"
+
+
+def test_a_long_brackets_return_value_still_reports_its_side_as_buy():
+    """The paired half — the default return shape must not move."""
+    fake = _FakeTrading()
+    result = _broker_with(fake).bracket_market_order("AAPL", 10, stop_price=90.0)
+    assert result["side"] == "buy"
