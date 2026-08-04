@@ -1,0 +1,132 @@
+===== s50a =====
+s50a — Incumbent at full deployment vs a survivorship-free benchmark (2000-2006)
+claim EDGE | K=14 | frozen 2026-08-04T00:39:01 | sha b3c77bbfc22aa969… | judge ON
+
+prior: REJECTED, and unusually this is not merely expected but ARITHMETIC. §48 published this exact arm's return on this exact snapshot: +137.50%, against a universe buy-and-hold of +138.54%. Clause (b) therefore fails by 1.04pp before this spec is run. Clause (c) passes here — SPY returned about +8.68% over these bars — but the conjunction is already broken.
+Across all four periods, using only numbers §48 published plus SPY measured by scripts/survivorship_check.py: (b) fails in 2000-2006, 2007-2013 and 2014-2019; (c) fails in 2014-2019 and 2022-2026. EVERY PERIOD FAILS AT LEAST ONE CLAUSE. The expected verdict is REJECTED in all four.
+WHY REGISTER A FOREGONE CLAIM, stated plainly so nobody later reads "0 for 14" as fourteen independent tests. Two reasons, and the owner made this call on 2026-08-03 with the predicted outcome in front of them:
+(1) Spending K is the CONSERVATIVE direction. The Bonferroni count exists to penalise searching; a fourteenth recorded claim makes every future claim face a stricter bar. Declining to spend it — for instance by relabelling this METHOD to protect the EDGE record — would make the project look less searched than it is, which is the failure mode this whole ledger exists to prevent.
+(2) It converts a number in prose into a machine-checked clause. The SPY comparison currently lives only in §48's write-up and an ad-hoc script. After this it is a frozen rule inside the harness that every later claim can use, and the survivorship correction stops depending on somebody remembering to apply it.
+What would genuinely surprise me: clause (a) or (d) failing, which would mean the arm did not reproduce §48 and the run is void; or (b) passing here, which would mean the simulator moved under the new benchmark fields. Either is a reproduction failure, not a result, and voids the claim rather than passing it.
+
+  verified bars_wide_2000-01-01_2006-12-31.json.gz  sha256 432cec564ccee6ab…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret +137.50%  PF 1.553  maxDD 22.23%  trades  3974  symbols 498  deploy  74.22%  (361s)
+
+  judge on baseline               sized 147988  cut  83984  vetoed  3595  truncated to 0  1175
+
+  buy-and-hold on this universe: +138.54%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [PASS] (a) deployment_at_least  74.22% deployed vs 25.0% required
+  [FAIL] (b) beats_buy_hold  +137.50% vs B&H +138.54%
+  [PASS] (c) beats_benchmark_symbol  +137.50% vs SPY +10.01% | maxDD 22.23% vs SPY 47.52% (reported, not gated)
+  [PASS] (d) min_trades  3974 vs 30
+
+VERDICT: REJECTED  (361s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+
+===== s50b =====
+s50b — Incumbent at full deployment vs a survivorship-free benchmark (2007-2013)
+claim EDGE | K=14 | frozen 2026-08-04T00:39:01 | sha f84207bf3f507ef9… | judge ON
+
+prior: REJECTED, and unusually this is not merely expected but ARITHMETIC. §48 published this exact arm's return on this exact snapshot: +75.57%. (b) fails by 16.91pp — +75.57% against a universe buy-and-hold of +92.48%. (c) passes: SPY returned about +51.34% over these bars. The conjunction is broken by (b), exactly as in 2000-2006 and for the same reason: the strategy does not beat the survivor-only universe it trades.
+Across all four periods, using only numbers §48 published plus SPY measured by scripts/survivorship_check.py: (b) fails in 2000-2006, 2007-2013 and 2014-2019; (c) fails in 2014-2019 and 2022-2026. EVERY PERIOD FAILS AT LEAST ONE CLAUSE. The expected verdict is REJECTED in all four.
+WHY REGISTER A FOREGONE CLAIM, stated plainly so nobody later reads "0 for 14" as fourteen independent tests. Two reasons, and the owner made this call on 2026-08-03 with the predicted outcome in front of them:
+(1) Spending K is the CONSERVATIVE direction. The Bonferroni count exists to penalise searching; a fourteenth recorded claim makes every future claim face a stricter bar. Declining to spend it — for instance by relabelling this METHOD to protect the EDGE record — would make the project look less searched than it is, which is the failure mode this whole ledger exists to prevent.
+(2) It converts a number in prose into a machine-checked clause. The SPY comparison currently lives only in §48's write-up and an ad-hoc script. After this it is a frozen rule inside the harness that every later claim can use, and the survivorship correction stops depending on somebody remembering to apply it.
+What would genuinely surprise me: clause (a) or (d) failing, which would mean the arm did not reproduce §48 and the run is void; or (b) passing here, which would mean the simulator moved under the new benchmark fields. Either is a reproduction failure, not a result, and voids the claim rather than passing it.
+
+  verified bars_wide_2007-01-01_2013-12-31.json.gz  sha256 2ba815e1b0d2ca5d…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret  +75.57%  PF 1.366  maxDD 33.84%  trades  3592  symbols 500  deploy  75.96%  (302s)
+
+  judge on baseline               sized 115952  cut  65590  vetoed  2890  truncated to 0  1066
+
+  buy-and-hold on this universe: +92.48%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [PASS] (a) deployment_at_least  75.96% deployed vs 25.0% required
+  [FAIL] (b) beats_buy_hold  +75.57% vs B&H +92.48%
+  [PASS] (c) beats_benchmark_symbol  +75.57% vs SPY +51.30% | maxDD 33.84% vs SPY 55.19% (reported, not gated)
+  [PASS] (d) min_trades  3592 vs 30
+
+VERDICT: REJECTED  (302s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+
+===== s50c =====
+s50c — Incumbent at full deployment vs a survivorship-free benchmark (2014-2019)
+claim EDGE | K=14 | frozen 2026-08-04T00:39:01 | sha a0e405a759758c2e… | judge ON
+
+prior: REJECTED, and unusually this is not merely expected but ARITHMETIC. §48 published this exact arm's return on this exact snapshot: +85.01%. BOTH return clauses fail here, and this is the period that matters most. (b) fails by 5.40pp — +85.01% against +90.41%. (c) fails by 12.96pp — +85.01% against SPY's +97.97%. The fully-deployed incumbent LOST TO THE INDEX in the period whose benchmark is least contaminated (+3.97pp of inflation, against +130.06pp in 2000-2006). That is the single strongest piece of evidence in the whole claim, and it is a failure.
+Across all four periods, using only numbers §48 published plus SPY measured by scripts/survivorship_check.py: (b) fails in 2000-2006, 2007-2013 and 2014-2019; (c) fails in 2014-2019 and 2022-2026. EVERY PERIOD FAILS AT LEAST ONE CLAUSE. The expected verdict is REJECTED in all four.
+WHY REGISTER A FOREGONE CLAIM, stated plainly so nobody later reads "0 for 14" as fourteen independent tests. Two reasons, and the owner made this call on 2026-08-03 with the predicted outcome in front of them:
+(1) Spending K is the CONSERVATIVE direction. The Bonferroni count exists to penalise searching; a fourteenth recorded claim makes every future claim face a stricter bar. Declining to spend it — for instance by relabelling this METHOD to protect the EDGE record — would make the project look less searched than it is, which is the failure mode this whole ledger exists to prevent.
+(2) It converts a number in prose into a machine-checked clause. The SPY comparison currently lives only in §48's write-up and an ad-hoc script. After this it is a frozen rule inside the harness that every later claim can use, and the survivorship correction stops depending on somebody remembering to apply it.
+What would genuinely surprise me: clause (a) or (d) failing, which would mean the arm did not reproduce §48 and the run is void; or (b) passing here, which would mean the simulator moved under the new benchmark fields. Either is a reproduction failure, not a result, and voids the claim rather than passing it.
+
+  verified bars_wide_2014-01-01_2019-12-31.json.gz  sha256 dca8dc85b8770f74…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret  +85.01%  PF 1.471  maxDD 11.74%  trades  3785  symbols 498  deploy  84.01%  (232s)
+
+  judge on baseline               sized  72669  cut  41050  vetoed  1765  truncated to 0  1198
+
+  buy-and-hold on this universe: +90.41%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [PASS] (a) deployment_at_least  84.01% deployed vs 25.0% required
+  [FAIL] (b) beats_buy_hold  +85.01% vs B&H +90.41%
+  [FAIL] (c) beats_benchmark_symbol  +85.01% vs SPY +97.39% | maxDD 11.74% vs SPY 19.35% (reported, not gated)
+  [PASS] (d) min_trades  3785 vs 30
+
+VERDICT: REJECTED  (232s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+
+===== s50d =====
+s50d — Incumbent at full deployment vs a survivorship-free benchmark (2022-2026)
+claim EDGE | K=14 | frozen 2026-08-04T00:39:01 | sha 4cf43d93da4e46ce… | judge ON
+
+prior: REJECTED, and unusually this is not merely expected but ARITHMETIC. §48 published this exact arm's return on this exact snapshot: +61.67%. (b) PASSES here — the only period where it does — at +61.67% against a universe buy-and-hold of +45.11%. (c) fails: SPY returned +63.52% over these bars as the harness measures it (charging the same slippage and fees; the raw close-to-close figure is +64.39%). The margin is 1.85pp, the narrowest of any clause in this claim, and it is the one number here that could plausibly land either side. If it passes, this period passes all four clauses — and the conjunction is still REJECTED by the other three.
+Across all four periods, using only numbers §48 published plus SPY measured by scripts/survivorship_check.py: (b) fails in 2000-2006, 2007-2013 and 2014-2019; (c) fails in 2014-2019 and 2022-2026. EVERY PERIOD FAILS AT LEAST ONE CLAUSE. The expected verdict is REJECTED in all four.
+WHY REGISTER A FOREGONE CLAIM, stated plainly so nobody later reads "0 for 14" as fourteen independent tests. Two reasons, and the owner made this call on 2026-08-03 with the predicted outcome in front of them:
+(1) Spending K is the CONSERVATIVE direction. The Bonferroni count exists to penalise searching; a fourteenth recorded claim makes every future claim face a stricter bar. Declining to spend it — for instance by relabelling this METHOD to protect the EDGE record — would make the project look less searched than it is, which is the failure mode this whole ledger exists to prevent.
+(2) It converts a number in prose into a machine-checked clause. The SPY comparison currently lives only in §48's write-up and an ad-hoc script. After this it is a frozen rule inside the harness that every later claim can use, and the survivorship correction stops depending on somebody remembering to apply it.
+What would genuinely surprise me: clause (a) or (d) failing, which would mean the arm did not reproduce §48 and the run is void; or (b) passing here, which would mean the simulator moved under the new benchmark fields. Either is a reproduction failure, not a result, and voids the claim rather than passing it.
+
+  verified bars_wide_2022-01-01_2026-07-24.json.gz  sha256 081dc08727a8cd8e…
+  judge calibration n=164 (2026-07-16..2026-07-28)  veto 2.4%  downsize 58.1%  mean scale 0.729
+
+  500 symbols | 1 arms | 1 worker(s)
+
+  baseline                 ret  +61.67%  PF 1.424  maxDD 16.65%  trades  3084  symbols 495  deploy  77.95%  (147s)
+
+  judge on baseline               sized  61337  cut  34728  vetoed  1485  truncated to 0  1347
+
+  buy-and-hold on this universe: +45.11%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [PASS] (a) deployment_at_least  77.95% deployed vs 25.0% required
+  [PASS] (b) beats_buy_hold  +61.67% vs B&H +45.11%
+  [FAIL] (c) beats_benchmark_symbol  +61.67% vs SPY +63.52% | maxDD 16.65% vs SPY 24.50% (reported, not gated)
+  [PASS] (d) min_trades  3084 vs 30
+
+VERDICT: REJECTED  (147s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
+

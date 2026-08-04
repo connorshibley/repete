@@ -5051,3 +5051,86 @@ PASS here would mean "beat both benchmarks on return", not "is deployable."**
 Nothing here can enable anything. `max_drawdown_pct` stays at 10.0.
 
 *(Measured results follow below, written after the run.)*
+
+---
+
+### THE MEASUREMENT (2026-08-03, judge ON, full output `research/s50_run_2026-08-03.txt`)
+
+**VERDICT: REJECTED in all four periods. EDGE is now 0 for 14.**
+
+| period | return | PF | maxDD | trades | deployment |
+|---|---|---|---|---|---|
+| 2000-2006 | +137.50% | 1.553 | 22.23% | 3,974 | 74.22% |
+| 2007-2013 | +75.57% | 1.366 | 33.84% | 3,592 | 75.96% |
+| 2014-2019 | +85.01% | 1.471 | 11.74% | 3,785 | 84.01% |
+| 2022-2026 | +61.67% | 1.424 | 16.65% | 3,084 | 77.95% |
+
+**The reproduction check passed on all four.** Every figure above is identical
+to §48's `no_drawdown_rail` arm. The new benchmark fields did not perturb the
+simulator, so the run is valid rather than void.
+
+### The clauses, against the pre-registered prediction
+
+| period | (a) deploy | (b) vs universe B&H | (c) vs SPY | (d) trades | verdict |
+|---|---|---|---|---|---|
+| 2000-2006 | ✓ | ✗ +137.50 vs +138.54 | ✓ vs +10.01 | ✓ | REJECTED |
+| 2007-2013 | ✓ | ✗ +75.57 vs +92.48 | ✓ vs +51.30 | ✓ | REJECTED |
+| **2014-2019** | ✓ | **✗ +85.01 vs +90.41** | **✗ vs +97.39** | ✓ | **REJECTED** |
+| 2022-2026 | ✓ | ✓ +61.67 vs +45.11 | ✗ vs +63.52 | ✓ | REJECTED |
+
+**Every clause landed exactly where the prior said it would**, including
+2022-2026's (c) — pre-registered as *"the narrowest of any clause in this
+claim… the one number here that could plausibly land either side"*, and it came
+in at 1.85pp. That the predictions held is not a success; it is what
+"foregone" meant, and it was disclosed before the run.
+
+**The load-bearing period behaved as named.** 2014-2019 carries only +3.97pp of
+survivorship inflation, so both its benchmarks are close to honest — and the
+fully-deployed incumbent **lost to the index there, on both bars.** That was
+called out in `s50c.yaml` before the run precisely so the emphasis could not be
+chosen afterwards.
+
+### THE ONE THING THE PRIOR DID NOT ANTICIPATE
+
+Drawdown was **reported, not gated** — and the reported column says something
+the return clauses do not:
+
+| period | bot maxDD | **SPY maxDD** | bot return / maxDD | SPY return / maxDD |
+|---|---|---|---|---|
+| 2000-2006 | 22.23% | **47.52%** | 6.18 | 0.21 |
+| 2007-2013 | 33.84% | **55.19%** | 2.23 | 0.93 |
+| 2014-2019 | 11.74% | **19.35%** | 7.24 | 5.03 |
+| 2022-2026 | 16.65% | **24.50%** | 3.70 | 2.59 |
+
+**The incumbent drew down less than SPY in all four periods**, and has a better
+return-to-drawdown ratio in all four — including 2014-2019, where it lost on
+return.
+
+Three things must be said about that, in this order:
+
+1. **It does not rescue the claim.** §50 was pre-registered on return, and it
+   was REJECTED on return. A risk-adjusted reading discovered *after* seeing
+   the numbers is exactly the move this ledger exists to prevent — §33 RUN 1 is
+   the standing reminder of what happens when a metric is chosen post hoc.
+2. **It licenses nothing.** No verdict changes, nothing is enabled, and this is
+   not a candidate until somebody writes and freezes one.
+3. **It is worth recording anyway**, because drawdown was made visible on
+   purpose. Whether a lower-drawdown, lower-return profile constitutes an edge
+   is a *different question* from the one asked here, it needs a risk-adjusted
+   pass mark fixed in advance, and §44 already showed how hard that conjunction
+   is to clear. Anyone pursuing it starts from a fresh registration at K=15 —
+   not from this section.
+
+### What §50 settles
+
+- **The incumbent does not beat the survivor-only universe it trades** in three
+  of four periods, and does not beat the index in two — including the period
+  where the benchmark is least contaminated.
+- **A FAIL on (c) is decisive**, per the pre-registered asymmetry: the strategy
+  still trades survivors, so it lost *with a tailwind*.
+- The survivorship correction is no longer a number in prose. It is
+  `beats_benchmark_symbol`, frozen inside the harness, available to every later
+  claim.
+
+**Nothing enabled. `max_drawdown_pct` stays at 10.0. `mode: paper` unchanged.
+EDGE 0 for 14; K is now 14.**
