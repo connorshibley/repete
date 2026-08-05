@@ -120,6 +120,10 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     skip_bars: 21             # skip most recent month (short-term reversal)
     buy_top_fraction: 0.25
     exit_below_fraction: 0.50
+    short_bottom_fraction: 0  # 0 = no short leg yet (nothing shorts in Phase
+                              # 2). preflight.py's shorting guard keys off
+                              # this exact name; a later phase that arms the
+                              # short leg sets it above 0 here.
   donchian:            # §17 candidate: N-bar breakout, M-bar exit (Turtle asymmetry)
     enabled: false     # DISABLED until it passes the walk-forward enablement gate.
                        # Params below are the pre-registered starting point, NOT

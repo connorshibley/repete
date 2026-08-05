@@ -701,6 +701,29 @@ def _bootstrap_cycle():
     account = broker.account()          # deterministic state: always from the broker,
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
+
+    # Second pre-flight pass: account-aware, so it can only run now that the
+    # broker's own account is known. Aborts the cycle the same way the pure
+    # pass above does — this check was previously unreachable at all, because
+    # nothing ever called preflight.run(cfg, account=...) here or anywhere
+    # else in production; run_account_checks exists so it has exactly one
+    # call site, this one.
+    acct_fails = preflight.run_account_checks(cfg, account)
+    if acct_fails:
+        for f_msg in acct_fails:
+            log.critical("PREFLIGHT: %s", f_msg)
+        try:
+            ledger.log_event("preflight_failure", "; ".join(acct_fails)[:500])
+        except Exception:  # noqa: BLE001 — even the ledger may be the problem
+            pass
+        try:
+            from watchdog import notify
+            notify("trading-agent PREFLIGHT FAILED",
+                   acct_fails[0][:120] + (" (+more)" if len(acct_fails) > 1 else ""))
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     return cfg, ledger, memory, broker, account, positions, halted
 
 

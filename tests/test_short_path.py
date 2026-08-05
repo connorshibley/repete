@@ -574,6 +574,7 @@ from ledger import Ledger
 from strategies.base import Signal
 
 from conftest import make_bars
+from test_main_cycle import FakeCycleBroker
 
 # SMA3 crosses above SMA5 on the last bar; last close is $20. Reused from
 # tests/test_main_cycle.py so the long path here is the same long path the
@@ -1709,3 +1710,105 @@ def test_a_second_same_cycle_buy_is_still_permitted_when_the_cap_has_room(
     broker = scripted_cycle("buy", symbols=_TWO, max_portfolio_heat_pct=5.0)
     assert len(broker.bracket_calls) == 2
     assert _rejections(broker) == []
+
+
+# ---------------------------------------------------------------------------
+# Fix 2b: the account-aware preflight pass has exactly one production call
+# site now — main.py's _bootstrap_cycle, AFTER Broker(cfg) exists and the
+# account has been fetched. Before this fix, `preflight.run(cfg,
+# account=...)` was never called with an account anywhere in production:
+# the guard in preflight.py could reject a config, but nothing in main.py
+# ever gave it the chance to. These tests exercise main.py's wiring, not
+# preflight.py's own logic (test_short_rails.py covers that directly).
+# ---------------------------------------------------------------------------
+
+def _shorting_cfg(cfg, shorting_configured):
+    """The `cfg` fixture plus a strategies block — configured to short or
+    not, matching test_short_rails.py's `_short_cfg` shape. Carries enough of
+    xsmom's own params (rank_lookback_bars, skip_bars) that
+    strategies.max_lookback_bars can compute a required_lookback for it
+    without KeyError — main.run_cycle() reaches that call for EVERY
+    strategy `_config_map` names, enabled or not, so a config that is
+    "just enough to be refused by preflight" still has to be a config the
+    rest of the cycle could survive touching, in case this test's own
+    abort assertion is what is broken."""
+    local = copy.deepcopy(cfg)
+    local["strategies"] = {"xsmom": {"enabled": shorting_configured,
+                                     "priority": 1,
+                                     "rank_lookback_bars": 2, "skip_bars": 0,
+                                     "buy_top_fraction": 0.25,
+                                     "exit_below_fraction": 0.50,
+                                     "short_bottom_fraction": 0.25}}
+    return local
+
+
+class _ShortingAwareBroker(FakeCycleBroker):
+    """FakeCycleBroker's account() is a fixed dict with no shorting flag at
+    all — every test that needs to say whether THIS broker can short needs
+    its own account(), the same way a real Alpaca account differs by
+    account, not by code path."""
+
+    def __init__(self, bars, shorting_enabled):
+        super().__init__(bars)
+        self._shorting_enabled = shorting_enabled
+
+    def account(self):
+        a = super().account()
+        a["shorting_enabled"] = self._shorting_enabled
+        return a
+
+
+def test_the_cycle_aborts_when_the_broker_forbids_a_configured_short(
+        tmp_path, monkeypatch, cfg):
+    """End-to-end proof (mirrors test_preflight.py's
+    test_cycle_aborts_on_preflight_failure): a strategy configured to short,
+    on a broker that cannot, must trade NOTHING and must log the same
+    preflight_failure event a cfg-only failure would — this abort happens
+    one step later in the cycle (after Broker(cfg)), but it must look
+    identical from the outside."""
+    monkeypatch.chdir(tmp_path)
+    cfg["risk"]["brackets"]["atr_period"] = 3
+    local = _shorting_cfg(cfg, shorting_configured=True)
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(local, f)
+    broker = _ShortingAwareBroker(make_bars(CYCLE_CLOSES), shorting_enabled=False)
+    monkeypatch.setattr(main, "Broker", lambda c: broker)
+    main.run_cycle()
+    assert broker.submitted == []
+    recs = Ledger(cfg["memory"]["ledger_path"]).all_records()
+    assert any(r.get("event") == "preflight_failure" for r in recs)
+
+
+def test_the_cycle_still_runs_when_the_broker_allows_a_configured_short(
+        tmp_path, monkeypatch, cfg):
+    """The twin: the same configured strategy, but a broker that CAN short,
+    must not be aborted by this check — proves the rail fires on the
+    account's own capability, not merely on 'a strategy is configured to
+    short'."""
+    monkeypatch.chdir(tmp_path)
+    cfg["risk"]["brackets"]["atr_period"] = 3
+    local = _shorting_cfg(cfg, shorting_configured=True)
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(local, f)
+    broker = _ShortingAwareBroker(make_bars(CYCLE_CLOSES), shorting_enabled=True)
+    monkeypatch.setattr(main, "Broker", lambda c: broker)
+    started = main._bootstrap_cycle()
+    assert started is not None
+
+
+def test_the_cycle_still_runs_when_no_strategy_is_configured_to_short(
+        tmp_path, monkeypatch, cfg):
+    """The other twin: a broker that cannot short is only a problem for a
+    strategy that asks it to — nothing shorts yet in this repo
+    (ENTRY_ACTIONS includes "short", but no strategy emits it), so this must
+    stay completely inert, the same way the guard itself does in
+    test_short_rails.py."""
+    monkeypatch.chdir(tmp_path)
+    cfg["risk"]["brackets"]["atr_period"] = 3
+    local = _shorting_cfg(cfg, shorting_configured=False)
+    with open("config.yaml", "w") as f:
+        yaml.safe_dump(local, f)
+    broker = _ShortingAwareBroker(make_bars(CYCLE_CLOSES), shorting_enabled=False)
+    monkeypatch.setattr(main, "Broker", lambda c: broker)
+    started = main._bootstrap_cycle()
+    assert started is not None

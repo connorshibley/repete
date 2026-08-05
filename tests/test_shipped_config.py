@@ -92,6 +92,22 @@ def test_negative_is_still_a_config_error(shipped):
     assert any("max_order_value_usd" in f for f in preflight.run(cfg))
 
 
+def test_shipped_config_names_the_key_the_shorting_guard_keys_off(shipped):
+    """preflight.run_account_checks refuses shorting only when it finds an
+    ENABLED strategy carrying `short_bottom_fraction` — a key that, before
+    this test, appeared nowhere but that one check and its own tests: not in
+    config.yaml, not in src/strategies/xsmom.py. A later phase is free to
+    pick a different key for 'this strategy shorts'; if it does and nobody
+    updates the guard, the guard goes dead and STAYS GREEN, because nothing
+    forces the key preflight reads to match the key a strategy actually
+    sets. Pinning that the shipped xsmom block carries this exact name makes
+    that drift fail loudly instead of silently."""
+    assert "short_bottom_fraction" in shipped["strategies"]["xsmom"], (
+        "preflight.py's shorting guard keys off "
+        "strategies.xsmom.short_bottom_fraction, but the shipped config no "
+        "longer names it — the guard can never fire and nothing says so")
+
+
 def test_a_configured_but_absent_judge_fails_preflight(shipped, monkeypatch):
     """`llm.enabled: true` with no key approves every trade unjudged at full
     size, and looks identical to a judged trade in the evidence pack. Claiming
