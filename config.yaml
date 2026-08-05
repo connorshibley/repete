@@ -56,6 +56,60 @@ symbols:               # what the bot is allowed to trade — liquid large-caps 
   - CRM
   - DIS
 
+# ============================================================
+# SECTOR MAP — the `sectors` universe, used by `reclaim` ONLY.
+# ============================================================
+# `symbols:` above is the CORE universe and is deliberately untouched. The
+# 25->38 expansion was adopted only after every enabled strategy re-passed its
+# gate ON the expanded universe; widening `symbols:` again would force the same
+# re-gating on ma_crossover, tsmom and meanrev, could disable strategies that
+# currently work, and would change their LIVE behaviour immediately (80-odd new
+# names to buy crossovers in). That restarts the evidence clock for the whole
+# ensemble in order to add one leg. Per-strategy universes (`universe:` below)
+# keep the cost local to the new strategy.
+#
+# NO ETFs. The original design used sector ETFs as the measuring instrument.
+# They cannot be used: ALL FIVE wide snapshots contain 500 stocks and SPY and
+# ZERO sector ETFs (no XLK, XLF, XLI, ...), so an ETF-based sector ranking is
+# unscoreable on every dataset this repo has and the DIAGNOSTIC could not run.
+# A new snapshot is out (§52 freeze, no data purchase). A sector is therefore
+# scored from its OWN CONSTITUENTS — see `reclaim.sector_score` below. That is
+# also the better measurement: it removes the ETF-vs-constituent category error
+# the 130/30 design already identified, and it scores exactly the names the
+# strategy can actually trade.
+#
+# HOW THESE NAMES WERE CHOSEN — an objective rule, run once and frozen, so that
+# nobody (including the author) can later claim they were picked after seeing
+# which sectors were down:
+#   1. Candidates = symbols present in ALL FIVE wide snapshots: 263 of 500.
+#      That restriction is what lets ONE universe be scored in every period.
+#      It is also the survivorship story made concrete — 237 names do not
+#      survive the intersection.
+#   2. Sector = yfinance's GICS-style `sector` field, read 2026-08-05, frozen.
+#   3. Within each sector, rank by MEDIAN DAILY DOLLAR VOLUME over the most
+#      recent snapshot; keep the top 12. Dollar volume rather than market cap:
+#      market cap came back None for ~20% of the pool, it is point-in-time, and
+#      liquidity is the property that decides tradeability. MEDIAN so one
+#      halt-and-spike day cannot promote a symbol.
+#
+# BRK-B WAS DROPPED, DELIBERATELY. It ranked into Financial Services, but the
+# snapshots spell it `BRK-B` (yfinance) and Alpaca spells it `BRK.B`. Carrying
+# it would mean either a symbol-translation layer — a new live/sim divergence
+# for one name — or a symbol Alpaca rejects on every cycle. Financial Services
+# therefore has 11 names, and this note is why; it is NOT a silent shortfall.
+sectors:
+  Technology:             [NVDA, AAPL, MSFT, AMD, INTC, MU, ADBE, QCOM, AMAT, CSCO, ORCL, TXN]
+  Healthcare:             [UNH, LLY, JNJ, PFE, MRK, TMO, DHR, AMGN, BMY, ABT, GILD, MDT]
+  Industrials:            [BA, GE, CAT, UNP, HON, RTX, DE, LMT, UPS, FDX, CSX, MMM]
+  Financial Services:     [JPM, BAC, WFC, C, GS, MS, AXP, SPGI, SCHW, COF, CB]
+  Consumer Cyclical:      [AMZN, HD, BKNG, NKE, MCD, SBUX, F, LOW, CCL, TJX, RCL, ORLY]
+  Consumer Defensive:     [COST, WMT, PG, KO, PEP, TGT, CL, EL, MO, DLTR, KR, STZ]
+  Energy:                 [XOM, CVX, COP, OXY, SLB, VLO, EOG, DVN, HAL, EQT, WMB, BKR]
+  Utilities:              [NEE, SO, DUK, AEP, EXC, PCG, D, SRE, XEL, ED, PEG, ETR]
+  Real Estate:            [AMT, PLD, CCI, SPG, PSA, SBAC, AVB, EQR, WY, HST, BXP]
+  Basic Materials:        [LIN, FCX, NEM, SHW, APD, NUE, ECL, AA, DD, PPG, MLM, VMC]
+  Communication Services: [DIS, CMCSA, T, VZ, EA, TTWO, MTCH, OMC, SIRI]
+
 strategy:              # execution globals (per-strategy params live in strategies:)
   name: ma_crossover   # legacy field, kept for compatibility
   fast_period: 10      # legacy ma_crossover params (strategies: section wins)
@@ -169,6 +223,76 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                             # executions, 68 blocked on max_open_positions).
                             # Gate: OOS trades 160->177, PF 2.076->2.116,
                             # maxDD unchanged 0.5%. The global cap still binds.
+  reclaim:             # unloved-sector 200-DMA reclaim (owner direction 2026-08-05)
+    enabled: false     # DISABLED until it passes the walk-forward enablement gate.
+                       # READ THE NEXT PARAGRAPH BEFORE READING A PASS AS EVIDENCE.
+                       #
+                       # Backtests are a NEGATIVE FILTER ONLY for this project,
+                       # and this strategy family is the one where that matters
+                       # most: buying names that fell below their 200-DMA is
+                       # MAXIMALLY flattered by survivorship, because the names
+                       # that fell and never came back are precisely the ones a
+                       # survivor universe deletes. §51 measured +200.28pp of
+                       # survivorship on the live universe. So a PASS here is
+                       # not merely uninformative, it is MISLEADING; only a
+                       # FAIL is decisive. Params below are a PRE-REGISTERED
+                       # starting point, NOT a fitted result.
+                       #
+                       # Every entry is an inversion of the filter meanrev's
+                       # docstring calls LOAD-BEARING ("unfiltered RSI(2) lost
+                       # heavily in the 2022 bear"). That is why this is a new
+                       # strategy with its own gate and not a flipped
+                       # comparison inside meanrev.
+    priority: 6        # lowest: it must never pre-empt a gated strategy's entry
+    universe: sectors  # the `sectors:` map above, NOT `symbols:`. Absent =>
+                       # the core universe, so every other strategy is unchanged.
+    # ---- sector selection: DEPTH, not breadth (owner decision 2026-08-05) ----
+    sector_sma_period: 200
+    laggard_sector_count: 4   # of 11. The bottom 4 by median constituent
+                              # distance below its own 200-DMA are "unloved".
+                              # Depth answers "how far is the typical name from
+                              # trend", breadth would answer "how many names are
+                              # below it"; they disagree, and depth was chosen.
+    min_sector_constituents: 5  # a sector with fewer usable names this cycle is
+                              # not ranked at all — a median over 2 names is not
+                              # a sector reading, and letting it rank would let
+                              # a data outage manufacture a laggard.
+    # ---- the base test: it must have STOPPED FALLING ----
+    trend_sma_period: 200
+    base_sma_period: 50
+    min_days_below: 40        # bars below the 200-DMA before it counts as out
+                              # of favour rather than a dip. meanrev already
+                              # owns the shallow-dip case, above the 200-DMA.
+    base_slope_bars: 10       # SMA50 must be higher than it was this many bars
+                              # ago — the "stopped falling" evidence.
+    # ---- the reclaim trigger ----
+    min_rvol: 0               # OFF (0 = disabled), like every other strategy.
+                              # Volume confirmation on the crossing bar is part
+                              # of this strategy's thesis and it was initially
+                              # set to 1.0 here — `test_rvol.py` correctly
+                              # refused that: §23's relative-volume filter has
+                              # never passed a gate, and "must not silently
+                              # change live behaviour" before it does. That
+                              # `reclaim` ships disabled is not a defence, since
+                              # config.yaml IS the live artifact.
+                              #
+                              # No bespoke code path exists for this: the shared
+                              # rail `risk.rvol_blocked(bars, cfg, name)` already
+                              # runs for every strategy in main.py's entry loop
+                              # and reads this exact key, so turning it on is a
+                              # one-value change once a gate justifies it. Same
+                              # treatment as tsmom's `index_sma_period: 0`.
+    # ---- exit ----
+    exit_buffer_pct: 3.0      # exit when close falls this far back below the
+                              # 200-DMA. A buffer, not a touch: re-crossing the
+                              # line by a cent is noise, and the bracket stop
+                              # already handles a real break.
+    max_hold_days: 60         # the thesis is a trend repair, not a permanent
+                              # hold; if it has not worked in a quarter it has
+                              # not worked.
+    max_open_positions: 0     # 0 = ceiling disabled (§29 convention). The
+                              # binding limits are risk.sector_concentration
+                              # below, the correlation cap, and heat.
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
@@ -396,6 +520,32 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     pf_below: 0.8                # profit factor < pf_below stops ENTERING (exits always
                                  # run). Registered while every strategy is far from the
                                  # threshold, so it cannot be argued with later.
+  sector_concentration:          # SECTOR CONCENTRATION CAP (2026-08-05, with `reclaim`).
+    enabled: true                # At most `max_per_sector` open positions whose
+    max_per_sector: 3            # symbol appears in the same `sectors:` entry.
+                                 # ENTRIES only; exits are never blocked.
+                                 #
+                                 # `reclaim` hunts one sector at a time by
+                                 # construction, so without this the book could
+                                 # become four names in one sector — one bet
+                                 # wearing four tickers, which is the exact
+                                 # thing correlation_cap below exists to stop,
+                                 # arriving through a door it does not watch
+                                 # (it measures realised co-movement, not
+                                 # membership, and 60 bars of correlation can
+                                 # miss a sector that has only just started
+                                 # moving together).
+                                 #
+                                 # A symbol in NO sector is unconstrained here —
+                                 # the core universe is not sector-mapped, so
+                                 # this rail is inert for every existing
+                                 # strategy and cannot change their behaviour.
+                                 #
+                                 # 3 is PRE-REGISTERED, not fitted: it is the
+                                 # top of the owner's stated 2-3 range. Which of
+                                 # this and correlation_cap binds first is a
+                                 # MEASUREMENT the DIAGNOSTIC makes, not a guess
+                                 # to be argued about now.
   correlation_cap:               # CORRELATION HEAT CAP (2026-07-21, EastEquity review):
     enabled: true                # "co-moving names are one bet." A new buy is blocked
     lookback: 60                 # when >= max_correlated open positions have >= threshold
