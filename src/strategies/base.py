@@ -15,10 +15,29 @@ from dataclasses import dataclass, field
 @dataclass
 class Signal:
     symbol: str
-    action: str                 # "buy" | "sell" | "hold"
+    action: str                 # "buy" | "sell" | "short" | "cover" | "hold"
     reason: str                 # human-readable rationale
     indicators: dict = field(default_factory=dict)
     strategy: str = ""          # which strategy produced this signal
+
+
+#: Actions that OPEN or ADD TO risk. Every entry rail keys off this set, so a
+#: new direction added here is automatically subject to all of them — which is
+#: the opposite of the failure where `action == "buy"` let shorts bypass the
+#: concentration cap because nobody remembered to update the condition.
+ENTRY_ACTIONS = ("buy", "short")
+
+#: The mirror of ENTRY_ACTIONS: actions that CLOSE or REDUCE risk.
+#:
+#: This was removed on 2026-08-04 as having no consumer — correct for what was
+#: visible then, when only `action == "buy"` existed and nothing read the exit
+#: side of the vocabulary. It is reinstated because `swing_guard` (risk.py) IS
+#: that consumer: `pre_trade_checks` gated the swing guard on `action ==
+#: "sell"`, so a `"cover"` (closing a short) bypassed the minimum-holding-period
+#: check entirely. Do not remove this again on the "no consumer" argument
+#: without first checking whether `swing_guard`'s caller still needs it — that
+#: is exactly the check that was missed the first time.
+EXIT_ACTIONS = ("sell", "cover")
 
 
 def sma(closes: list[float], period: int) -> float | None:

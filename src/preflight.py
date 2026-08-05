@@ -84,8 +84,17 @@ def anthropic_key_shape_fail(value: str) -> str | None:
     return llm_client.key_shape_fail(value, llm_client.PROVIDERS["anthropic"])
 
 
-def run(cfg: dict) -> list[str]:
-    """All failures found (empty list = clear to trade)."""
+def run(cfg: dict, account: dict | None = None) -> list[str]:
+    """All failures found (empty list = clear to trade).
+
+    `account` is OPTIONAL and defaults to None so every existing caller
+    (cfg only) keeps working unchanged. When supplied, it answers a question
+    config alone cannot: is this brokerage account permitted to do what the
+    config tells the bot to do? Config can be internally consistent — a
+    strategy configured to short — while the account it will actually trade
+    on cannot short at all; only the broker's own capability flags can catch
+    that, so it is passed in rather than inferred from cfg.
+    """
     fails: list[str] = []
 
     r = cfg.get("risk")
@@ -183,6 +192,43 @@ def run(cfg: dict) -> list[str]:
             f"would stop trading without saying why. Raise the heat cap, lower "
             f"the per-trade risk, or leave brackets on.")
 
+    # THE NET EXPOSURE INVERSION TRAP (Phase 1, 2026-08-04). risk.py:1150-1169
+    # reads `net_exposure_pct.max` as a ceiling on buys and `.min` as a floor
+    # on shorts — deliberately DIRECTIONAL, per the comment there, so that a
+    # floor can never block every buy the way a two-sided band would. That
+    # protection assumes `min < max`; an inverted band (e.g. `min: 120, max:
+    # 80`) is a two-sided outage instead — DEMONSTRATED: with those values,
+    # `projected > hi` refuses every buy that would move net above 80% and
+    # `projected < lo` refuses every short that would move net below 120%,
+    # which between them cover the entire number line either side of the
+    # band's (nonsensical) interior. The key ships commented out in
+    # config.yaml, so nothing today can hit this, but nothing would stop
+    # someone from uncommenting a doubled or swapped value later either —
+    # same shape as the heat inversion above, closed here rather than left
+    # documented.
+    band = r.get("net_exposure_pct")
+    if band is not None:
+        if not isinstance(band, dict):
+            fails.append(f"risk.net_exposure_pct must be a block with min/max, "
+                         f"got {band!r}")
+        else:
+            lo, hi = band.get("min"), band.get("max")
+            for name, v in (("min", lo), ("max", hi)):
+                if not isinstance(v, (int, float)) or isinstance(v, bool):
+                    fails.append(
+                        f"risk.net_exposure_pct.{name} missing or not a "
+                        f"number ({v!r}) — both min and max are required "
+                        f"once the block is present")
+            if (isinstance(lo, (int, float)) and not isinstance(lo, bool)
+                    and isinstance(hi, (int, float)) and not isinstance(hi, bool)
+                    and lo >= hi):
+                fails.append(
+                    f"risk.net_exposure_pct.min ({lo}) is not below "
+                    f".max ({hi}) — an inverted or equal band refuses both a "
+                    f"buy toward the ceiling and a short toward the floor, "
+                    f"which between them cover every order on either side of "
+                    f"the band: a two-sided outage instead of a 130/30 band")
+
     # The judge is optional, but claiming to have one and not having one is a
     # misconfiguration — and a quiet one. llm.review_signal() returns a clean
     # `approve` at full size when the key is absent, so trades run UNJUDGED at
@@ -264,6 +310,19 @@ def run(cfg: dict) -> list[str]:
     if os.path.isdir(mem_dir) and not os.access(mem_dir, os.W_OK):
         fails.append(f"memory dir {mem_dir} not writable")
     fails.extend(_ledger_tail_fails(cfg, ledger_path))
+
+    # A bot configured to short on an account that cannot short does not fail
+    # loudly — it fails one order at a time, at submission, and quietly runs
+    # long-only. Preflight's polarity is FAIL SAFE, so this is a refusal.
+    if account is not None and not account.get("shorting_enabled", False):
+        shorting = [name for name, s in (cfg.get("strategies") or {}).items()
+                    if s.get("enabled") and s.get("short_bottom_fraction")]
+        if shorting:
+            fails.append(
+                f"shorting is disabled on this brokerage account, but "
+                f"{', '.join(sorted(shorting))} is configured to short "
+                f"(short_bottom_fraction). Enable margin/shorting at the "
+                f"broker, or unset short_bottom_fraction.")
     return fails
 
 

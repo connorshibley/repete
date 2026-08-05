@@ -515,6 +515,19 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # Combined meanrev overlay (sizing + cooldown)
                                  # verified on the snapshot: OOS +2.24 PF 2.28.
 
+  # NET exposure band for the 130/30 book (Phase 1, 2026-08-04). COMMENTED OUT
+  # until a strategy actually shorts — an unconfigured band is off, and turning
+  # it on before there are shorts would only ever constrain buys.
+  #
+  # DIRECTIONAL: `max` constrains buys, `min` constrains shorts. Never both on
+  # one order. §48 measured deployment at 4.72% with the drawdown rail engaged,
+  # so a floor applied to buys would reject every entry and the book could not
+  # climb back into its own band.
+  #
+  # net_exposure_pct:
+  #   min: 80      # floor on net — stops the short leg pulling the book neutral
+  #   max: 120     # ceiling on net — stops the long leg drifting past 130/30
+
 llm:                   # optional judgment layer (Anthropic API)
   enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
   provider: anthropic  # the only implemented vendor. Preflight refuses any other

@@ -30,6 +30,28 @@ _TIMEFRAMES = {
 }
 
 
+def _safe_multiplier(raw) -> float:
+    """Parse an account's `multiplier` defensively; 1.0 (no leverage, the
+    safe direction) is the fallback for anything that isn't a real positive
+    number.
+
+    THE TRAP: `float(raw or 1)` looks like a safe fallback but checks the
+    TRUTHINESS of the raw attribute, not the parsed number. Alpaca's SDK
+    returns numeric account fields as STRINGS throughout this module, and
+    the string "0" is truthy in Python — only an EMPTY string is falsy — so
+    `"0" or 1` evaluates to `"0"` and `float("0")` sails through as 0.0.
+    `multiplier` is exactly the kind of value a later phase divides by or
+    multiplies buying power against, so a silent 0.0 here would zero out
+    sizing or raise ZeroDivisionError far from its cause. The fix is to
+    parse FIRST and gate on the parsed number, not on the raw value.
+    """
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 1.0
+    return value if value > 0 else 1.0
+
+
 class Broker:
     def __init__(self, cfg: dict):
         key = os.environ.get("ALPACA_API_KEY")
@@ -60,6 +82,13 @@ class Broker:
             "cash": float(a.cash),
             "last_equity": float(a.last_equity),  # equity at previous close
             "buying_power": float(a.buying_power),
+            # FAIL CLOSED. `getattr` default False, not True: an account whose
+            # capability we cannot read must not be assumed to have it. A
+            # cash account silently rejects every short at submission, one
+            # order at a time, and the book reverts to long-only with nothing
+            # anywhere saying why.
+            "shorting_enabled": bool(getattr(a, "shorting_enabled", False)),
+            "multiplier": _safe_multiplier(getattr(a, "multiplier", None)),
         }
 
     def positions(self) -> dict:
@@ -140,17 +169,66 @@ class Broker:
 
     def bracket_market_order(self, symbol: str, qty: float, stop_price: float,
                              take_profit_price: float | None = None,
-                             client_order_id: str | None = None) -> dict:
-        """BUY market order with protective legs, GTC so they survive across days.
+                             client_order_id: str | None = None,
+                             side: str = "buy",
+                             entry_price: float | None = None) -> dict:
+        """Market order with protective legs, GTC so they survive across days.
 
         Alpaca requires BOTH legs for OrderClass.BRACKET; with no take-profit
         we submit OTO (stop-loss leg only) instead.
+
+        `side` must be "buy" or "short" — anything else raises. "sell" is
+        deliberately NOT an alias for "short": this codebase's own vocabulary
+        (ENTRY_ACTIONS in strategies/base.py, and risk.py's desync_sell guard)
+        already uses "sell" to mean CLOSE a long, so accepting it here would
+        let a caller passing sig.action straight through silently open a
+        short while meaning to exit one.
+
+        A short's stop sits ABOVE its entry, a long's BELOW — the geometry
+        inverts with direction, and a stop on the wrong side can never
+        trigger. Because a short's loss is unbounded, `entry_price` is
+        REQUIRED for "short" — but required only means present and positive;
+        it is the CALLER's job to pass the real entry, since a placeholder
+        like 0.0 (e.g. a failed quote lookup defaulting to zero) would pass
+        "is it there" while making the geometry check pass trivially for
+        every stop, which is worse than no check at all. `entry_price` stays
+        OPTIONAL for "buy" — src/main.py's only live call site passes none,
+        and Phase 1 promises byte-identical live behaviour — so a long
+        submitted without it gets NO geometry check at all. That is
+        deliberate, not an oversight.
         """
+        if side not in ("buy", "short"):
+            raise ValueError(f"side must be 'buy' or 'short', got {side!r}")
+        is_short = side == "short"
+
+        # Order matters: entry_price=0.0 (or negative) would otherwise pass
+        # "is it None" and then make stop_price<=entry_price / >=entry_price
+        # trivially false/true for any real stop — a short with no meaningful
+        # check while LOOKING validated, or a long refused for no reason.
+        if entry_price is not None and entry_price <= 0:
+            raise ValueError(
+                f"entry_price {entry_price} is not a real price — a price is "
+                f"never non-positive")
+        if is_short and entry_price is None:
+            raise ValueError(
+                "short bracket requires entry_price — a short's stop cannot "
+                "go unchecked, its loss is unbounded")
+
+        if entry_price is not None:
+            if is_short and stop_price <= entry_price:
+                raise ValueError(
+                    f"short stop {stop_price} must be above entry "
+                    f"{entry_price} — a stop below it can never trigger")
+            if not is_short and stop_price >= entry_price:
+                raise ValueError(
+                    f"long stop {stop_price} must be below entry "
+                    f"{entry_price} — a stop above it can never trigger")
+
         order_class = OrderClass.BRACKET if take_profit_price else OrderClass.OTO
         req = MarketOrderRequest(
             symbol=symbol,
             qty=qty,
-            side=OrderSide.BUY,
+            side=OrderSide.SELL if is_short else OrderSide.BUY,
             time_in_force=TimeInForce.GTC,
             order_class=order_class,
             stop_loss=StopLossRequest(stop_price=stop_price),
@@ -160,12 +238,15 @@ class Broker:
         )
         order = self.trading.submit_order(req)
         legs = [str(leg.id) for leg in (order.legs or [])]
-        log.info("Bracket order submitted: buy %s x%s stop=%.2f tp=%s (id=%s, legs=%s)",
-                 symbol, qty, stop_price, take_profit_price, order.id, legs)
-        return {"id": str(order.id), "symbol": symbol, "qty": qty, "side": "buy",
+        log.info("Bracket order submitted: %s %s x%s stop=%.2f tp=%s "
+                 "(id=%s, legs=%s)",
+                 "short" if is_short else "buy", symbol, qty, stop_price,
+                 take_profit_price, order.id, legs)
+        return {"id": str(order.id), "symbol": symbol, "qty": qty,
+                "side": "short" if is_short else "buy",
                 "status": str(order.status), "order_class": order_class.value,
-                "stop_price": stop_price, "take_profit_price": take_profit_price,
-                "leg_ids": legs}
+                "stop_price": stop_price,
+                "take_profit_price": take_profit_price, "leg_ids": legs}
 
     def get_order(self, order_id: str) -> dict:
         """Order status incl. legs (nested lookup)."""

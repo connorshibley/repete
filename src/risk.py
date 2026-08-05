@@ -20,6 +20,8 @@ import logging
 import math
 from datetime import date, datetime, timezone
 
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS
+
 log = logging.getLogger("risk")
 
 HALT_FILE = "HALT"
@@ -1045,6 +1047,16 @@ def correlated_position_count(cand_bars: list[dict], open_bars_map: dict,
     return count
 
 
+def net_exposure_pct(positions: dict, equity: float) -> float:
+    """Signed exposure as a percentage of equity: longs positive, shorts
+    negative. Distinct from GROSS, which sums magnitudes — a 130/30 book is
+    160% gross and 100% net, and the two rails answer different questions."""
+    if not equity:
+        return 0.0
+    return sum(p.get("market_value", 0.0)
+               for p in positions.values()) / equity * 100
+
+
 def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
                 regime_label: str | None = None,
@@ -1065,7 +1077,7 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     if r.get("max_order_value_usd") and order_value > r["max_order_value_usd"]:
         raise RiskRejection(f"order value ${order_value:,.0f} exceeds cap ${r['max_order_value_usd']:,}", rail="order_value_cap")
 
-    if action == "buy":
+    if action in ENTRY_ACTIONS:
         # §31 DRAWDOWN CIRCUIT BREAKER (2026-07-26). Entries only — exits ALWAYS
         # run, because a rail that trapped you in a losing book while it fell
         # would be the opposite of a risk control.
@@ -1106,22 +1118,73 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                 and strategy_open >= strat_cap and symbol not in positions):
             raise RiskRejection(
                 f"max open positions for {strategy} reached ({strat_cap})", rail="strategy_slots")
-        existing = positions.get(symbol, {}).get("market_value", 0.0)
+        # abs(): Alpaca reports a SHORT's market_value as negative, so raw
+        # addition reads -$9,000 + $2,000 as a $7,000 position and the per-name
+        # cap stops binding on exactly the side where it matters. Magnitude is
+        # what concentration means.
+        existing = abs(positions.get(symbol, {}).get("market_value", 0.0))
         if existing + order_value > account["equity"] * r["max_position_pct"] / 100:
             raise RiskRejection(f"would exceed {r['max_position_pct']}% concentration cap on {symbol}", rail="position_cap")
 
         recfg = r.get("regime_exposure") or {}
         if (recfg.get("enabled") and regime_label
                 and regime_label.startswith("down")):
-            gross = sum(p.get("market_value", 0.0) for p in positions.values())
+            # abs() for the same reason: a long and a short would otherwise net
+            # toward zero and a 100%-gross book would report as 0%. GROSS is a
+            # sum of magnitudes; net is a different number with its own rail.
+            gross = sum(abs(p.get("market_value", 0.0))
+                        for p in positions.values())
             cap = account["equity"] * recfg.get("down_max_gross_pct", 50) / 100
             if gross + order_value > cap:
                 raise RiskRejection(
                     f"down-regime exposure cap: gross ${gross + order_value:,.0f} "
                     f"would exceed {recfg.get('down_max_gross_pct', 50)}% of equity", rail="regime_exposure")
 
-    if action == "sell" and symbol not in positions:
-        raise RiskRejection(f"no position in {symbol} to sell (state desync guard)", rail="desync_sell")
+        # NET exposure band (130/30). DIRECTIONAL ON PURPOSE: `max` constrains
+        # buys, `min` constrains shorts. A two-sided band would be an outage —
+        # §48 measured deployment at 4.72% with the drawdown rail engaged, and
+        # a floor applied to buys would reject every entry, leaving a book
+        # below the band permanently unable to climb back into it.
+        #
+        # An order that moves net TOWARD the band is never blocked.
+        band = r.get("net_exposure_pct") or {}
+        # `account["equity"]` guards the same way `net_exposure_pct` guards
+        # its own division: a zero (or missing) equity reading must not raise
+        # ZeroDivisionError out of a risk rail. In practice size_order() would
+        # already have floored qty to 0 and pure_checks raises zero_qty before
+        # this ever runs, so this is belt-and-suspenders, not a load-bearing
+        # path.
+        if band and account["equity"]:
+            net = net_exposure_pct(positions, account["equity"])
+            delta_pct = order_value / account["equity"] * 100
+            projected = net + (delta_pct if action == "buy" else -delta_pct)
+            hi, lo = band.get("max"), band.get("min")
+            if action == "buy" and hi is not None and projected > hi:
+                raise RiskRejection(
+                    f"net exposure band: buying would take net to "
+                    f"{projected:.1f}% (ceiling {hi}%)", rail="net_exposure")
+            if action == "short" and lo is not None and projected < lo:
+                raise RiskRejection(
+                    f"net exposure band: shorting would take net to "
+                    f"{projected:.1f}% (floor {lo}%)", rail="net_exposure")
+
+    # SIGN, not presence: `symbol not in positions` passes for a symbol held
+    # SHORT, and a "sell" against a short would not be a no-op — it would
+    # submit a SELL that ADDS to the short. Same bug class the abs() calls
+    # above exist to prevent, just checked at the sign level instead of the
+    # magnitude level. market_value <= 0 catches both causes: no position at
+    # all (0.0) and an existing short (negative).
+    if action == "sell" and positions.get(symbol, {}).get("market_value", 0.0) <= 0:
+        raise RiskRejection(f"no long position in {symbol} to sell — holding "
+                            f"none or short (state desync guard)", rail="desync_sell")
+
+    # The mirror. `symbol not in positions` passes for a symbol held LONG, and
+    # a "cover" against a long would not be a no-op — it would submit a BUY
+    # that ADDS to the long. market_value >= 0 catches both causes: no
+    # position at all (0.0) and an existing long (positive).
+    if action == "cover" and positions.get(symbol, {}).get("market_value", 0.0) >= 0:
+        raise RiskRejection(f"no short position in {symbol} to cover — holding "
+                            f"none or long (state desync guard)", rail="desync_cover")
 
 
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
@@ -1144,7 +1207,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Still raised for buys even though the cycle also blocks entries upstream.
     # That redundancy is deliberate: it is the last gate before an order, and it
     # holds even for a caller that never went through _run_cycle.
-    if action == "buy" and check_halt():
+    if action in ENTRY_ACTIONS and check_halt():
         raise RiskRejection("HALT file present — trading disabled", rail="halt")
     # §29: 0 disables. This is no longer a risk rail — it is a RUNAWAY GUARD.
     # Set well above observed demand (~15 buy signals/day live) so it never
@@ -1164,7 +1227,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # limit has enlarged risk, which is the shape PR #69 refused for the judge
     # and §31 refused for the drawdown breaker. Same reasoning, third rail.
     _cap_day = cfg["risk"].get("max_trades_per_day") or 0
-    if action == "buy" and _cap_day and _trades_today() >= _cap_day:
+    if action in ENTRY_ACTIONS and _cap_day and _trades_today() >= _cap_day:
         raise RiskRejection(f"max trades per day reached ({_cap_day})", rail="daily_cap")
 
     # Count THIS strategy's currently-open positions for its slot allocation.
@@ -1187,7 +1250,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
     # risk must stay under max_portfolio_heat_pct of equity. Entries only.
     heat_cap_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
-    if action == "buy" and heat_cap_pct > 0 and open_trades is not None:
+    if action in ENTRY_ACTIONS and heat_cap_pct > 0 and open_trades is not None:
         heat = portfolio_heat(open_trades, cfg, account["equity"])
         new_risk = (qty * max(price - candidate_stop, 0.0) if candidate_stop
                     else account["equity"]
@@ -1202,7 +1265,7 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
     # Correlation heat cap (entries only; needs the cycle's bars). Fail-open
     # when bars are unavailable — the per-symbol cap above still applies.
     ccfg = cfg["risk"].get("correlation_cap") or {}
-    if (action == "buy" and ccfg.get("enabled") and bars_map
+    if (action in ENTRY_ACTIONS and ccfg.get("enabled") and bars_map
             and bars_map.get(symbol)):
         open_bars = {s: bars_map.get(s) for s in positions if s != symbol}
         n = correlated_position_count(bars_map[symbol], open_bars,
@@ -1214,5 +1277,10 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                 f"{symbol} (corr>={ccfg.get('threshold', 0.85)}) — "
                 f"co-moving names are one bet", rail="correlation")
 
-    if action == "sell":
+    # EXIT_ACTIONS, not just "sell": a "cover" closes a short the same way a
+    # "sell" closes a long, and gating on "sell" alone let a cover bypass the
+    # minimum holding period entirely — the swing guard's whole purpose,
+    # structurally impossible day-trading, would not have applied to the short
+    # side at all.
+    if action in EXIT_ACTIONS:
         swing_guard(entry_ts, cfg)

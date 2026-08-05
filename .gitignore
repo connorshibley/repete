@@ -17,3 +17,10 @@ publisher_data/
 evidence/
 backups/
 .DS_Store
+
+# Isolated worktrees for implementation work (superpowers:using-git-worktrees).
+# The live bot runs FROM this checkout via launchd, so implementation happens in
+# a worktree rather than here — divergence #7 was "production running code nobody
+# had reviewed", and editing risk.py in place while a cycle fires is that exact
+# shape.
+.worktrees/
