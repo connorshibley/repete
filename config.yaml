@@ -57,6 +57,36 @@ symbols:               # what the bot is allowed to trade — liquid large-caps 
   - DIS
 
 # ============================================================
+# WHICH OF THE ABOVE ARE BASKETS, NOT COMPANIES
+# ============================================================
+# Read by `strategies.excluded_etfs`, and ONLY for a strategy that opts in with
+# `exclude_etfs: true` — today that is `xsmom` alone. ma_crossover, tsmom and
+# meanrev were gated on all 38 names WITH these eight in, so removing them from
+# under those strategies would be a live behaviour change to the exact evidence
+# record this project is trying to accumulate.
+#
+# Why a CROSS-SECTIONAL strategy must not rank these: XLK is not a peer of AAPL,
+# it is partly MADE of it. A percentile containing both measures two different
+# kinds of thing on one scale. §49 put a number on the cost — 11 of the 13
+# symbol pairs at or above the 0.85 correlation threshold involve an ETF, versus
+# 2 of 435 stock-vs-stock pairs — so shorting XLK against a book long AAPL/MSFT/
+# NVDA unwinds the book's own longs instead of adding alpha.
+#
+# EVERY NAME HERE MUST ALSO APPEAR IN `symbols:` ABOVE, and preflight refuses to
+# start otherwise. A typo here does not fail loudly; it just quietly stops
+# excluding the thing it was meant to exclude, which is how
+# `short_bottom_fraction` shipped naming nothing at all.
+etfs:
+  - SPY                # broad market
+  - QQQ                # nasdaq 100
+  - DIA                # dow
+  - IWM                # small caps
+  - XLK                # tech sector
+  - XLF                # financials
+  - XLE                # energy
+  - XLV                # healthcare
+
+# ============================================================
 # SECTOR MAP — the `sectors` universe, used by `reclaim` ONLY.
 # ============================================================
 # `symbols:` above is the CORE universe and is deliberately untouched. The
@@ -170,14 +200,40 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
   xsmom:               # cross-sectional momentum (Jegadeesh/Titman 12-1)
     enabled: false     # FAILED gate 2026-07-15 (OOS below exposure-matched benchmark)
     priority: 3
+    exclude_etfs: true        # the eight names in `etfs:` leave this ranking.
+                              # A basket is not a peer of its own constituents,
+                              # and §49 measured what happens when they share a
+                              # cross-section: 11 of 13 correlated pairs involve
+                              # an ETF. This CHANGES what xsmom's percentile
+                              # means (30 rankable names, not 38), so the gate
+                              # it FAILED on 2026-07-15 no longer describes this
+                              # strategy — it has to be re-gated before it could
+                              # ever be enabled, which it must be regardless.
     rank_lookback_bars: 231   # ~11 months, with skip -> classic 12-1 formation
     skip_bars: 21             # skip most recent month (short-term reversal)
     buy_top_fraction: 0.25
     exit_below_fraction: 0.50
-    short_bottom_fraction: 0  # 0 = no short leg yet (nothing shorts in Phase
-                              # 2). preflight.py's shorting guard keys off
-                              # this exact name; a later phase that arms the
-                              # short leg sets it above 0 here.
+    short_bottom_fraction: 0.25
+                              # THE MIRROR of buy_top_fraction, and a
+                              # PRE-REGISTERED STARTING POINT, NOT A FITTED
+                              # RESULT — chosen because it is the symmetric
+                              # value, before any run scored it.
+                              #
+                              # NOTHING SHORTS: xsmom is enabled: false above,
+                              # and preflight's account guard only convicts an
+                              # ENABLED strategy, so arming this cannot abort a
+                              # live cycle or place an order. It arms the leg
+                              # for the Phase 3 DIAGNOSTIC, which has to be
+                              # registered and run before enabled: true is even
+                              # a question.
+                              #
+                              # The bottom 25% of ~30 rankable names is roughly
+                              # seven or eight candidates; how many actually
+                              # become positions is a question for the
+                              # DIAGNOSTIC, not for this comment — the
+                              # correlation cap, sector concentration,
+                              # portfolio heat and the net-exposure band all
+                              # subtract from it.
   donchian:            # §17 candidate: N-bar breakout, M-bar exit (Turtle asymmetry)
     enabled: false     # DISABLED until it passes the walk-forward enablement gate.
                        # Params below are the pre-registered starting point, NOT

@@ -587,8 +587,21 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
             hist = sym_bars[sym][:i + 1]
             holding = sym in acct.positions
             entry_ts = acct.positions[sym]["entry_ts"] if holding else None
+            # LONG-ONLY BY CONSTRUCTION, and passed EXPLICITLY for that reason.
+            # This simulator's `acct.positions` carries an unsigned qty and its
+            # exit branch tests `sig.action == "sell"`, so nothing it holds can
+            # be a short. Passing "long" when holding states that fact instead
+            # of leaving the strategy to infer it from a None the live path
+            # never sends — a strategy that reads a different side here than in
+            # main.py is a simulator/live divergence, which is precisely the
+            # class docs/divergences.md exists to count.
+            #
+            # PHASE 3 REPLACES THIS with the position's real side, at the same
+            # time as it makes `acct.positions` signed. Until then a hardcoded
+            # "long" is the truth about this simulator, not a placeholder.
             sig = strategies.generate(strategy_name, sym, hist, cfg, holding,
-                                      cross_section=xs_ctx, entry_ts=entry_ts)
+                                      cross_section=xs_ctx, entry_ts=entry_ts,
+                                      position_side="long" if holding else None)
             if sig.action == "buy" and not holding:
                 # re-entry cooldown (§9) — same calendar-day rule as main.py
                 if cooldown_days and risk.cooldown_blocked(
@@ -1004,9 +1017,14 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 owner = pos["owner"]
                 if owner not in strategies.REGISTRY:
                     continue          # orphaned owner: bracket legs still apply
+                # "long": see the note at simulate()'s own generate() call —
+                # acct.positions is unsigned and the exit test below is
+                # `== "sell"`, so nothing held here can be a short. Phase 3
+                # replaces both together.
                 sig = strategies.generate(owner, sym, hist, cfg, True,
                                           cross_section=xs_ctx.get(owner),
-                                          entry_ts=pos["entry_ts"])
+                                          entry_ts=pos["entry_ts"],
+                                          position_side="long")
                 if sig.action == "sell":
                     if min_days and _cal_days(pos["entry_ts"], ts) < min_days:
                         guard_skips += 1

@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import journal
 import x_poster
 from ledger import Ledger
+from strategies.base import ENTRY_ACTIONS
 
 log = logging.getLogger("backfill")
 
@@ -45,10 +46,16 @@ def _month_abbr(iso_date: str) -> str:
 
 
 def pending_buys(records: list[dict], already: set[str]) -> list[dict]:
-    """Executed buy decisions, oldest first, not already POSTED to X."""
+    """Executed ENTRY decisions, oldest first, not already POSTED to X.
+
+    ENTRY_ACTIONS, not `== "buy"`: a short entry is a trade this bot made, and
+    a backfill that silently skipped it would leave a hole in the public record
+    that looks like a quiet day rather than an omission. The NAME is unchanged
+    for the same reason ledger.open_buys() kept its own — renaming it here
+    while its sibling waits for a follow-up would leave two conventions."""
     out = []
     for r in records:
-        if (r.get("type") == "decision" and r.get("action") == "buy"
+        if (r.get("type") == "decision" and r.get("action") in ENTRY_ACTIONS
                 and r.get("executed") and r.get("trade_id") not in already):
             out.append(r)
     out.sort(key=lambda r: r.get("ts", ""))

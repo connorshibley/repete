@@ -9,7 +9,7 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. **Where the two differ, a verdict
 measures a bot that does not exist.**
 
-`docs/divergences.md` is the list. Fifteen are recorded. Before 2026-07-28 they
+`docs/divergences.md` is the list. Sixteen are recorded. Before 2026-07-28 they
 existed only as prose scattered across forty sections, so "how many are open?"
 had no answer — and #8 sat closed-on-paper and open in fact for three days.
 
@@ -38,7 +38,8 @@ An entry states:
 
 ## Deliberate divergences are allowed — and must still be registered
 
-Not every divergence is a defect. #14 and #15 are both **open by construction**:
+Not every divergence is a defect. #14, #15 and #16 are all **open by
+construction**:
 
 - **#14** — the live judge reads news memory; there is no archive of what the
   newswire said on an arbitrary day in 2007, and reconstructing one from a
@@ -47,9 +48,16 @@ Not every divergence is a defect. #14 and #15 are both **open by construction**:
 - **#15** — the live judge reads `knowledge/principles.md`; `judge_model.py` is
   a **distribution** stand-in that reproduces how often and by how much the
   judge cuts, not its reasoning, so it cannot represent a principle at all.
+- **#16** — Alpaca paper charges no stock-loan fee, keeps no hard-to-borrow list
+  and never issues a buy-in, and `backtest.py` has no financing cost either, so
+  any short-leg return is overstated by a cost nobody paid.
 
-Both are safe in direction only because of invariant #2. Registering them is
-what makes "open by construction" different from "unnoticed".
+The first two are safe in DIRECTION because of invariant #2 — the judge may only
+veto or shrink, so the sim can approve trades live would refuse and backtests
+stay conservative. **#16 is the first that runs the other way**: it makes the
+short leg look better than it can be, so a short-leg result clearing a bar by a
+small margin has not cleared it. Registering them is what makes "open by
+construction" different from "unnoticed".
 
 ## The trap that keeps recurring
 

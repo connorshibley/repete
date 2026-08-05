@@ -1287,11 +1287,25 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     # (P&L attribution, fill quality, the trade plan) is computed per TRADE and
     # would describe a position that does not exist in isolation.
     #
-    # The 130/30 design deconflicts the legs upstream — `reclaim` only ever buys
-    # ABOVE the 200-DMA and the xsmom short leg will never short above it, so
-    # they are mechanically disjoint. THAT is the design; this is the rail that
-    # makes a future mistake impossible rather than merely unlikely, in the
-    # place where a rail can still refuse the order.
+    # CORRECTION, 2026-08-05, when the xsmom short leg was actually written.
+    # This comment used to claim the legs were "mechanically disjoint" because
+    # `reclaim` only buys ABOVE the 200-DMA and the short leg "will never short
+    # above it". THE SHORT LEG AS BUILT HAS NO 200-DMA CONDITION — it is a pure
+    # cross-sectional rank plus a momentum sign — so that claim is false, and it
+    # was false in the flattering direction:
+    #
+    #   a reclaim BUY is a name long depressed and now recovering. Twelve-month
+    #   momentum is still deeply negative for exactly such a name, which is what
+    #   puts it in xsmom's bottom quartile. The two legs are not merely
+    #   non-disjoint, they are ATTRACTED TO THE SAME NAMES, and 23 of xsmom's 30
+    #   rankable symbols are in reclaim's 127-name universe.
+    #
+    # So this rail is not defence in depth behind an upstream guarantee. It is
+    # the ONLY thing preventing the conflict, and whichever strategy reaches the
+    # name first (xsmom at priority 3, ahead of reclaim at 6) takes it while the
+    # other is refused here. Phase 3's DIAGNOSTIC has to measure how often that
+    # happens; a rail that fires constantly is a design problem wearing a
+    # rail's name.
     if action in ENTRY_ACTIONS:
         mv = positions.get(symbol, {}).get("market_value", 0.0)
         if action == "short" and mv > 0:
