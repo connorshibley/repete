@@ -75,9 +75,18 @@ def required_lookback(params: dict) -> int:
     below its 200-DMA for the last N bars needs a 200-DMA computed AT each of
     those N bars, not just today's. The +1 is the previous close, which the
     reclaim test compares against.
+
+    MAX, not sum. The base window (`base_sma_period + base_slope_bars`) sits
+    INSIDE the below-trend window — they are the same recent bars looked at two
+    ways, not two windows laid end to end. Summing them asked for 301 bars where
+    241 suffice, and `strategies.max_lookback_bars` takes the max across ALL
+    configured strategies including disabled ones, so that surplus would have
+    raised the live per-symbol fetch from 253 bars to 301 for a strategy that
+    ships turned off — a 19% larger data pull, on every symbol, every cycle,
+    bought for nothing.
     """
-    return (params["trend_sma_period"] + params["min_days_below"]
-            + max(params["base_sma_period"] + params["base_slope_bars"], 0) + 1)
+    return max(params["trend_sma_period"] + params["min_days_below"],
+               params["base_sma_period"] + params["base_slope_bars"]) + 1
 
 
 def _pct_vs_sma(closes: list[float], period: int) -> float | None:
