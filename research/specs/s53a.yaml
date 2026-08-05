@@ -1,0 +1,173 @@
+# §53a — DOES THE 130/30 CONFIGURATION BEHAVE? (2000-2006)
+#
+# ONE DIAGNOSTIC IN FOUR FILES, the convention §41, §44 and §48 used: s53a-d are
+# written and frozen TOGETHER, before any of them is run. Running one period and
+# reporting it would be period selection, which is the failure §37 and §44 were
+# both structured to avoid.
+#
+# WHY THIS EXISTS. `xsmom` gained a short leg in PR #92 and ships
+# `enabled: false`. The 130/30 design pre-committed to this order — "Phase 3:
+# the DIAGNOSTIC, then enable" — and until Phase 3 the simulator could not score
+# a short leg at all: `SimAccount.positions` carried an unsigned qty and both
+# `generate()` calls passed a hardcoded `position_side="long"`. A run before
+# that work would have scored a long-only book and called it 130/30.
+#
+# THIS PERIOD: The dot-com collapse and its aftermath. The period where survivorship
+#   deletion is heaviest, so it is where the short leg is most penalised:
+#   the names that fell and never came back are exactly what it would have
+#   been short, and they are not in this snapshot.
+#
+# WHY DIAGNOSTIC AND NOT EDGE. It decides nothing and can enable nothing. §52's
+# freeze is mechanical — `register_gate.py` refuses `claim: EDGE` on every
+# snapshot under `data/snapshots/` — and this spec does not attempt to work
+# around it. What a verdict here licenses is stated in `prior`, and it is only
+# ever about what may be REGISTERED or SWITCHED ON next, never about a number.
+id: s53a
+claim: DIAGNOSTIC
+title: "Does the 130/30 configuration behave? Long-only vs xsmom long vs xsmom 130/30 (2000-2006)"
+
+# Judge ON, matching live and matching §44/§48/§50/§51.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2000-01-01_2006-12-31.json.gz
+  sha256: 432cec564ccee6abcf690d365b51cfd107b8b734c2375b8638ff4cadb5251cc8
+
+cash: 100000.0
+
+# K=15 is stated so any significance figure printed stays comparable with the
+# existing family. THE COUNT DOES NOT RISE: a DIAGNOSTIC spends no
+# multiple-comparisons budget because it cannot produce a PASS that licenses a
+# claim — the same treatment §38, §40, §42, §45, §47 and §48 received.
+bonferroni_k: 15
+
+# THREE ARMS, and the middle one is the entire reason this is not a two-arm run.
+# Enabling `xsmom` turns on its LONG leg and its short leg at once, so a
+# baseline-vs-130/30 comparison cannot attribute any difference to the SHORT
+# leg — and xsmom's long leg failed its own enablement gate on 2026-07-15, so
+# "xsmom helped" and "the short leg helped" are very different findings.
+arms:
+  - name: baseline              # the SHIPPED configuration, xsmom off
+
+  - name: xsmom_long_only
+    set:
+      strategies.xsmom.enabled: true
+      strategies.xsmom.short_bottom_fraction: 0   # 0 disables the short leg
+
+  - name: xsmom_130_30
+    set:
+      strategies.xsmom.enabled: true              # short_bottom_fraction: 0.25 ships
+
+# The clauses are applied to the 130/30 arm. Named explicitly rather than left
+# to `default_candidate`, which would pick arms[1] — the long-only arm — and
+# score the wrong experiment after the run had already cost its wall time.
+candidate: xsmom_130_30
+
+# REPORTED, NOT SCORED — run_gate prints "DIAGNOSTIC — this decides NOTHING" and
+# records no verdict. Named in advance so the numbers that matter are fixed
+# before the run rather than chosen from the output.
+clauses:
+  # Did the configuration deploy at all? Note this reads NET deployment
+  # ((equity - cash) / equity), so a 130/30 book and a flat 100%-long book give
+  # the SAME number. Gross is reported beside it; see failure mode 5.
+  - {id: a, rule: deployment_at_least, pct: 25}
+
+  # THE READING, and the comparison the owner's goal names: beat the S&P on
+  # TOTAL return. Survivorship-free on the benchmark side (§50's rule), though
+  # emphatically not on the strategy's — see failure mode 2.
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+
+  # Without this an arm with a handful of trades clears (b) on noise.
+  - {id: c, rule: min_trades, n: 30}
+
+  # Reported alongside (b) because they answer different questions and can
+  # disagree: (b) is survivorship-free, (d) is survivorship-matched.
+  - {id: d, rule: beats_exposure_matched}
+
+prior: >-
+  The honest expectation is that the 130/30 arm FAILS clause (b). EDGE stands at
+  1 pass in 15 and that one pass carries §51's +200.28pp survivorship
+  qualification; xsmom's long leg has never cleared an enablement gate; and the
+  short leg is being measured on data that deletes exactly the names it would
+  have made money on. Nothing about adding a leg to a strategy that has never
+  shown an edge creates predictive power that was not there.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, so the outcome cannot select the
+  experiment — the §46 trap, and the mistake §44's revised prior made. Across
+  s53a-d taken together:
+
+  (1) If `xsmom_130_30` FAILS clause (b) in TWO OR MORE of the four periods, the
+  130/30 configuration is refuted on this data. It is NOT enabled, Phase 3 stops
+  there, and the design's own stop condition applies — "if Phase 3's diagnostic
+  says the long book cannot deploy near 130%, stop there: the ratio was the
+  premise, and Phase 1's safety fixes are worth keeping anyway."
+
+  (2) If it CLEARS (b) in THREE OR MORE periods AND `xsmom_long_only` does not,
+  the short leg is the difference. That licenses exactly one thing: flipping
+  `xsmom.enabled: true` to start a forward record. It does NOT license an EDGE
+  registration — §52's freeze is untouched by this — and it does not license
+  moving any rail.
+
+  (3) If BOTH xsmom arms clear together, the result belongs to xsmom's long leg
+  rather than to the short leg, and licenses NOTHING about 130/30. Enabling on
+  that basis would be adopting a strategy that failed its own gate, on the
+  strength of a diagnostic that was not about it.
+
+  (4) Any other split is INDETERMINATE and licenses nothing. Saying so now is
+  the point; a rule that resolves every possible outcome into a green light is
+  not a rule.
+
+  Outcome (1) is the most likely and is the most valuable, because it closes the
+  130/30 direction cheaply instead of spending a year of forward record on it.
+
+failure_modes:
+  - >-
+    DIVERGENCE #16 — NO BORROW COST IS CHARGED, in this simulator or in the
+    paper account. A real short pays 0.3-3%/yr on an easy-to-borrow large cap,
+    far more on a crowded one, and can be recalled at the worst moment. So any
+    short-leg return here is OVERSTATED by a cost nobody paid, and the
+    overstatement is largest on exactly what a momentum short leg holds: names
+    that have fallen a long way and are crowded on the short side. A 130/30 arm
+    clearing (b) by a small margin has NOT cleared it.
+  - >-
+    SURVIVORSHIP CUTS THE OTHER WAY HERE, and this is the failure mode most
+    likely to be read backwards. Every wide snapshot is built from TODAY's index
+    membership, so the names that fell and never recovered are deleted. That
+    flatters a long book (§48 measured up to +130.06pp; §51 sized it at
+    +200.28pp) and PENALISES the short leg, which would have made its money on
+    precisely those deleted names. The consequence is asymmetric and is frozen
+    here before the run: a short-leg FAIL on this data is NOT decisive the way a
+    long-leg FAIL is, and outcome (1) above is therefore a decision to stop
+    spending on this direction rather than a proof that shorting cannot work.
+  - >-
+    `reclaim` AND THE SHORT LEG COMPETE FOR THE SAME NAMES, and reclaim is
+    DISABLED in every arm here, so this diagnostic does not test the
+    interaction. 23 of xsmom's 30 rankable symbols sit in reclaim's 127-name
+    universe, and `risk.py`'s direction_conflict rail is the only thing
+    preventing the collision — the "mechanically disjoint" claim that used to
+    sit in that comment was false and was corrected in PR #92. Nothing in these
+    four runs measures what happens when both are on.
+  - >-
+    CLAUSE (a) IS NEARLY MEANINGLESS ON THE BASELINE ARM, for the denominator
+    reason §48 recorded: `beats_exposure_matched` scales buy-and-hold by
+    deployment, so a mostly-in-cash arm is measured against a bar scaled to near
+    zero and clears it on a couple of winning trades.
+  - >-
+    DEPLOYMENT IS NET. `avg_deployment_pct` is (equity - cash) / equity, and
+    shorting RAISES cash, so a 130/30 arm and a flat 100%-long arm print the
+    SAME deployment figure. Read `gross_exposure_avg_pct` beside it — that is
+    what says whether the book ever ran near 160% gross, and therefore whether
+    "130/30" describes what actually happened. A 130/30 arm whose gross never
+    leaves the baseline's range did not implement the ratio, whatever its
+    return did.
+  - >-
+    THESE NUMBERS ARE NOT COMPARABLE WITH §43, §48, §50 OR §51. Those ran before
+    divergence #17 was closed, when the simulator let every strategy enter every
+    symbol in the snapshot — 500 names in the sim against 38 live. On the
+    2022-2026 snapshot that difference alone moves deployment from 4.09% to
+    75.18% and drawdown-blocked signals from 243,814 to 4. The earlier verdicts
+    are not reopened (the §41 precedent), but a table putting these rows beside
+    those would be comparing two different simulators.
+  - >-
+    ONE PERIOD IS NOT THE CLAIM. s53a-d are read together under the rule in
+    `prior`. A striking result in this period alone is a period-selection story.
