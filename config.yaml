@@ -213,10 +213,27 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     skip_bars: 21             # skip most recent month (short-term reversal)
     buy_top_fraction: 0.25
     exit_below_fraction: 0.50
-    short_bottom_fraction: 0  # 0 = no short leg yet (nothing shorts in Phase
-                              # 2). preflight.py's shorting guard keys off
-                              # this exact name; a later phase that arms the
-                              # short leg sets it above 0 here.
+    short_bottom_fraction: 0.25
+                              # THE MIRROR of buy_top_fraction, and a
+                              # PRE-REGISTERED STARTING POINT, NOT A FITTED
+                              # RESULT — chosen because it is the symmetric
+                              # value, before any run scored it.
+                              #
+                              # NOTHING SHORTS: xsmom is enabled: false above,
+                              # and preflight's account guard only convicts an
+                              # ENABLED strategy, so arming this cannot abort a
+                              # live cycle or place an order. It arms the leg
+                              # for the Phase 3 DIAGNOSTIC, which has to be
+                              # registered and run before enabled: true is even
+                              # a question.
+                              #
+                              # The bottom 25% of ~30 rankable names is roughly
+                              # seven or eight candidates; how many actually
+                              # become positions is a question for the
+                              # DIAGNOSTIC, not for this comment — the
+                              # correlation cap, sector concentration,
+                              # portfolio heat and the net-exposure band all
+                              # subtract from it.
   donchian:            # §17 candidate: N-bar breakout, M-bar exit (Turtle asymmetry)
     enabled: false     # DISABLED until it passes the walk-forward enablement gate.
                        # Params below are the pre-registered starting point, NOT

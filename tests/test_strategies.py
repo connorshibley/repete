@@ -208,9 +208,16 @@ def test_xsmom_buys_top_fraction_only():
 
 
 def test_xsmom_exits_when_rank_fades():
+    """`position_side="long"` is now REQUIRED to get an exit out of a held
+    position: since the short leg landed, xsmom refuses to choose an exit
+    direction it was not told. Without it this call returns hold, which is the
+    fail-safe polarity rather than a regression — guessing "long" against a
+    real short emits a SELL that doubles it. The full argument and its boundary
+    pairs are in tests/test_position_side.py."""
     uni = _universe()
     ctx = xsmom.prepare(uni, XS_PARAMS)
-    sig = xsmom.generate("LOSE", uni["LOSE"], XS_PARAMS, True, cross_section=ctx)
+    sig = xsmom.generate("LOSE", uni["LOSE"], XS_PARAMS, True,
+                         cross_section=ctx, position_side="long")
     assert sig.action == "sell" and "faded" in sig.reason
 
 

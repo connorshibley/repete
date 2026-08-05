@@ -159,22 +159,44 @@ def test_no_other_shipped_strategy_declares_it_yet():
     assert others == []
 
 
-def test_xsmom_ignores_the_side_until_the_short_leg_lands():
-    """xsmom accepts `position_side` and must produce the SAME signal for a
-    held position whichever side is passed — this change is a no-op for every
-    signal it emits, and this is what says so mechanically rather than in a
-    commit message."""
-    from strategies import xsmom
+def _xsmom_ctx_and_params():
+    """A rank-9-of-10 name: bottom decile, so it is BELOW exit_below_fraction
+    as a long (exit) and NOT back inside the top half as a short (hold)."""
     ctx = {"ranks": {"AAPL": 9, "MSFT": 0, "NVDA": 1, "AMD": 2},
            "returns": {"AAPL": -0.2, "MSFT": 0.5, "NVDA": 0.4, "AMD": 0.3},
            "n": 10}
     params = {"rank_lookback_bars": 231, "buy_top_fraction": 0.25,
-              "exit_below_fraction": 0.50}
+              "exit_below_fraction": 0.50, "short_bottom_fraction": 0.25}
+    return ctx, params
+
+
+def test_the_side_changes_what_xsmom_decides_about_the_same_position():
+    """The whole reason the flag exists. One name, one ranking, one `holding`
+    — and the correct action is opposite depending on the side. This is the
+    assertion that would have been impossible to write before the flag, and
+    the one that fails if a future change lets the side be ignored again."""
+    from strategies import xsmom
+    ctx, params = _xsmom_ctx_and_params()
     as_long = xsmom.generate("AAPL", [], params, True, ctx, position_side="long")
     as_short = xsmom.generate("AAPL", [], params, True, ctx, position_side="short")
-    as_none = xsmom.generate("AAPL", [], params, True, ctx)
-    assert as_long.action == as_short.action == as_none.action == "sell"
-    assert as_long.reason == as_short.reason == as_none.reason
+    assert as_long.action == "sell"     # fell out of the top half: exit the long
+    assert as_short.action == "hold"    # still weak: the short stays on
+
+
+def test_a_held_position_with_no_side_is_not_assumed_long():
+    """FAIL-SAFE, and the polarity is the point. Assuming "long" against a real
+    short emits a "sell" — in EXIT_ACTIONS, so every rail passes it, and mapped
+    to OrderSide.SELL, so it DOUBLES the short. Holding is bounded and visible
+    in the position list; doubling an unbounded-loss position is neither.
+
+    No production caller reaches this: main.py derives the side from the
+    broker's signed qty and backtest.py passes "long" explicitly. This guards
+    the caller that forgets."""
+    from strategies import xsmom
+    ctx, params = _xsmom_ctx_and_params()
+    sig = xsmom.generate("AAPL", [], params, True, ctx)
+    assert sig.action == "hold"
+    assert "side unknown" in sig.reason
 
 
 # ---------------------------------------------------------------------------
