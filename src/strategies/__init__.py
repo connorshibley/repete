@@ -32,6 +32,56 @@ def strategy_params(cfg: dict, name: str) -> dict | None:
     return _config_map(cfg).get(name)
 
 
+#: Value of a strategy's `universe:` key meaning "the `sectors:` map".
+SECTORS_UNIVERSE = "sectors"
+
+
+def sector_universe(cfg: dict) -> set:
+    """Every symbol named anywhere in config's `sectors:` block."""
+    return {s for syms in (cfg.get("sectors") or {}).values() for s in (syms or ())}
+
+
+def universe_for(cfg: dict, name: str) -> set:
+    """The symbols `name` may ENTER.
+
+    The default — and the value for every strategy that predates this — is the
+    CORE universe, `cfg["symbols"]`. That default is load-bearing: "no
+    `universe:` key" must mean the 38 names those strategies were gated on, NOT
+    "every symbol we happen to be scanning". `scan_symbols` now carries the
+    sector names too, so a permissive default would silently hand ma_crossover,
+    tsmom and meanrev ~90 extra names to trade — a live behaviour change, on
+    strategies whose entire evidence record was measured on 38.
+
+    An UNRECOGNISED key yields the EMPTY set, not the core universe. Preflight
+    refuses to start on one, so this is defence in depth; the polarity is chosen
+    so a typo makes a strategy trade NOTHING rather than trade the wrong
+    universe. A silent outage is recoverable and loud in the logs; a silently
+    wrong universe corrupts the evidence record and looks normal.
+    """
+    params = strategy_params(cfg, name) or {}
+    key = params.get("universe")
+    if key is None:
+        return set(cfg.get("symbols") or ())
+    if key == SECTORS_UNIVERSE:
+        return sector_universe(cfg)
+    return set()
+
+
+def in_universe(cfg: dict, name: str, symbol: str) -> bool:
+    """ENTRIES ONLY — never consult this on an exit.
+
+    Exits route to the position's OWNING strategy regardless of `enabled`, and
+    they must route regardless of universe too: a symbol can leave a universe
+    while a position in it is still open (a config edit, a re-frozen sector
+    map). Filtering the exit path would leave that position with no strategy
+    willing to close it — a rail refusing an EXIT, which is the risk-enlarging
+    inversion this codebase refuses everywhere else. That is why this filter
+    lives at main.py's entry loop and NOT inside `generate()`, which both paths
+    call.
+    """
+    return symbol in universe_for(cfg, name)
+
+
 def enabled(cfg: dict) -> list[tuple[str, dict]]:
     """(name, params) for enabled strategies, priority order (entries only)."""
     out = [(name, params) for name, params in _config_map(cfg).items()
@@ -66,7 +116,8 @@ def generate(name: str, symbol: str, bars: list[dict], cfg: dict,
 
 
 def prepare_cross_sections(cfg: dict, all_bars: dict,
-                           extra_owners: set | None = None) -> dict:
+                           extra_owners: set | None = None,
+                           held: set | None = None) -> dict:
     """Once-per-cycle precompute for cross-sectional strategies: the enabled
     ones, plus any disabled strategy that still OWNS an open position — its
     exit logic must keep working after it's disabled (ownership rule)."""
@@ -78,5 +129,30 @@ def prepare_cross_sections(cfg: dict, all_bars: dict,
         if mod.NEEDS_CROSS_SECTION:
             params = strategy_params(cfg, name)
             if params:
-                out[name] = mod.prepare(all_bars, params)
+                # EACH STRATEGY RANKS ITS OWN UNIVERSE, PLUS WHATEVER IT HOLDS.
+                #
+                # The universe half: `all_bars` is keyed by `scan_symbols`,
+                # which is now the UNION of every universe plus positions plus
+                # news nominations. Passing it through unfiltered would silently
+                # change what `xsmom` MEANS — its ranking is a PERCENTILE over
+                # the set it is given, and "top 25% of 38" and "top 25% of ~150"
+                # are different strategies. Nothing would fail; the numbers
+                # would just quietly stop being the ones its gate was run on.
+                #
+                # The `held` half is not a refinement, it is a correctness
+                # requirement, and scoping without it is a TRAP. A strategy can
+                # own a position in a symbol outside its universe — removed from
+                # config.yaml, or entered through a past news nomination; the
+                # scan-list comment in main.py names exactly this case. Drop
+                # that symbol from the cross-section and `xsmom.generate` finds
+                # `symbol not in ranks`, answers "insufficient history for
+                # ranking", and HOLDS — forever. The position becomes
+                # unexitable: a filter refusing to close risk, which is the same
+                # inversion `in_universe` is entries-only to avoid, one layer
+                # down. Including a held symbol cannot corrupt the percentile in
+                # the other direction either, since it is a position the
+                # strategy already owns and must be able to rank to exit.
+                allowed = universe_for(cfg, name) | (held or set())
+                scoped = {s: b for s, b in all_bars.items() if s in allowed}
+                out[name] = mod.prepare(scoped, params)
     return out

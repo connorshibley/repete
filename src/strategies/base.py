@@ -40,6 +40,31 @@ ENTRY_ACTIONS = ("buy", "short")
 EXIT_ACTIONS = ("sell", "cover")
 
 
+def sector_map(cfg: dict) -> dict:
+    """`symbol -> sector name`, inverted from config's frozen `sectors:` block.
+
+    Lives here, in the dependency-free base module, because BOTH `risk.py` (the
+    sector-concentration rail) and `strategies/reclaim.py` (sector ranking) need
+    it, and a strategy must never import `risk`. `risk.py` already imports
+    ENTRY_ACTIONS/EXIT_ACTIONS from this module, so the direction is established.
+
+    A symbol in no sector is simply ABSENT from the result — callers treat that
+    as "unmapped", not as a sector named None. That is what keeps every
+    sector-keyed rail inert for the core universe, instead of lumping all 38
+    core names into one giant pseudo-sector and capping them collectively.
+    """
+    out: dict = {}
+    for sector, syms in (cfg.get("sectors") or {}).items():
+        for s in (syms or ()):
+            out[s] = sector
+    return out
+
+
+def sector_of(cfg: dict, symbol: str):
+    """The sector `symbol` belongs to, or None when it is unmapped."""
+    return sector_map(cfg).get(symbol)
+
+
 def sma(closes: list[float], period: int) -> float | None:
     if len(closes) < period:
         return None
