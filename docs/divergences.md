@@ -4,14 +4,15 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Fifteen such differences have been found. Until 2026-07-28 they existed **only as
+Sixteen such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-04: #13, #14 and #15.** All three are open *by
-construction* rather than by defect — a sampling fact about the live record, and
-two judge inputs the simulator has no mechanism to represent.
+**Open as of 2026-08-05: #13, #14, #15 and #16.** All four are open *by
+construction* rather than by defect — a sampling fact about the live record, two
+judge inputs the simulator has no mechanism to represent, and a cost the paper
+broker does not charge.
 
 That count has been wrong before, in the direction that matters. This file said
 **"Open as of 2026-07-29: none"** while #15 had been open since the initial
@@ -383,3 +384,78 @@ compare — the principles apply to every judgment, so there is no
 without-principles arm in the live record. It is ungateable by construction as
 well as unmodelled, and it is recorded here so that is a stated fact rather than
 an oversight.
+
+---
+
+## #16 — paper shorting is free; real shorting is not
+
+**Registered 2026-08-05, when `xsmom` gained a short leg. Open by construction,
+and the bias runs in the flattering direction.**
+
+Alpaca's paper environment charges **no stock-loan fee**, maintains **no
+hard-to-borrow list**, and **never issues a buy-in**. A real short pays borrow
+of roughly 0.3–3%/yr on an easy-to-borrow large cap, can spike far higher on a
+crowded name, and can be **recalled by the lender at the worst possible moment**
+— which is to say, exactly when the position is going against you and everyone
+else is trying to cover the same name.
+
+None of that exists in `src/backtest.py` either. The simulator models fills,
+slippage and the rails; it has no concept of a financing cost that accrues per
+day held, and no concept of a position closed by someone other than the bot.
+
+### What this invalidates, precisely
+
+**Any measured short-leg return is overstated by a cost that was never
+charged**, in both the simulator and the paper record. The size of the overstatement
+is not constant — it scales with holding period and with how hard the name is to
+borrow, so it is largest on exactly the positions a momentum short leg is most
+likely to hold: names that have fallen a long way and are crowded on the short
+side.
+
+The direction is unambiguous and it is the unsafe one. Unlike #14 and #15, where
+the sim's judge has *less* context and therefore approves trades live would
+refuse — leaving backtests conservative relative to live — this makes the short
+leg look **better** than it can be. A short-leg result that clears a bar by a
+small margin has not cleared it.
+
+It also breaks a symmetry the long leg never had to think about: a long position
+has no financing cost in a cash account and cannot be taken away from you. Every
+number this project has produced so far is a long-only number, so this is the
+first divergence that applies to one leg and not the other, and any per-leg
+attribution has to carry the caveat rather than compare the two as like for like.
+
+### What would close this
+
+Two honest exits, and neither is available today:
+
+1. **A borrow-cost model** — a per-day financing charge in `backtest.py` and in
+   the live P&L, driven by a real borrow-rate source. That needs a data feed
+   this project does not have, and inventing a flat rate would replace an
+   unmeasured cost with a fabricated one, which is worse: it would look
+   modelled.
+2. **A real margin account**, which charges the real fee and enforces the real
+   recalls. That is a live-trading decision gated behind ≥30 closed trades, ≥60
+   days and attorney review, so it cannot be the near-term answer.
+
+Until one of those lands, the mitigation is to state the bias whenever a
+short-leg number is quoted, which is what this entry exists for.
+
+### The test that would fail if this silently closed
+
+None, and that is a statement about the divergence rather than an omission. There
+is no assertion that can detect "the broker did not charge something", because a
+fee that is never charged leaves nothing in the record to assert against. That
+makes this **structurally weaker** than #13–#15, each of which at least has a
+test pinning the mechanism it describes.
+
+The nearest available guard is
+`tests/test_xsmom_short_leg.py::test_the_shipped_config_still_ships_xsmom_disabled`
+— which does not detect the divergence at all, only the fact that nothing is
+currently exposed to it.
+
+### Not a claim of value
+
+**This is not an EDGE claim and nothing here is gated.** The EDGE tally is
+unchanged and stays frozen under §52; `knowledge/backtest_candidates.md` owns
+that count. This entry adds a required caveat to a future short-leg DIAGNOSTIC,
+and asserts nothing about whether the leg works.
