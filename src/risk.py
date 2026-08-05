@@ -1300,12 +1300,35 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     #   non-disjoint, they are ATTRACTED TO THE SAME NAMES, and 23 of xsmom's 30
     #   rankable symbols are in reclaim's 127-name universe.
     #
-    # So this rail is not defence in depth behind an upstream guarantee. It is
-    # the ONLY thing preventing the conflict, and whichever strategy reaches the
-    # name first (xsmom at priority 3, ahead of reclaim at 6) takes it while the
-    # other is refused here. Phase 3's DIAGNOSTIC has to measure how often that
-    # happens; a rail that fires constantly is a design problem wearing a
-    # rail's name.
+    # SECOND CORRECTION, 2026-08-05 (§54). The paragraph that replaced the
+    # "mechanically disjoint" claim above introduced a subtler false one of its
+    # own. It said this rail "is the ONLY thing preventing the conflict, and
+    # whichever strategy reaches the name first takes it while the other is
+    # REFUSED HERE". The first half is wrong and the second half is wrong.
+    #
+    # The other strategy is not refused here. IT IS NEVER CONSULTED:
+    #
+    #   a held symbol routes to `pos["owner"]` and the branch `continue`s
+    #   (main.py:1615-1652, backtest.py:1157-1181), so no second strategy is
+    #   ever offered a name that is already held, in either direction; and the
+    #   entry loop `break`s on the first strategy to claim a FLAT name
+    #   (main.py:1742, backtest.py:1266), so two strategies cannot queue
+    #   opposite orders on one name in one cycle either.
+    #
+    # OWNERSHIP ROUTING is what prevents a long and a short in the same name.
+    # This rail is a LAST-GATE BACKSTOP for a caller that did not come through
+    # the cycle — the same argument `pre_trade_checks` makes for `halt` in its
+    # own comment, and the realistic trigger is a broker-side position the bot
+    # did not open, where the account and the ownership map disagree.
+    #
+    # The practical consequence, and the reason this correction is worth its
+    # length: a backtest census can NEVER count this rail, because the simulator
+    # cannot reach it. §54 was designed to read
+    # `census["blocked"]["direction_conflict"]` as its headline measurement and
+    # had to be rewritten. A zero there means "unreachable", not "rare".
+    # Asserted, with the mutation proofs, in
+    # tests/test_reclaim_short_collision.py — which is what must go red if any
+    # of this stops being true.
     if action in ENTRY_ACTIONS:
         mv = positions.get(symbol, {}).get("market_value", 0.0)
         if action == "short" and mv > 0:
