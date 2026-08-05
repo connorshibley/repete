@@ -93,7 +93,17 @@ def only(name):
 
 # ---------------- the decisive equivalence check ----------------
 
-@pytest.mark.parametrize("name", ALL)
+#: `xsmom` is the ONLY strategy with a short leg, and the two simulators model
+#: genuinely different books for it since Phase 3: `simulate_ensemble` carries
+#: signed positions, `simulate` is long-only. Equivalence is therefore not the
+#: property to assert for it — REFUSAL is, and that is
+#: test_simulate_refuses_a_short_configured_strategy below. Silently excluding
+#: it from the parametrize list would have left the weaker claim looking like
+#: the original one.
+LONG_ONLY = tuple(n for n in ALL if n != "xsmom")
+
+
+@pytest.mark.parametrize("name", LONG_ONLY)
 def test_single_strategy_matches_simulate(bars, name):
     """One enabled strategy => the ensemble IS simulate(). Trade-for-trade.
 
@@ -260,3 +270,36 @@ def test_trade_cap_is_a_runaway_guard_not_a_risk_rail():
         "max_trades_per_day moved without a recorded decision — §29 set 15")
     assert cap >= 15, "below observed live demand; it would refuse real signals"
     assert cap, "0 disables the runaway guard entirely — an unbounded order loop"
+
+
+# ---------------- the one strategy the two simulators disagree about ----------
+
+def test_simulate_refuses_a_short_configured_strategy(bars):
+    """`xsmom` ships `short_bottom_fraction: 0.25`, and since Phase 3 the two
+    simulators model different books for it: `simulate_ensemble` carries signed
+    positions, `simulate` does not — unsigned account, one-sided bracket legs,
+    buyer's slippage throughout.
+
+    Handed that config, `simulate` would score the LONG half and return a
+    perfectly plausible number for a strategy that does not exist. That is the
+    failure `docs/divergences.md` exists to count, so it raises instead. This is
+    why xsmom is absent from the equivalence parametrization above — the claim
+    for it is refusal, not agreement."""
+    cfg = bt.load_config()
+    assert cfg["strategies"]["xsmom"]["short_bottom_fraction"] > 0, \
+        "fixture premise moved — xsmom no longer configures a short leg"
+    with pytest.raises(ValueError, match="long-only"):
+        bt.simulate(bars, cfg, {}, 100_000.0, "xsmom")
+
+
+def test_simulate_still_scores_xsmom_with_the_short_leg_off(bars):
+    """The twin, and the one that keeps the refusal honest: it must key off the
+    CONFIGURED short leg, not off the strategy's name. Set the fraction to 0 and
+    the same strategy scores exactly as it always did."""
+    cfg = bt.load_config()
+    cfg["strategies"]["xsmom"]["short_bottom_fraction"] = 0
+    res = bt.simulate(bars, cfg, {}, 100_000.0, "xsmom")
+    ens = bt.simulate_ensemble(bars, cfg, 100_000.0,
+                               strategy_overrides=only("xsmom"))
+    assert res.total_return_pct == ens.total_return_pct
+    assert res.n_trades == ens.n_trades

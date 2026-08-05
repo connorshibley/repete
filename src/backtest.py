@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import strategies
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS, side_of_qty
 import strategy
 import risk
 import regime as regime_mod
@@ -372,6 +373,27 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
     trail_on = (bcfg.get("trailing_atr_mult", 0) > 0
                 and (not t_strats or strategy_name in t_strats))
     cooldown_days = risk.cooldown_days_for(cfg, strategy_name)
+
+    # THIS SIMULATOR IS LONG-ONLY AND SAYS SO RATHER THAN GUESSING.
+    #
+    # `simulate_ensemble` models signed positions since Phase 3; this function
+    # does not — its account carries an unsigned qty, its bracket legs test one
+    # side of the bar, and its slippage always moves against a buyer. Handed a
+    # strategy with a short leg it would score the long half of the book and
+    # return a perfectly plausible number for a strategy that does not exist.
+    #
+    # That is the exact failure `docs/divergences.md` exists to count, so it
+    # raises instead. Gates use `simulate_ensemble` (README: "the one gates
+    # use"), so nothing frozen depends on this path being able to short; the
+    # callers are the `--strategy` CLI and `walk_forward`.
+    if (sparams.get("short_bottom_fraction") or 0) > 0:
+        raise ValueError(
+            f"simulate() cannot score {strategy_name}: it is configured to "
+            f"short (short_bottom_fraction="
+            f"{sparams['short_bottom_fraction']}) and this simulator is "
+            f"long-only — unsigned positions, one-sided bracket legs, "
+            f"buyer's slippage. Use simulate_ensemble(), which models signed "
+            f"positions, or set short_bottom_fraction: 0 for this run.")
 
     smod = strategies.REGISTRY[strategy_name]
     needs_xs = smod.NEEDS_CROSS_SECTION
@@ -823,7 +845,16 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
 
     def _exit(sym, price, ts, reason):
         pos = acct.positions.pop(sym)
-        fill = price * (1 - slip / 1e4)
+        # SLIPPAGE FOLLOWS THE ORDER, NOT THE LIFECYCLE. Closing a LONG sells,
+        # and a seller is hurt by a LOWER fill. Closing a SHORT buys, and a
+        # buyer is hurt by a HIGHER one. `(1 - slip)` unconditionally would pay
+        # every cover a discount — a trading cost recorded as a saving, on the
+        # one side of the book where costs compound with holding period. Same
+        # table as `record_fill_quality`'s sign in main.py: what decides is
+        # whether the order BUYS or SELLS, never whether it opens or closes.
+        fill = price * (1 + slip / 1e4 if pos["qty"] < 0 else 1 - slip / 1e4)
+        # `qty` is SIGNED, so one expression covers both sides: closing a long
+        # returns cash (+qty × fill), closing a short spends it (−qty × fill).
         acct.cash += pos["qty"] * fill - fee
         t = pos["trade"]
         t.exit_ts, t.exit_price, t.exit_reason = ts, fill, reason
@@ -876,7 +907,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 continue
             bar = today[sym]
             date = ts[:10]
-            if action == "buy":
+            if action in ENTRY_ACTIONS:
+                is_short = action == "short"
                 # SHARED rate limit — the whole point of this function. One
                 # strategy exhausting the daily cap blocks the others.
                 # §29: 0 disables, exactly as pre_trade_checks does live. If
@@ -892,16 +924,29 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     # names looked identical to no signals at all.
                     _blocked("already_held")
                     continue          # another strategy already claimed it
-                fill = _fill_open(sym, bar, ts) * (1 + slip / 1e4)
+                # A BUY PAYS UP, A SHORT SELLS DOWN. Opening a short is a SELL,
+                # so slippage moves the fill against it in the other direction.
+                # See _exit for the full table; the rule is the order's side.
+                fill = _fill_open(sym, bar, ts) * (
+                    1 - slip / 1e4 if is_short else 1 + slip / 1e4)
                 i = idx[sym][ts]
                 hist = sym_bars[sym][:i + 1]
                 prices = risk.bracket_prices(
                     fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
+                    direction=action,
                     vol_bucket=vol_series.get(ts))
                 stop, tp = prices if prices else (None, None)
+                # QTY STAYS UNSIGNED all the way through sizing, the judge and
+                # the heat cap, and only the STORED POSITION carries a sign.
+                # That mirrors live exactly: risk.size_order and
+                # judge_model.apply see magnitudes, and broker.positions()
+                # reports a short's qty negative. Signing earlier would make
+                # judge_model.apply's `if qty <= 0: return qty` guard skip every
+                # short — the judge unable to downsize the one side of the book
+                # where the loss is unbounded, which is invariant #2 inverted.
                 qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
                                       bars=hist, strategy=owner,
-                                      stop_price=stop)
+                                      stop_price=stop, direction=action)
                 # §29 / divergence #8 — see the single-strategy path above.
                 qty = judge_model.apply(qty, sym, ts, cfg)
                 try:
@@ -911,7 +956,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                                         if p["owner"] == owner)
                     # §41: ratchet hoisted to the top of the bar loop —
                     # divergence #10. See the comment there.
-                    risk.pure_checks("buy", sym, qty, fill,
+                    # The REAL action, not the literal "buy". Every rail inside
+                    # pure_checks keys off ENTRY_ACTIONS or off the action
+                    # itself — direction_conflict, the net-exposure band and the
+                    # heat term all read it — so passing "buy" for a short would
+                    # send the whole rail set the wrong direction while every
+                    # one of them reported that it had run.
+                    risk.pure_checks(action, sym, qty, fill,
                                      acct.account_dict(last_close),
                                      acct.positions_dict(last_close), cfg,
                                      regime_label=regime_labels.get(ts),
@@ -920,17 +971,37 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                                      peak_equity=risk.decayed_peak(
                                          sim_peak, acct.equity(last_close),
                                          sim_stable, cfg))
+                    # "action" is what makes risk.portfolio_heat select a
+                    # short's (stop − entry) instead of a long's (entry − stop).
+                    # Without it every short in the book contributes EXACTLY
+                    # ZERO heat — the Phase 2-A defect, reproduced here because
+                    # this dict is built by hand rather than read from a ledger.
                     _sim_open_trades = {
-                        s: {"qty": p["qty"], "entry_price": p["avg_entry"],
+                        s: {"qty": abs(p["qty"]), "entry_price": p["avg_entry"],
+                            "action": p.get("action", "buy"),
                             "order": {"stop_price": p.get("stop")}}
                         for s, p in acct.positions.items()}
                     heat_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
                     if heat_pct:
                         eq = acct.equity(last_close)
                         heat = risk.portfolio_heat(_sim_open_trades, cfg, eq)
-                        new_risk = (qty * max(fill - stop, 0.0) if stop
-                                    else eq * cfg["risk"].get(
-                                        "risk_per_trade_pct", 1.0) / 100)
+                        # The CANDIDATE's own contribution, direction-selected
+                        # the same way pre_trade_checks does since Phase 2 Fix 1.
+                        # A short's stop sits ABOVE the fill, so `fill - stop`
+                        # is negative and max(..., 0.0) zeroed it: the cap went
+                        # blind to the very order it was deciding on.
+                        #
+                        # The `if stop` guard has to wrap the SUBTRACTION, not
+                        # just choose between two finished numbers. An earlier
+                        # draft hoisted the distance out of the conditional and
+                        # crashed on `fill - None` for every run with brackets
+                        # disabled — a config the gate specs legitimately use.
+                        if stop:
+                            _dist = (stop - fill) if is_short else (fill - stop)
+                            new_risk = qty * max(_dist, 0.0)
+                        else:
+                            new_risk = eq * cfg["risk"].get(
+                                "risk_per_trade_pct", 1.0) / 100
                         if heat + new_risk > eq * heat_pct / 100:
                             n_heat_blocked += 1
                             by_strategy[owner]["blocked"] += 1
@@ -958,11 +1029,19 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                     _blocked(getattr(e, "rail", "unattributed"))
                     continue
                 census["executed"] += 1
-                acct.cash -= qty * fill + fee
+                # SIGNED from here on, matching what broker.positions() reports
+                # for a real short. Every downstream reader — equity(),
+                # positions_dict() and therefore every rail, and SimTrade.pnl —
+                # then works on both sides with no second formula.
+                signed_qty = -qty if is_short else qty
+                # Opening a short SELLS: cash goes UP by the proceeds. One
+                # expression for both, because the sign already says which.
+                acct.cash -= signed_qty * fill + fee
                 acct.positions[sym] = {
-                    "qty": qty, "avg_entry": fill, "entry_ts": ts,
+                    "qty": signed_qty, "avg_entry": fill, "entry_ts": ts,
                     "stop": stop, "tp": tp, "hw": fill, "owner": owner,
-                    "trade": SimTrade(sym, ts, fill, qty, fees=fee)}
+                    "action": action,
+                    "trade": SimTrade(sym, ts, fill, signed_qty, fees=fee)}
                 fills_by_date[date] = fills_by_date.get(date, 0) + 1
             elif sym in acct.positions:
                 _exit(sym, _fill_open(sym, bar, ts), ts, "strategy_sell")
@@ -974,13 +1053,52 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
             if sym not in today:
                 continue
             bar, pos = today[sym], acct.positions[sym]
-            if pos["stop"] is not None and bar["low"] <= pos["stop"]:
+            short = pos["qty"] < 0
+            # WHICH SIDE OF THE BAR TOUCHES WHICH LEG. A long stops out when the
+            # LOW falls to a stop below entry and targets when the HIGH rises to
+            # a tp above it; a short is the mirror — stop ABOVE entry (reached
+            # by the high), target BELOW (reached by the low). Reading a short
+            # with the long tests is not merely wrong, it fires on bar one every
+            # time: the first bar's low is already beneath a stop placed above
+            # entry. Same defect class as counterfactual.py's, fixed in #92.
+            #
+            # PESSIMISM SURVIVES THE INVERSION: the stop is still checked before
+            # the take-profit, so a bar spanning both legs is read against the
+            # position whichever way it points. That is the backtest.simulate
+            # step-2 parity every other exit path in this repo promises.
+            stop_hit = (pos["stop"] is not None
+                        and (bar["high"] >= pos["stop"] if short
+                             else bar["low"] <= pos["stop"]))
+            if stop_hit:
                 _exit(sym, pos["stop"], ts, "stop_loss")
                 continue
-            if pos["tp"] is not None and bar["high"] >= pos["tp"]:
+            tp_hit = (pos["tp"] is not None
+                      and (bar["low"] <= pos["tp"] if short
+                           else bar["high"] >= pos["tp"]))
+            if tp_hit:
                 _exit(sym, pos["tp"], ts, "take_profit")
                 continue
             if _trails(pos["owner"]):
+                # REFUSED, NOT SKIPPED. A short's chandelier ratchets DOWN from
+                # a LOW-water mark, which is a different function from the one
+                # `risk.trail_stop` implements — it takes a high-water mark and
+                # the caller only ever raises the stop. Silently not trailing a
+                # short would leave `trailing_atr_mult` looking applied while
+                # doing nothing, which is the dead-guard shape this repo has
+                # paid for twice (`short_bottom_fraction`, the preflight
+                # account check).
+                #
+                # Unreachable today: `trailing_strategies: [tsmom]` and tsmom
+                # has no short leg. It is a guard for the config that changes
+                # that, not for a case that exists.
+                if short:
+                    raise ValueError(
+                        f"{sym}: trailing stops are not implemented for shorts "
+                        f"(owner {pos['owner']} is in trailing_strategies). A "
+                        f"short's trail ratchets DOWN from a low-water mark; "
+                        f"risk.trail_stop only ratchets up from a high-water "
+                        f"one. Remove the owner from trailing_strategies or "
+                        f"implement the short side before scoring this config.")
                 pos["hw"] = max(pos.get("hw", pos["avg_entry"]), bar["high"])
                 hist = sym_bars[sym][:idx[sym][ts] + 1]
                 t_stop = risk.trail_stop(
@@ -1023,19 +1141,25 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 owner = pos["owner"]
                 if owner not in strategies.REGISTRY:
                     continue          # orphaned owner: bracket legs still apply
-                # "long": see the note at simulate()'s own generate() call —
-                # acct.positions is unsigned and the exit test below is
-                # `== "sell"`, so nothing held here can be a short. Phase 3
-                # replaces both together.
-                sig = strategies.generate(owner, sym, hist, cfg, True,
-                                          cross_section=xs_ctx.get(owner),
-                                          entry_ts=pos["entry_ts"],
-                                          position_side="long")
-                if sig.action == "sell":
+                # The position's REAL side, off the signed qty — the same
+                # derivation main.py uses, through the same helper, so the two
+                # cannot answer differently. Phase 2 shipped a hardcoded "long"
+                # here with a note that Phase 3 would replace it; this is that.
+                sig = strategies.generate(
+                    owner, sym, hist, cfg, True,
+                    cross_section=xs_ctx.get(owner),
+                    entry_ts=pos["entry_ts"],
+                    position_side=side_of_qty(pos["qty"]))
+                # EXIT_ACTIONS, not `== "sell"`: a short is closed by a "cover",
+                # and on the old condition that cover fell through and was
+                # silently discarded — the position's own exit signal ignored,
+                # every bar, forever. Exactly the bug main.py had at the
+                # equivalent site before Phase 2-C.
+                if sig.action in EXIT_ACTIONS:
                     if min_days and _cal_days(pos["entry_ts"], ts) < min_days:
                         guard_skips += 1
                         continue
-                    pending.append((sym, "sell", owner))
+                    pending.append((sym, sig.action, owner))
                 continue
 
             for name, sparams in active:
@@ -1071,7 +1195,10 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 sig = strategies.generate(name, sym, hist, cfg, False,
                                           cross_section=xs_ctx.get(name),
                                           entry_ts=None)
-                if sig.action != "buy":
+                # ENTRY_ACTIONS, not `== "buy"`: a "short" is an entry, and
+                # dropping it here would have made every short-leg arm score as
+                # long-only while reporting that it ran.
+                if sig.action not in ENTRY_ACTIONS:
                     continue
                 census["signals"] += 1      # §40 denominator
                 cd = cooldowns.get(name, 0)
@@ -1112,7 +1239,11 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 if entry_cap and buys_queued[name] >= entry_cap:
                     _blocked("entry_cap")
                     continue
-                pending.append((sym, "buy", name))
+                # sig.action, not "buy": the fill branch reads this tuple to
+                # decide direction, and a "short" queued as a "buy" would be
+                # filled as a long — the signal inverted between the bar that
+                # produced it and the bar that executed it.
+                pending.append((sym, sig.action, name))
                 buys_queued[name] += 1
                 break                 # first strategy to claim the symbol wins
 
@@ -1132,8 +1263,15 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     # and no block, and it is the drop path the balance check caught on its
     # very first run — which is the whole argument for asserting the sum rather
     # than trusting the buckets.
+    #
+    # ENTRY_ACTIONS, not `== "buy"`. This drain kept counting only buys after
+    # the queue learned to carry shorts, so a leftover SHORT was a counted
+    # signal that reached no bucket — and the balance check below caught it on
+    # the first run that produced one (138 signals, 136 accounted for). It stays
+    # an ACTION test rather than counting every leftover, because `pending` also
+    # holds exits, and an unfilled exit is not an entry that failed to happen.
     for _sym, _action, _owner in pending:
-        if _action == "buy":
+        if _action in ENTRY_ACTIONS:
             _blocked("expired_unfilled")
 
     _seen = census["executed"] + sum(census["blocked"].values())
