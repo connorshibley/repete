@@ -345,6 +345,44 @@ def fmt(name: str, s: dict, secs: float) -> str:
             f"deploy {s['avg_deployment_pct']:6.2f}%  ({secs:.0f}s)")
 
 
+def fmt_exposure(name: str, s: dict) -> str | None:
+    """GROSS beside NET, and only for an arm that actually shorted.
+
+    `deploy` above is NET, so a 130/30 arm and a flat-100%-long arm print the
+    SAME number. Without this line a reader comparing the two would conclude
+    the short leg changed nothing about the book's size, which is the opposite
+    of what happened.
+
+    Suppressed for a long-only arm on purpose: there gross IS net, and a second
+    identical column is noise that trains people to skim the row."""
+    if not s.get("n_short_trades"):
+        return None
+    return (f"  {'':<24} gross {s.get('gross_exposure_avg_pct', 0.0):6.2f}% "
+            f"(max {s.get('gross_exposure_max_pct', 0.0):6.2f}%)  "
+            f"net {s.get('net_exposure_avg_pct', 0.0):+6.2f}% "
+            f"(min {s.get('net_exposure_min_pct', 0.0):+6.2f}%)  "
+            f"shorts {s['n_short_trades']:4d} in {s.get('n_short_symbols', 0):3d} names")
+
+
+def fmt_rails(name: str, s: dict) -> str | None:
+    """WHICH RAIL REFUSED WHAT. `simulate_ensemble` has collected this per rail
+    since §40 and `run_gate` never printed it, so "does the new rail bind?" had
+    no answer in the gate report even though the data was in the Result.
+
+    §48's headline finding — the drawdown rail blocking 94.58% of signals — was
+    reached by reading a census by hand. Printing it makes that the default
+    rather than an investigation."""
+    census = s.get("census") or {}
+    blocked = census.get("blocked") or {}
+    if not blocked:
+        return None
+    top = sorted(blocked.items(), key=lambda kv: -kv[1])
+    total = sum(blocked.values())
+    shown = "  ".join(f"{k} {v}" for k, v in top[:6])
+    return (f"  {'':<24} signals {census.get('signals', 0):6d}  "
+            f"blocked {total:6d}  |  {shown}")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -418,6 +456,9 @@ def main() -> int:
     wall = time.monotonic() - t0
     for name, (summary, _, secs, _js) in arms.items():
         print(fmt(name, summary, secs), flush=True)
+        for extra in (fmt_exposure(name, summary), fmt_rails(name, summary)):
+            if extra:
+                print(extra, flush=True)
 
     judged = {name: js for name, (_, _, _, js) in arms.items()}
     if judge:

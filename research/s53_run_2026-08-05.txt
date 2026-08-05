@@ -1,0 +1,103 @@
+§53 — DOES THE 130/30 CONFIGURATION BEHAVE?
+Four DIAGNOSTIC specs, three arms each, frozen together before any ran.
+Rebuilt from research/verdicts.jsonl. K=15 (a DIAGNOSTIC spends no budget).
+
+==============================================================================
+===== s53a — 2000-2006 =====
+spec sha 3c15928ceeca490b…   ran 2026-08-05T22:25:03.482598+00:00   124s wall   judge ON
+
+  baseline           ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  19984  blocked  19947  |  drawdown 19411  zero_qty 499  expired_unfilled 19  heat 17  sector_concentration 1
+  xsmom_long_only    ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  22332  blocked  22295  |  drawdown 21702  zero_qty 555  expired_unfilled 20  heat 17  sector_concentration 1
+  xsmom_130_30       ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  27124  blocked  27087  |  drawdown 26380  zero_qty 667  expired_unfilled 22  heat 17  sector_concentration 1
+
+  PRE-REGISTERED PASS MARK (xsmom_130_30):
+    [FAIL] (a) deployment_at_least  2.21% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  -7.91% vs SPY +10.01% | maxDD 11.66% vs SPY 47.52% (reported, not gated)
+    [PASS] (c) min_trades  37 vs 30
+    [FAIL] (d) beats_exposure_matched  -7.91% vs +3.06% (B&H +138.54% x 2.2% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s53b — 2007-2013 =====
+spec sha 122a1b73ccbd3aa7…   ran 2026-08-05T22:26:59.828742+00:00   114s wall   judge ON
+
+  baseline           ret    +2.85%  PF 1.132  maxDD 11.28%  trades   131  symbols  26  deploy(net)   7.73%
+                     signals  21875  blocked  21744  |  drawdown 20860  zero_qty 584  regime_exposure 226  expired_unfilled 26  sector_concentration 23
+  xsmom_long_only    ret    +1.47%  PF 1.068  maxDD 12.46%  trades   128  symbols  26  deploy(net)   7.88%
+                     signals  24161  blocked  24033  |  drawdown 23075  zero_qty 649  regime_exposure 241  expired_unfilled 26  sector_concentration 23
+  xsmom_130_30       ret    +3.73%  PF 1.191  maxDD 10.59%  trades   119  symbols  26  deploy(net)   7.44%
+                     gross   7.52% (max  99.99%)   net min  -2.25%   shorts    2 in   2 names
+                     signals  29037  blocked  28918  |  drawdown 27791  zero_qty 765  regime_exposure 291  sector_concentration 27  expired_unfilled 26
+
+  PRE-REGISTERED PASS MARK (xsmom_130_30):
+    [FAIL] (a) deployment_at_least  7.44% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  +3.73% vs SPY +51.30% | maxDD 10.59% vs SPY 55.19% (reported, not gated)
+    [PASS] (c) min_trades  119 vs 30
+    [FAIL] (d) beats_exposure_matched  +3.73% vs +6.88% (B&H +92.48% x 7.4% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s53c — 2014-2019 =====
+spec sha 1227a5ce50733078…   ran 2026-08-05T22:28:18.151401+00:00   77s wall   judge ON
+
+  baseline           ret   +95.89%  PF 1.732  maxDD 10.64%  trades  1292  symbols  31  deploy(net)  64.68%
+                     signals   9121  blocked   7829  |  drawdown 4964  regime_exposure 1214  zero_qty 872  sector_concentration 627  correlation 79
+  xsmom_long_only    ret  +118.36%  PF 2.239  maxDD 16.36%  trades  1031  symbols  31  deploy(net)  67.62%
+                     signals   9921  blocked   8890  |  drawdown 5486  regime_exposure 1502  zero_qty 1059  sector_concentration 673  correlation 72
+  xsmom_130_30       ret   +79.73%  PF 1.794  maxDD 12.37%  trades  1036  symbols  31  deploy(net)  54.40%
+                     gross  76.44% (max 163.84%)   net min -15.89%   shorts   86 in  25 names
+                     signals  12509  blocked  11473  |  drawdown 6328  regime_exposure 2328  sector_concentration 1037  zero_qty 1001  heat 676
+
+  PRE-REGISTERED PASS MARK (xsmom_130_30):
+    [PASS] (a) deployment_at_least  54.40% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  +79.73% vs SPY +97.39% | maxDD 12.37% vs SPY 19.35% (reported, not gated)
+    [PASS] (c) min_trades  1036 vs 30
+    [PASS] (d) beats_exposure_matched  +79.73% vs +49.19% (B&H +90.41% x 54.4% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s53d — 2022-2026 =====
+spec sha 6fc6201dfe7d0390…   ran 2026-08-05T22:22:43.538170+00:00   80s wall   judge ON
+
+  baseline           ret  +105.84%  PF 1.698  maxDD  8.38%  trades  1163  symbols  31  deploy(net)  71.51%
+                     signals   3624  blocked   2461  |  regime_exposure 939  sector_concentration 647  zero_qty 564  heat 210  correlation 79
+  xsmom_long_only    ret  +139.50%  PF 2.340  maxDD 13.62%  trades   908  symbols  31  deploy(net)  74.45%
+                     signals   3896  blocked   2988  |  regime_exposure 1296  sector_concentration 727  zero_qty 591  heat 204  correlation 80
+  xsmom_130_30       ret   +81.06%  PF 1.740  maxDD 11.91%  trades   885  symbols  31  deploy(net)  59.49%
+                     gross  79.86% (max 134.60%)   net min  -1.34%   shorts  113 in  26 names
+                     signals   6718  blocked   5833  |  regime_exposure 1830  heat 1336  drawdown 1224  sector_concentration 849  zero_qty 533
+
+  PRE-REGISTERED PASS MARK (xsmom_130_30):
+    [PASS] (a) deployment_at_least  59.49% deployed vs 25.0% required
+    [PASS] (b) beats_benchmark_symbol  +81.06% vs SPY +63.52% | maxDD 11.91% vs SPY 24.50% (reported, not gated)
+    [PASS] (c) min_trades  885 vs 30
+    [PASS] (d) beats_exposure_matched  +81.06% vs +26.83% (B&H +45.11% x 59.5% deployment)
+
+  VERDICT: PASS
+
+==============================================================================
+THE PRE-COMMITTED READING RULE, APPLIED
+==============================================================================
+
+clause (b), beats_benchmark_symbol vs SPY, for xsmom_130_30:
+  s53a (2000-2006): FAIL
+  s53b (2007-2013): FAIL
+  s53c (2014-2019): FAIL
+  s53d (2022-2026): PASS
+
+  FAILS in 3 of 4 periods: s53a, s53b, s53c
+
+  The rule, frozen before the run:
+
+    (1) If xsmom_130_30 FAILS clause (b) in TWO OR MORE of the four periods,
+        the 130/30 configuration is refuted on this data. It is NOT enabled,
+        and Phase 3 stops there.
+
+  THREE of four FAIL. OUTCOME (1). The configuration is not enabled.
+
