@@ -206,6 +206,17 @@ def test_a_sector_with_too_few_usable_names_is_not_ranked_at_all():
 
 # =========================================================== the entry trigger
 
+def _dive_then_pop():
+    """Below trend, based ABOVE its short SMA, but that SMA is FALLING.
+
+    Isolates the slope half of the base test: `close > base SMA` passes and
+    `base SMA rising` fails, so only the slope check can block. The obvious
+    fixture — a flat tail — fails the `close > base SMA` check first and lets a
+    broken slope check survive, which is exactly what mutation testing caught.
+    """
+    return _bars([100.0] * 30 + [70.0] * 8 + [60.0, 60.0, 72.0] + [120.0])
+
+
 def _reclaim_series(days_below=8, cross=True, rising_base=True):
     """A name that sits below its own SMA, bases, then crosses back above.
 
@@ -243,23 +254,46 @@ def test_no_buy_without_the_reclaim_itself():
 
 
 def test_no_buy_without_a_base():
-    """Same cross, but the short SMA never turns up — a falling knife crosses
-    its trend average too, on the way down through it."""
+    """A flat tail: price never gets above its own short SMA, so the decline
+    has not stalled at all."""
     sig = reclaim.generate("AA1", _reclaim_series(rising_base=False), PARAMS,
                            holding=False, cross_section=_ctx())
     assert sig.action == "hold"
-    assert "SMA" in sig.reason
+    assert "still falling" in sig.reason
+
+
+def test_no_buy_when_the_base_sma_is_still_falling():
+    """The slope half, isolated. Price IS above its short SMA — it dived and
+    popped — but the SMA is lower than it was, so no base has formed. A falling
+    knife crosses its trend average too, on the way down through it.
+
+    Written because a mutation that disabled the slope check SURVIVED against
+    the flat-tail fixture above: that one is stopped by the `close > base SMA`
+    check first, so it never exercised the slope comparison at all.
+    """
+    sig = reclaim.generate("AA1", _dive_then_pop(), PARAMS, holding=False,
+                           cross_section=_ctx())
+    assert sig.action == "hold"
+    assert "not rising" in sig.reason, sig.reason
 
 
 def test_min_days_below_boundary_pair():
-    """One bar short of the requirement holds; one bar over buys. Nothing else
-    differs between the two series."""
-    short_of_it = reclaim.generate("AA1", _reclaim_series(days_below=1),
-                                   PARAMS, holding=False, cross_section=_ctx())
+    """ONE series, two params: it is below trend for exactly 11 consecutive
+    bars, so a requirement of 11 buys and 12 holds.
+
+    Varying the series instead (a shorter dip) let a disabled `min_days_below`
+    check SURVIVE mutation — the short-dip fixture is blocked by the base slope
+    test first, so it never proved anything about this gate.
+    """
+    bars = _reclaim_series(days_below=8)      # 11 consecutive bars below trend
+    ok = reclaim.generate("AA1", bars, {**PARAMS, "min_days_below": 11},
+                          holding=False, cross_section=_ctx())
+    assert ok.action == "buy", ok.reason
+    short_of_it = reclaim.generate("AA1", bars,
+                                   {**PARAMS, "min_days_below": 12},
+                                   holding=False, cross_section=_ctx())
     assert short_of_it.action == "hold"
-    over_it = reclaim.generate("AA1", _reclaim_series(days_below=8),
-                               PARAMS, holding=False, cross_section=_ctx())
-    assert over_it.action == "buy", over_it.reason
+    assert "out of favour" in short_of_it.reason, short_of_it.reason
 
 
 def test_a_non_laggard_sector_never_buys():
@@ -355,6 +389,76 @@ def test_the_shipped_config_keeps_reclaim_disabled_and_off_the_core_universe():
     core = set(cfg["symbols"])
     sector_syms = {s for syms in cfg["sectors"].values() for s in syms}
     assert not (core & sector_syms) - core   # sanity: overlap is a subset of core
+
+
+# ================================================================== preflight
+#
+# Every malformation below is SILENT at runtime — it does not raise, it quietly
+# changes which names a strategy may buy or how many the cap allows. Each is
+# paired with the shipped config passing, so a check that rejected everything
+# would not satisfy these.
+
+def _shipped():
+    import yaml
+    with open("config.yaml") as f:
+        return yaml.safe_load(f)
+
+
+def _sector_fails(cfg):
+    import preflight
+    return [f for f in preflight.run(cfg)
+            if "sector" in f or "universe" in f]
+
+
+def test_the_shipped_sector_config_passes_preflight():
+    assert _sector_fails(_shipped()) == []
+
+
+def test_preflight_refuses_a_symbol_in_two_sectors():
+    """Ambiguous membership makes sector_open_count answer differently
+    depending on which lookup wins, so the cap becomes evadable."""
+    import copy
+    cfg = copy.deepcopy(_shipped())
+    cfg["sectors"]["Energy"].append("NVDA")      # already in Technology
+    assert any("two sectors" in f for f in _sector_fails(cfg))
+
+
+def test_preflight_refuses_an_unknown_universe_key():
+    """universe_for() empties a universe on a typo rather than widening it, so
+    the strategy stops trading with nothing in the logs to explain why."""
+    import copy
+    cfg = copy.deepcopy(_shipped())
+    cfg["strategies"]["reclaim"]["universe"] = "sectorz"
+    assert any("not a known universe" in f for f in _sector_fails(cfg))
+
+
+def test_preflight_refuses_a_sectors_universe_with_no_sector_map():
+    import copy
+    cfg = copy.deepcopy(_shipped())
+    del cfg["sectors"]
+    assert any("no sectors" in f for f in _sector_fails(cfg))
+
+
+def test_preflight_refuses_an_empty_sector():
+    import copy
+    cfg = copy.deepcopy(_shipped())
+    cfg["sectors"]["Energy"] = []
+    assert any("non-empty" in f for f in _sector_fails(cfg))
+
+
+def test_preflight_refuses_a_concentration_cap_below_one():
+    """0 would refuse EVERY entry in a mapped sector — an outage wearing a
+    rail's name. `True` is rejected explicitly because bool is an int and would
+    otherwise sail through as a cap of 1."""
+    import copy
+    for bad in (0, -1, True, None, 2.5):
+        cfg = copy.deepcopy(_shipped())
+        cfg["risk"]["sector_concentration"]["max_per_sector"] = bad
+        assert any("max_per_sector" in f for f in _sector_fails(cfg)), bad
+    # and the paired half: a legitimate cap passes
+    cfg = copy.deepcopy(_shipped())
+    cfg["risk"]["sector_concentration"]["max_per_sector"] = 3
+    assert _sector_fails(cfg) == []
 
 
 def test_no_symbol_appears_in_two_sectors():
