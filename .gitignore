@@ -3,7 +3,13 @@ __pycache__/
 *.pyc
 HALT
 logs/
-.venv/
+# NO TRAILING SLASH. `.venv/` matches a DIRECTORY only. A git worktree used a
+# .venv SYMLINK pointing into this checkout; the slash meant git did not ignore
+# it, so it was tracked, merged in PR #89, and `git pull` here then replaced
+# this checkout's REAL venv with a symlink to itself — taking down all ten
+# launchd jobs at once, since every one of them invokes `.venv/bin/python`.
+# Bare `.venv` matches both a directory and a symlink. Do not re-add the slash.
+.venv
 # ALL runtime state stays local: ledger, lessons, judgments, heartbeat,
 # trade counts, backtest trials
 memory/
