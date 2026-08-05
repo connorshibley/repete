@@ -148,6 +148,34 @@ costs a day of live time.
 leg produced it. Without this the short leg cannot be evaluated at all — it just
 blends into the book.
 
+> **Checked 2026-08-05, and no new field is needed.** Phase 2-C-bis taught the
+> ledger the full `buy`/`sell`/`short`/`cover` vocabulary, which arrived after
+> this section was written. Fills carry the leg directly —
+> `main.record_fill_quality` passes `rec["action"]` into `log_fill_quality`'s
+> `side`, uncollapsed. Outcomes carry it by join: an outcome row holds no
+> action, but `ledger.closed_trades()` merges each one with its entry decision,
+> which carries `action` and `strategy`. Pinned by
+> `tests/test_leg_attribution.py`. Storing a separate `leg` would be a second
+> source of truth for something the record already holds, and the two would
+> eventually disagree.
+>
+> **Two CONSUMERS do not split the legs, and both belong to Phase 3:**
+>
+> 1. `randombaseline._closed()` projects `symbol`, `entry_ts`, `exit_ts`,
+>    `pnl_pct` and `strategy` — but not `action`. So the decay monitor can
+>    compare xsmom against random entry, and cannot compare its LONG leg against
+>    its SHORT one. Adding the field is one line; doing it changes what the
+>    monitor measures, which is a decision for the DIAGNOSTIC rather than a
+>    tidy-up.
+> 2. `alpha_pct = pnl_pct - benchmark_pnl_pct`, with SPY as the benchmark. For a
+>    long that is the intended comparison. For a SHORT it is not obviously
+>    anything: a short that loses 3% while SPY rises 3% records alpha −6%, which
+>    charges it twice for the market move it was structurally positioned
+>    against. The right benchmark for a short leg — zero, −SPY, or the leg's own
+>    book — is a design question, and answering it inside a plumbing commit
+>    would silently redefine `alpha_pct` for the closed long trades already in
+>    the record.
+
 **Then freeze and accumulate.** The short leg roughly doubles expressible
 decisions, from "own it or don't" to "long, flat, or short" — the breadth
 increase §49 called for, and faster n. Target ~200 closed round-trips before
