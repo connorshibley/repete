@@ -537,10 +537,22 @@ def vol_scale(bars: list[dict] | None, vcfg: dict,
 
 
 def _risk_sizing_active(rcfg: dict, strategy: str | None,
-                        price: float, stop_price: float | None) -> bool:
+                        price: float, stop_price: float | None,
+                        direction: str = "buy") -> bool:
     """Stop-distance sizing applies only when enabled, scoped to this
-    strategy, and an actual protective stop is known below the price."""
-    if not rcfg.get("enabled") or not stop_price or stop_price >= price:
+    strategy, and an actual protective stop is known on the correct side of
+    price for the direction being sized: below price for a long, above price
+    for a short. A stop on the wrong side (or equal to price — zero
+    distance, which would divide by zero below) is not a usable stop, so
+    sizing falls back to notional rather than activating on a number that
+    doesn't describe a real risk distance. `direction` defaults to "buy" so
+    every pre-Phase-2 caller — none of which pass it — is unaffected."""
+    if not rcfg.get("enabled") or not stop_price:
+        return False
+    if direction == "short":
+        if stop_price <= price:
+            return False
+    elif stop_price >= price:
         return False
     strats = rcfg.get("strategies")
     return not strats or strategy in strats
@@ -549,7 +561,8 @@ def _risk_sizing_active(rcfg: dict, strategy: str | None,
 def size_order(account: dict, price: float, cfg: dict,
                bars: list[dict] | None = None,
                strategy: str | None = None,
-               stop_price: float | None = None) -> int:
+               stop_price: float | None = None,
+               direction: str = "buy") -> int:
     """Position sizing, then clamp by every cap. Returns whole-share qty.
 
     Two modes (per-strategy, gate-decided — see backtest_candidates.md §8):
@@ -559,6 +572,13 @@ def size_order(account: dict, price: float, cfg: dict,
         stop-distance fraction, so every trade risks the same equity slice
         entry-to-stop. Replaces vol_target for that strategy — both normalize
         by realized vol and compounding them would double-count.
+
+    `direction` ("buy" or "short", default "buy") tells the risk-based mode
+    which side of price the stop sits on. A short's stop is ABOVE entry, so
+    the entry-to-stop distance is (stop_price - price), not (price -
+    stop_price) — the un-fixed formula went negative for a short, `dollars`
+    went negative, and `qty` floored to 0 or less with no error and no log.
+    The default keeps every existing (long-only) caller byte-identical.
     """
     r = cfg["risk"]
     equity = account["equity"]
@@ -572,8 +592,13 @@ def size_order(account: dict, price: float, cfg: dict,
         return 0
 
     rscfg = r.get("risk_sizing") or {}
-    if _risk_sizing_active(rscfg, strategy, price, stop_price):
-        stop_frac = (price - stop_price) / price
+    if _risk_sizing_active(rscfg, strategy, price, stop_price, direction):
+        # Magnitude, not signed subtraction: a short's stop is ABOVE price,
+        # so (price - stop_price) alone would be negative here and propagate
+        # a negative `dollars` into a 0-or-negative `qty` below — silently,
+        # since int(dollars // price) never raises.
+        stop_dist = (stop_price - price) if direction == "short" else (price - stop_price)
+        stop_frac = stop_dist / price
         dollars = equity * rscfg.get("risk_pct", 0.1) / 100 / stop_frac
     else:
         dollars = equity * r["risk_per_trade_pct"] / 100      # fixed fractional
@@ -864,17 +889,25 @@ def cooldown_blocked(last_exit_ts: str | None, now_ts: str,
 
 def bracket_prices(entry_price: float, atr_value: float | None,
                    cfg: dict,
-                   vol_bucket: str | None = None) -> tuple[float, float | None] | None:
+                   vol_bucket: str | None = None,
+                   direction: str = "buy") -> tuple[float, float | None] | None:
     """Deterministic stop/take-profit prices for a bracket entry.
 
-    stop = entry − stop_atr_mult·ATR; tp = entry + take_profit_atr_mult·ATR
-    (tp omitted when the multiplier is 0). When `stop_atr_mult_high_vol` is
-    configured and the market vol regime at entry is "high", that wider
-    multiplier is used instead (fixed 2×ATR whipsaws in high-vol tape) —
-    absent/0 keeps the single fixed multiplier. Returns None — caller
-    degrades to a plain market order — when brackets are disabled, ATR is
-    unavailable, or the stop would be non-positive. Computed AFTER the LLM
-    review and the pre-trade rails; the LLM never sees these numbers.
+    Long (`direction="buy"`, the default — every pre-Phase-2 caller):
+    stop = entry − mult·ATR; tp = entry + take_profit_atr_mult·ATR (tp
+    omitted when the multiplier is 0). Short (`direction="short"`): the
+    geometry inverts — stop = entry + mult·ATR (a short loses money as price
+    RISES, so its stop sits above entry), tp = entry − take_profit_atr_mult·
+    ATR. `broker.bracket_market_order` (Phase 1) now refuses a short whose
+    stop is not above entry, so a short bracket MUST use this geometry to be
+    placeable at all. When `stop_atr_mult_high_vol` is configured and the
+    market vol regime at entry is "high", that wider multiplier is used
+    instead (fixed 2×ATR whipsaws in high-vol tape) — absent/0 keeps the
+    single fixed multiplier. Returns None — caller degrades to a plain
+    market order — when brackets are disabled, ATR is unavailable, or the
+    price that can legitimately go non-positive on this side is not
+    positive (see below). Computed AFTER the LLM review and the pre-trade
+    rails; the LLM never sees these numbers.
     """
     b = cfg["risk"].get("brackets", {})
     if not b.get("enabled") or not atr_value or atr_value <= 0:
@@ -883,13 +916,33 @@ def bracket_prices(entry_price: float, atr_value: float | None,
     high_mult = b.get("stop_atr_mult_high_vol", 0)
     if high_mult and vol_bucket == "high":
         mult = high_mult
-    stop = round(entry_price - mult * atr_value, 2)
-    if stop <= 0:
-        log.warning("bracket stop would be non-positive (entry %.2f, ATR %.2f) "
-                    "— falling back to plain market order", entry_price, atr_value)
-        return None
     tp_mult = b.get("take_profit_atr_mult", 0)
-    tp = round(entry_price + tp_mult * atr_value, 2) if tp_mult else None
+
+    # The non-positive-price guard protects whichever leg can actually go
+    # non-positive for this direction, not "the stop" unconditionally:
+    #   - long:  stop = entry − mult·ATR shrinks toward/through 0 as ATR or
+    #            mult grows; tp = entry + tp_mult·ATR is a sum of positives
+    #            and can never be non-positive.
+    #   - short: stop = entry + mult·ATR is a sum of positives and can never
+    #            be non-positive; tp = entry − tp_mult·ATR is the one that
+    #            shrinks toward/through 0.
+    # Checking the wrong leg on either side would let a non-positive price
+    # slip through (or reject a perfectly fine bracket on the other leg).
+    if direction == "short":
+        stop = round(entry_price + mult * atr_value, 2)
+        tp = round(entry_price - tp_mult * atr_value, 2) if tp_mult else None
+        if tp is not None and tp <= 0:
+            log.warning("bracket take-profit would be non-positive (entry %.2f, "
+                        "ATR %.2f) — falling back to plain market order",
+                        entry_price, atr_value)
+            return None
+    else:
+        stop = round(entry_price - mult * atr_value, 2)
+        if stop <= 0:
+            log.warning("bracket stop would be non-positive (entry %.2f, ATR %.2f) "
+                        "— falling back to plain market order", entry_price, atr_value)
+            return None
+        tp = round(entry_price + tp_mult * atr_value, 2) if tp_mult else None
     return stop, tp
 
 
@@ -944,9 +997,26 @@ def swing_guard(entry_ts: str | None, cfg: dict):
 
 def portfolio_heat(open_trades: dict, cfg: dict, equity: float) -> float:
     """Total open stop-risk in dollars (2026-07-21): what the whole book
-    loses if EVERY open stop is hit. Per position: qty x (entry - stop) from
-    the recorded bracket stop; a position with no recorded stop contributes
-    the standard per-trade risk fraction of equity (conservative fallback)."""
+    loses if EVERY open stop is hit. Per position: qty x the entry-to-stop
+    MAGNITUDE from the recorded bracket stop; a position with no recorded
+    stop contributes the standard per-trade risk fraction of equity
+    (conservative fallback).
+
+    The magnitude is direction-dependent: a long's stop sits below entry
+    (entry - stop), a short's sits above it (stop - entry). Before this fix
+    the formula was always (entry - stop) clamped at 0 — for a short that
+    clamp fired on every position (entry - stop is negative for a correctly
+    placed short stop), so a short's real risk contributed exactly 0.0 to
+    the cap, invisibly. `rec["action"]` (as written by main.py's open_trades
+    entries) selects the formula; a record with no `action` key — every
+    record written before this fix — defaults to the long formula, so
+    existing/legacy books are read exactly as before.
+
+    The `max(..., 0.0)` clamp survives on BOTH sides, unchanged in spirit:
+    it now catches a NONSENSICAL stop for whichever direction the record
+    claims — a long with its stop above entry, or a short with its stop
+    below entry — rather than doing double duty as "clamp bad longs" AND
+    "zero out every short" the way the un-fixed single formula did."""
     heat = 0.0
     per_trade = equity * cfg["risk"].get("risk_per_trade_pct", 1.0) / 100
     for rec in (open_trades or {}).values():
@@ -954,7 +1024,8 @@ def portfolio_heat(open_trades: dict, cfg: dict, equity: float) -> float:
         entry = rec.get("entry_price") or 0.0
         stop = (rec.get("order") or {}).get("stop_price")
         if stop and entry and qty:
-            heat += qty * max(entry - stop, 0.0)
+            dist = (stop - entry) if rec.get("action") == "short" else (entry - stop)
+            heat += qty * max(dist, 0.0)
         elif qty:
             heat += per_trade
     return heat
