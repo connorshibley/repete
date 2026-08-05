@@ -448,3 +448,47 @@ def test_risk_sizing_still_reaches_a_LONG_the_same_way():
     shared = [k for k in longs_on if k in off]
     assert shared, "no long is comparable across the two runs"
     assert any(on[k] != off[k] for k in shared)
+
+
+# ---------------------------------------------------------------------------
+# Gross vs net, measured on a real run rather than a hand-built summary.
+# ---------------------------------------------------------------------------
+
+def test_gross_EXCEEDS_net_once_the_book_carries_shorts(run):
+    """The whole reason gross was added. `avg_deployment_pct` is
+    `(equity - cash) / equity`, and shorting RAISES cash — so a book that is
+    130% long and 30% short reports the SAME deployment as one that is 100%
+    long and flat. Gross sums MAGNITUDES and separates them.
+
+    A first mutation round proved this needed saying here rather than only in
+    tests/test_gate_exposure_report.py: making `gross` sum signed values
+    instead of magnitudes turned it back into net, and every assertion in that
+    file passed, because those use hand-built summaries. Only a real run can
+    catch it."""
+    _, res = run
+    assert res.n_short_trades > 0, "no short in the book — assertion is vacuous"
+    assert res.gross_exposure_avg_pct > res.net_exposure_avg_pct, (
+        f"gross {res.gross_exposure_avg_pct} did not exceed net "
+        f"{res.net_exposure_avg_pct} on a book holding "
+        f"{res.n_short_trades} shorts — gross is not summing magnitudes")
+
+
+def test_net_matches_the_deployment_field_it_sits_beside(run):
+    """`net_exposure_avg_pct` and `avg_deployment_pct` measure the same thing by
+    two routes — one through `risk.net_exposure_pct` (the function the live rail
+    calls), one through `(equity - cash) / equity`. They must agree, or the
+    simulator and the rail disagree about what "net" means."""
+    _, res = run
+    assert abs(res.net_exposure_avg_pct - res.avg_deployment_pct) < 0.05
+
+
+def test_a_long_only_book_has_gross_EQUAL_to_net():
+    """The twin, and the regression pin for production: with no shorts the two
+    must coincide, so adding gross cannot have changed what any existing
+    long-only verdict would report."""
+    cfg = _xsmom_only()
+    cfg["strategies"]["xsmom"]["short_bottom_fraction"] = 0
+    res = bt.simulate_ensemble(_bars(), cfg, 100_000.0)
+    assert res.n_short_trades == 0
+    assert res.trades, "fixture traded nothing"
+    assert abs(res.gross_exposure_avg_pct - res.net_exposure_avg_pct) < 0.05

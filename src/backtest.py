@@ -105,6 +105,22 @@ class Result:
     deployment_zero_pct: float = 0.0   # § 40: share of bars fully in cash
     deployment_median_pct: float = 0.0
     deployment_max_pct: float = 0.0
+    # PHASE 3: gross and net, because `avg_deployment_pct` above is NET and a
+    # 130/30 book therefore reports 100% — the same number a book that is 100%
+    # long and flat reports. Net is still the right input to
+    # `beats_exposure_matched` (the book carries ~100% of market beta either
+    # way), so it keeps its meaning and these are added ALONGSIDE it rather
+    # than replacing it: every recorded verdict reads the old field.
+    #
+    # `net_exposure_min_pct` and `gross_exposure_max_pct` are the two ends that
+    # answer "did the net-exposure band bind" and "did the book ever reach the
+    # 130% the ratio was premised on" — averages hide both.
+    gross_exposure_avg_pct: float = 0.0
+    gross_exposure_max_pct: float = 0.0
+    net_exposure_avg_pct: float = 0.0
+    net_exposure_min_pct: float = 0.0
+    n_short_trades: int = 0
+    n_short_symbols: int = 0
     # §50: a SURVIVORSHIP-FREE benchmark, alongside the poisoned one above.
     # `buy_hold_return_pct` averages the whole snapshot universe, and §48
     # measured what that costs: the wide snapshots are built from TODAY's index
@@ -783,6 +799,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     closed: list = []
     curve: list = []
     deployment: list = []
+    gross: list = []          # sum(|market_value|) / equity
+    net: list = []            # signed exposure / equity
     guard_skips = 0
     n_heat_blocked = 0
     n_corr_blocked = 0
@@ -1249,7 +1267,24 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
 
         eq = acct.equity(last_close)
         curve.append(round(eq, 2))
+        # `avg_deployment_pct` KEEPS ITS MEANING. `(equity - cash) / equity` is
+        # NET exposure, and every recorded verdict plus the `deployment_at_least`
+        # and `beats_exposure_matched` rules read it. Redefining it would
+        # silently reinterpret the whole archive, so gross is added ALONGSIDE
+        # rather than instead.
         deployment.append((eq - acct.cash) / eq if eq > 0 else 0.0)
+        # GROSS vs NET is the distinction a 130/30 book turns on, and nothing
+        # here had to notice it before: shorting RAISES cash, so a book that is
+        # 130% long and 30% short reports 100% deployment — indistinguishable
+        # from one that is 100% long and flat. Gross sums MAGNITUDES and reads
+        # 160% for the first and 100% for the second.
+        _pos = acct.positions_dict(last_close)
+        gross.append(sum(abs(p["market_value"]) for p in _pos.values()) / eq
+                     if eq > 0 else 0.0)
+        # Through risk.net_exposure_pct — the SAME function the live
+        # net-exposure rail calls — so the simulator and the rail cannot
+        # disagree about what net means.
+        net.append(risk.net_exposure_pct(_pos, eq) / 100 if eq > 0 else 0.0)
 
     final_ts = all_ts[-1] if all_ts else ""
     for sym in list(acct.positions):
@@ -1351,6 +1386,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
             100 * sum(1 for d in _dep if d < 1e-9) / _n, 2) if _n else 0.0,
         deployment_median_pct=round(100 * _dep[_n // 2], 2) if _n else 0.0,
         deployment_max_pct=round(100 * _dep[-1], 2) if _n else 0.0,
+        gross_exposure_avg_pct=round(100 * sum(gross) / len(gross), 2)
+        if gross else 0.0,
+        gross_exposure_max_pct=round(100 * max(gross), 2) if gross else 0.0,
+        net_exposure_avg_pct=round(100 * sum(net) / len(net), 2) if net else 0.0,
+        net_exposure_min_pct=round(100 * min(net), 2) if net else 0.0,
+        n_short_trades=sum(1 for t in closed if t.qty < 0),
+        n_short_symbols=len({t.symbol for t in closed if t.qty < 0}),
         n_fill_fallback=n_fill_fallback,
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
