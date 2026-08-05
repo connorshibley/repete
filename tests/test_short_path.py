@@ -580,13 +580,20 @@ def scripted_cycle(tmp_path, monkeypatch, cfg):
     Returns `run(action, positions=..., risk_overrides=...)`, which yields the
     broker afterwards so a test can inspect what was submitted AND the
     in-cycle position view the cycle left behind.
+
+    `symbols=[...]` widens the scan list. A one-symbol cycle can never reach a
+    SECOND entry, and the second entry is the only moment the in-cycle
+    open-trades dict is ever READ (Group C-bis, defect 7).
     """
     monkeypatch.chdir(tmp_path)
     cfg["risk"]["brackets"]["atr_period"] = 3      # the fixture bars are short
 
-    def run(action, positions=None, holding_action=None, **risk_overrides):
+    def run(action, positions=None, holding_action=None, symbols=None,
+            **risk_overrides):
         local = copy.deepcopy(cfg)
         local["risk"].update(risk_overrides)
+        if symbols is not None:
+            local["symbols"] = symbols
         with open("config.yaml", "w") as f:
             yaml.safe_dump(local, f)
 
@@ -809,10 +816,19 @@ def test_a_long_entry_is_stop_distance_sized_to_the_same_share_count(
 # ---------------------------------------------------------------------------
 # The two sites found in review.
 #
-# 1. main.py hardcoded `"action": "buy"` into the open_trades record and into
-#    the ledger decision, so Group A's `portfolio_heat` short branch — which
-#    reads exactly that key — was permanently inert: nothing ever wrote
-#    "short", so every short's real stop-risk contributed 0.0 to the cap.
+# 1. main.py hardcoded `"action": "buy"` into the IN-CYCLE open_trades record,
+#    so Group A's `portfolio_heat` short branch — which reads exactly that
+#    key — was inert on that path: nothing ever wrote "short", so a short
+#    opened earlier in the same cycle contributed 0.0 to the heat cap.
+#
+#    An earlier version of this comment also claimed the LEDGER decision was
+#    hardcoded. It never was — main.py has always called
+#    `ledger.log_decision(symbol, sig.action, ...)`. The ledger path's defect
+#    was #2 below, the `open_buys()` FILTER, not the value written.
+#
+#    Note which writer the tests immediately below exercise: all of them go
+#    through `_reloaded_book()`, i.e. the LEDGER. The in-cycle dict is a
+#    different writer and needs its own test — see Group C-bis, defect 7.
 # 2. ledger.open_buys() filtered `action == "buy"`. It is the only path by
 #    which the live bot reloads its open book, so a restart dropped every open
 #    short from the reloaded book.
@@ -1060,3 +1076,542 @@ def test_the_two_vocabularies_stay_disjoint():
     the guard would still LOOK gated at every one of the fifteen sites."""
     from strategies.base import ENTRY_ACTIONS as E, EXIT_ACTIONS as X
     assert set(E).isdisjoint(X)
+
+
+# ===========================================================================
+# GROUP C-bis: the SIGN-AWARE half of Group C.
+#
+# Group C fixed main.py's action VOCABULARY — which branch a "short" or a
+# "cover" takes. These six sites need direction-aware ARITHMETIC or
+# direction-aware order MATCHING instead, which is why they were deliberately
+# left out of that commit: each changes a NUMBER or a LOOKUP, not a branch,
+# and every one of them has to be argued separately as a no-op for a long.
+#
+# Same boundary-pair discipline as the rest of this file. Nothing shorts yet,
+# so the long twin is the ONLY evidence that a sign-aware rewrite left live
+# behaviour byte-identical; a short-side assertion standing alone cannot tell
+# "fixed the short" from "broke the long and got lucky on this number".
+# ===========================================================================
+
+from memory import Memory
+
+
+@pytest.fixture
+def closing_env(tmp_path, cfg):
+    """Real Ledger + Memory on tmp_path, LLM off, X dry-run — the same offline
+    harness tests/test_reconcile.py uses, so these drive the very handle_close
+    and resolve_exit_price the live reconcile path calls."""
+    cfg["memory"]["ledger_path"] = str(tmp_path / "memory" / "ledger.jsonl")
+    cfg["memory"]["learnings_path"] = str(tmp_path / "memory" / "learnings.md")
+    ledger = Ledger(cfg["memory"]["ledger_path"])
+    return ledger, Memory(cfg, ledger), cfg
+
+
+def _open_entry(ledger, action, entry=100.0, qty=10):
+    """One executed ENTRY record, in the shape main.py writes it: qty POSITIVE
+    on both sides, direction carried by `action`, bracket legs on the side the
+    direction requires."""
+    long_side = action == "buy"
+    order = {"id": "entry-1", "symbol": "SPY", "qty": qty, "side": action,
+             "status": "filled", "order_class": "bracket",
+             "stop_price": 90.0 if long_side else 110.0,
+             "take_profit_price": 115.0 if long_side else 85.0,
+             "leg_ids": ["leg-stop", "leg-tp"]}
+    tid = ledger.log_decision("SPY", action, "scripted", {}, None,
+                              executed=True, order=order, entry_price=entry,
+                              qty=qty, strategy="ma_crossover")
+    return tid, ledger.open_buys()[tid]
+
+
+# ---------------------------------------------------------------------------
+# Defect 1. main.py's handle_close computed `(exit - entry) * qty` with qty
+# stored POSITIVE, so a short that fell $10 recorded as a $100 LOSS — and
+# `result` inverted with it. That outcome record is what the lesson
+# generator, the scorecard and the decay monitor all read, so the learning
+# loop would have been fed a mirror image of the bot's own short book. This
+# is the highest-value fix in the group.
+# ---------------------------------------------------------------------------
+
+def test_a_profitable_shorts_pnl_is_positive_and_records_as_a_win(closing_env):
+    """Shorted at $100, covered at $90: the short made $10 a share."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "short")
+    main.handle_close(tid, rec, 90.0, ledger, memory, cfg)
+    t = ledger.closed_trades()[0]
+    assert t["pnl"] == pytest.approx(100.0), (
+        "-100.0 here is the defect: a profitable short recorded as a loss")
+    assert t["pnl_pct"] == pytest.approx(10.0)
+    assert t["result"] == "win"
+
+
+def test_a_profitable_longs_pnl_is_still_positive_and_records_as_a_win(
+        closing_env):
+    """The twin, differing only in direction: bought at $100, sold at $110 —
+    the same $10 a share, the same numbers this path has always written."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "buy")
+    main.handle_close(tid, rec, 110.0, ledger, memory, cfg)
+    t = ledger.closed_trades()[0]
+    assert t["pnl"] == pytest.approx(100.0)
+    assert t["pnl_pct"] == pytest.approx(10.0)
+    assert t["result"] == "win"
+
+
+def test_a_losing_shorts_pnl_is_negative_and_records_as_a_loss(closing_env):
+    """The other side of the same inversion, and the more dangerous one: a
+    short stopped out UP $10 booked as a $100 win would teach the judge that
+    its worst shorts were its best.  Note the argument this pins is not
+    "shorts are profitable" — it is that the sign tracks the direction."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "short")
+    main.handle_close(tid, rec, 110.0, ledger, memory, cfg)
+    t = ledger.closed_trades()[0]
+    assert t["pnl"] == pytest.approx(-100.0)
+    assert t["pnl_pct"] == pytest.approx(-10.0)
+    assert t["result"] == "loss"
+
+
+def test_a_losing_longs_pnl_is_still_negative_and_records_as_a_loss(
+        closing_env):
+    """The twin."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "buy")
+    main.handle_close(tid, rec, 90.0, ledger, memory, cfg)
+    t = ledger.closed_trades()[0]
+    assert t["pnl"] == pytest.approx(-100.0)
+    assert t["pnl_pct"] == pytest.approx(-10.0)
+    assert t["result"] == "loss"
+
+
+def test_a_legacy_record_with_no_action_key_is_still_read_as_a_long(
+        closing_env):
+    """Every outcome written before Group C carries no `action` at all. The
+    direction sign must default to the long formula, or this fix would
+    silently reinterpret the existing record set — the same promise
+    risk.portfolio_heat makes about legacy books."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "buy")
+    rec.pop("action")
+    main.handle_close(tid, rec, 110.0, ledger, memory, cfg)
+    assert ledger.closed_trades()[0]["pnl"] == pytest.approx(100.0)
+
+
+# ---------------------------------------------------------------------------
+# Defect 6. The closing recap was posted with a hardcoded `"action": "sell"`,
+# so a covered short would have been announced to the public feed — and
+# archived in the bot's own post record — as a sell.
+# ---------------------------------------------------------------------------
+
+def _posted_texts(cfg) -> list:
+    with open(cfg["x_posting"]["posts_log_path"]) as f:
+        return [json.loads(line)["text"] for line in f if line.strip()]
+
+
+def test_the_closing_recap_for_a_short_is_captioned_cover_not_sell(closing_env):
+    """A short is closed by a COVER. Captioning it "sell" misstates the
+    direction of a real trade in the public track record — and in the archive
+    the blog and the lesson loop read back."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "short")
+    main.handle_close(tid, rec, 90.0, ledger, memory, cfg)
+    assert any("COVER" in t for t in _posted_texts(cfg))
+    assert not any("SELL" in t for t in _posted_texts(cfg))
+
+
+def test_the_closing_recap_for_a_long_is_still_captioned_sell(closing_env):
+    """The twin — the caption this path has always written."""
+    ledger, memory, cfg = closing_env
+    tid, rec = _open_entry(ledger, "buy")
+    main.handle_close(tid, rec, 110.0, ledger, memory, cfg)
+    assert any("SELL" in t for t in _posted_texts(cfg))
+    assert not any("COVER" in t for t in _posted_texts(cfg))
+
+
+# ---------------------------------------------------------------------------
+# Defect 3. resolve_exit_price's closed-order fallback matched
+# `side.endswith("sell")`. A short is closed by a BUY, so for a short that
+# fallback either found nothing or — the realistic case, because Alpaca
+# returns closed orders NEWEST FIRST and a short's own opening SELL is in
+# that list — matched the OPENING order and returned the ENTRY price as the
+# exit price. handle_close would then write a fabricated ~$0 outcome into the
+# permanent, append-only record: not a missed trade, a false one.
+# ---------------------------------------------------------------------------
+
+class _ClosedOrderBroker:
+    """Only the two methods resolve_exit_price's fallback path touches. No
+    `leg_ids` lookup succeeds, so the closed-order branch is what is under
+    test — the same shape tests/test_reconcile.py's FakeBroker uses."""
+
+    def __init__(self, closed):
+        self._closed = closed
+
+    def get_order(self, order_id):
+        raise RuntimeError("leg lookup unavailable — fall through")
+
+    def closed_orders(self, symbol, limit=20):
+        return self._closed
+
+    def last_price(self, symbol):
+        raise AssertionError("the closed-order branch must resolve this exit")
+
+
+def _order(side, price):
+    return {"id": f"o-{side}", "side": side, "status": "OrderStatus.FILLED",
+            "type": "OrderType.MARKET", "filled_at": None,
+            "filled_avg_price": price, "filled_qty": 10.0}
+
+
+def test_a_shorts_exit_is_resolved_from_the_buy_that_closed_it(closing_env):
+    """Newest-first, exactly as broker.closed_orders returns it: the covering
+    BUY at $92, then the short's own opening SELL at $100. On the un-fixed
+    `endswith("sell")` this returned 100.0 — the entry price, dressed up as
+    an exit, producing a $0 P&L outcome for a trade that made $80."""
+    ledger, _memory, _cfg = closing_env
+    _tid, rec = _open_entry(ledger, "short")
+    broker = _ClosedOrderBroker([_order("OrderSide.BUY", 92.0),
+                                 _order("OrderSide.SELL", 100.0)])
+    price, reason = main.resolve_exit_price(broker, rec)
+    assert price == 92.0, ("100.0 here is the short's OWN entry fill matched "
+                           "as its exit — a fabricated outcome record")
+    assert reason == "closed_order"
+
+
+def test_a_longs_exit_is_still_resolved_from_the_sell_that_closed_it(
+        closing_env):
+    """The twin, mirrored: the closing SELL at $108 newest, the opening BUY at
+    $100 behind it. This is the case that always worked, and the assertion
+    that proves matching on direction did not start matching the long's own
+    entry instead."""
+    ledger, _memory, _cfg = closing_env
+    _tid, rec = _open_entry(ledger, "buy")
+    broker = _ClosedOrderBroker([_order("OrderSide.SELL", 108.0),
+                                 _order("OrderSide.BUY", 100.0)])
+    price, reason = main.resolve_exit_price(broker, rec)
+    assert price == 108.0
+    assert reason == "closed_order"
+
+
+def test_a_legacy_record_with_no_action_still_resolves_off_a_sell(closing_env):
+    """Pre-Group-C records carry no `action`. They are all longs, and they must
+    keep resolving exactly as they did — the same legacy promise the P&L sign
+    makes above."""
+    ledger, _memory, _cfg = closing_env
+    _tid, rec = _open_entry(ledger, "buy")
+    rec.pop("action")
+    broker = _ClosedOrderBroker([_order("OrderSide.SELL", 108.0),
+                                 _order("OrderSide.BUY", 100.0)])
+    assert main.resolve_exit_price(broker, rec)[0] == 108.0
+
+
+# ---------------------------------------------------------------------------
+# Defects 4 and 5. adopt_untracked_positions rescues a 'ghost' — a broker
+# position whose ledger write never landed. It could not rescue a short:
+#
+#   * `qty = int(pos.get("qty") or 0); if qty <= 0: continue` skipped every
+#     short outright, because src/broker.py copies Alpaca's own float(p.qty),
+#     which is NEGATIVE for a short. A ghost short stayed a ghost forever —
+#     the exact silent omission from the P&L, the learning loop and the
+#     public track record this function exists to prevent, on one side only.
+#   * it then wrote a hardcoded "buy" — the last hardcoded literal that
+#     survived Group C.
+#   * _recover_fill_ts matched the side that OPENS a long. A short is opened
+#     by a SELL, so an adopted short's real fill time was never recovered and
+#     its holding clock restarted at the adoption write, blocking its exit
+#     for another min_holding_days.
+# ---------------------------------------------------------------------------
+
+class _RoundTripBroker:
+    """closed_orders carrying BOTH sides, so each test's assertion names the
+    side that OPENED the position under test rather than passing by default.
+    A real history has both: every prior round trip left one of each."""
+
+    def __init__(self, buy_ts, sell_ts):
+        self._orders = [
+            {"id": "o-buy", "side": "OrderSide.BUY", "status": "filled",
+             "type": "OrderType.MARKET", "filled_at": buy_ts,
+             "filled_avg_price": 450.0, "filled_qty": 10.0},
+            {"id": "o-sell", "side": "OrderSide.SELL", "status": "filled",
+             "type": "OrderType.MARKET", "filled_at": sell_ts,
+             "filled_avg_price": 450.0, "filled_qty": 10.0},
+        ]
+
+    def closed_orders(self, symbol, limit=20):
+        return self._orders
+
+
+def _adopt(ledger, cfg, qty, broker=None, avg_entry=450.0, market_value=None):
+    positions = {"SPY": {"qty": qty, "avg_entry": avg_entry,
+                         "market_value": (qty * 450.0 if market_value is None
+                                          else market_value),
+                         "unrealized_pl": 0.0}}
+    main.adopt_untracked_positions(broker=broker, ledger=ledger, cfg=cfg,
+                                   positions=positions)
+    return ledger.open_buys()
+
+
+def test_a_ghost_short_is_adopted_as_a_short_with_a_positive_quantity(
+        closing_env):
+    """The broker reports -10; the ledger stores magnitude and carries the
+    direction in `action`, which is the invariant every other site in this
+    phase depends on. On the un-fixed `qty <= 0: continue` this book came
+    back EMPTY."""
+    ledger, _memory, cfg = closing_env
+    book = _adopt(ledger, cfg, qty=-10)
+    assert len(book) == 1, "a ghost short must be adopted, not skipped"
+    rec = next(iter(book.values()))
+    assert rec["action"] == "short"
+    assert rec["qty"] == 10, "quantity is stored POSITIVE on both sides"
+    assert rec["entry_price"] == 450.0
+
+
+def test_a_ghost_long_is_still_adopted_as_a_buy_unchanged(closing_env):
+    """The twin, differing only in the sign the broker reported. Same three
+    fields, same numbers tests/test_adopt.py already pins."""
+    ledger, _memory, cfg = closing_env
+    book = _adopt(ledger, cfg, qty=10)
+    assert len(book) == 1
+    rec = next(iter(book.values()))
+    assert rec["action"] == "buy"
+    assert rec["qty"] == 10
+    assert rec["entry_price"] == 450.0
+
+
+def test_a_flat_symbol_is_still_not_adopted(closing_env):
+    """The boundary the `qty <= 0` guard was really there for. Widening it to
+    admit negatives must not have widened it to admit zero — a symbol the
+    broker reports flat is not a position to rescue."""
+    ledger, _memory, cfg = closing_env
+    assert _adopt(ledger, cfg, qty=0) == {}
+
+
+def test_an_adopted_shorts_entry_price_is_positive_when_derived_from_value(
+        closing_env):
+    """The defensive branch: with no avg_entry, entry is derived from market
+    value — which the broker reports NEGATIVE for a short. Dividing that by a
+    now-positive qty would record a -$450 entry price, and every P&L, stop
+    distance and heat number computed from it afterwards would be nonsense."""
+    ledger, _memory, cfg = closing_env
+    book = _adopt(ledger, cfg, qty=-10, avg_entry=None, market_value=-4500.0)
+    assert next(iter(book.values()))["entry_price"] == pytest.approx(450.0)
+
+
+def test_an_adopted_longs_entry_price_from_value_is_unchanged(closing_env):
+    """The twin: abs() is an identity on a long's positive market value."""
+    ledger, _memory, cfg = closing_env
+    book = _adopt(ledger, cfg, qty=10, avg_entry=None, market_value=4500.0)
+    assert next(iter(book.values()))["entry_price"] == pytest.approx(450.0)
+
+
+def test_an_adopted_short_recovers_the_fill_time_of_the_sell_that_opened_it(
+        closing_env):
+    """A short is OPENED by a sell. Matching "buy" unconditionally recovered
+    either nothing or — with a prior round trip in the history, as here — the
+    wrong order's timestamp, and the swing guard would then measure the
+    position's age from the wrong moment."""
+    ledger, _memory, cfg = closing_env
+    now = datetime.now(timezone.utc)
+    opened = (now - timedelta(days=9)).isoformat()
+    unrelated = (now - timedelta(days=40)).isoformat()
+    book = _adopt(ledger, cfg, qty=-10,
+                  broker=_RoundTripBroker(buy_ts=unrelated, sell_ts=opened))
+    rec = next(iter(book.values()))
+    assert rec["entry_ts"] == opened
+    assert main.position_entry_ts(rec) == opened
+
+
+def test_an_adopted_long_still_recovers_the_fill_time_of_its_opening_buy(
+        closing_env):
+    """The twin, mirrored — the case tests/test_adopt.py pins, restated here
+    with the opposite-side order also present so the match is proven to be on
+    the side that opens a LONG rather than on whatever came back first."""
+    ledger, _memory, cfg = closing_env
+    now = datetime.now(timezone.utc)
+    opened = (now - timedelta(days=9)).isoformat()
+    unrelated = (now - timedelta(days=40)).isoformat()
+    book = _adopt(ledger, cfg, qty=10,
+                  broker=_RoundTripBroker(buy_ts=opened, sell_ts=unrelated))
+    rec = next(iter(book.values()))
+    assert rec["entry_ts"] == opened
+    assert main.position_entry_ts(rec) == opened
+
+
+# ---------------------------------------------------------------------------
+# Defect 2. record_fill_quality's sign. The convention is pinned by
+# tests/test_fill_quality.py: POSITIVE bps means a WORSE fill than the price
+# the signal saw. The sign therefore keys off whether the order BUYS or
+# SELLS, not off whether it opens or closes:
+#
+#   buy   (buy to open)    pays    -> higher fill is worse -> +1
+#   cover (buy to close)   pays    -> higher fill is worse -> +1
+#   sell  (sell to close)  receives-> lower  fill is worse -> -1
+#   short (sell to open)   receives-> lower  fill is worse -> -1
+#
+# `1 if action == "buy" else -1` gets three of those four right by accident,
+# including short. The broken one is COVER — the only way a short is ever
+# closed — which reported every cover's slippage cost as a saving, biasing
+# the measured trading cost in GUIDE §9's go-live comparison in the
+# flattering direction. All four are pinned here, because the argument for
+# the fix is the whole table and not the one row that moves.
+# ---------------------------------------------------------------------------
+
+class _FillBroker:
+    def __init__(self, fill):
+        self._fill = fill
+
+    def get_order(self, order_id):
+        return {"id": order_id, "filled_avg_price": self._fill}
+
+
+def _slippage_bps(ledger, action, signal, fill):
+    ledger.log_decision("SPY", action, "scripted", {}, None, executed=True,
+                        order={"id": "o-1"}, entry_price=signal, qty=10)
+    main.record_fill_quality(_FillBroker(fill), ledger)
+    return [r for r in ledger.all_records()
+            if r["type"] == "fill_quality"][0]["slippage_bps"]
+
+
+def test_a_cover_that_pays_more_than_the_signal_price_scores_worse(
+        closing_env):
+    """The broken row. A cover BUYS the shares back, so paying $100.05 for a
+    signal of $100.00 is 5 bps of COST. The un-fixed sign returned -5.0 —
+    a real cost reported as a saving."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "cover", 100.0, 100.05) == pytest.approx(5.0)
+
+
+def test_a_buy_that_pays_more_than_the_signal_price_still_scores_worse(
+        closing_env):
+    """The twin for the other BUYING action, and the row
+    tests/test_fill_quality.py already pins — restated here so a change to
+    the sign rule cannot move the reference case it is derived from."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "buy", 100.0, 100.05) == pytest.approx(5.0)
+
+
+def test_a_short_entry_that_fills_below_the_signal_price_scores_worse(
+        closing_env):
+    """A short SELLS to open, so receiving $99.95 against a $100.00 signal is
+    5 bps of cost. This row was already correct — it is pinned because the
+    earlier diagnosis of this defect named short entries as the broken branch
+    and was wrong, and an unpinned "already correct" is what let that stand."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "short", 100.0, 99.95) == pytest.approx(5.0)
+
+
+def test_a_sell_that_fills_below_the_signal_price_still_scores_worse(
+        closing_env):
+    """The twin for the other SELLING action."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "sell", 100.0, 99.95) == pytest.approx(5.0)
+
+
+def test_a_cover_that_pays_less_than_the_signal_price_scores_better(
+        closing_env):
+    """The other side of the corrected row: a genuinely GOOD cover fill must
+    still read negative. A sign fix that made every cover positive would pass
+    the test above and be just as wrong."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "cover", 100.0, 99.95) == pytest.approx(-5.0)
+
+
+def test_a_sell_that_fills_above_the_signal_price_still_scores_better(
+        closing_env):
+    """The twin."""
+    ledger, _memory, _cfg = closing_env
+    assert _slippage_bps(ledger, "sell", 100.0, 100.05) == pytest.approx(-5.0)
+
+
+# ---------------------------------------------------------------------------
+# Defect 7. Group C's `open_trades["action"] = sig.action` was UNPINNED:
+# reverting it to the hardcoded "buy" left the whole suite green.
+#
+# The reason nothing caught it is that the existing heat tests measure the
+# RELOADED ledger book (`open_buys()`), which is a different writer. The
+# in-cycle dict is read exactly once — by `pre_trade_checks(open_trades=...)`
+# for the SECOND entry of a cycle — and a second same-cycle short is the only
+# thing that can tell the two writers apart. With "buy" hardcoded,
+# portfolio_heat takes (entry - stop) on a short, gets a negative, and the
+# max(..., 0.0) clamp zeroes the first short's real stop-risk out of the cap
+# invisibly, so the second short is permitted through a cap it has already
+# breached.
+# ---------------------------------------------------------------------------
+
+# The first entry risks 50 x |27.33 - 20.00| = $366.50 of a $100k book, on
+# either side: the bracket distance is the same magnitude whichever way the
+# position points.
+#
+# The two caps below are NOT the same number, and that asymmetry is not a
+# mistake in the pair. risk.pre_trade_checks computes the CANDIDATE order's
+# own risk as `qty * max(price - candidate_stop, 0.0)` — still long-only, so
+# a short candidate's stop sits above price, the clamp fires, and its own
+# risk enters the cap as $0.00. (A further short-side arithmetic defect,
+# deliberately NOT fixed here: it lives in risk.py, and this commit is
+# main.py's sign-aware half.) The consequence is that a short's first entry
+# is measured as $0 and a long's as $366.50, so no single cap can admit the
+# first entry and refuse the second on BOTH sides. Each side therefore gets
+# the cap that puts the boundary between its own first and second entry:
+#
+#   short: cap $300  -> 1st: $0 + $0 ok | 2nd: $366.50 + $0 REFUSED
+#   long:  cap $500  -> 1st: $0 + $366.50 ok | 2nd: $366.50 + $366.50 REFUSED
+#
+# What the pair holds constant is the thing under test: in both cases the
+# refusal is driven by the FIRST entry's $366.50 read out of the in-cycle
+# dict, and in both cases it is $0.00 when `action` is hardcoded to "buy"
+# — for the long, because hardcoding "buy" IS what the long already wrote.
+_TWO = ["SPY", "AAPL"]
+
+
+def _rejections(broker) -> list:
+    led = Ledger(broker.cfg["memory"]["ledger_path"])
+    return [r for r in led.all_records()
+            if r["type"] == "decision" and not r["executed"]]
+
+
+def test_the_heat_cap_refuses_a_second_same_cycle_short_on_the_first_ones_risk(
+        scripted_cycle):
+    """THE test that would have caught defect 7. Two symbols, both shorted in
+    one cycle: the first executes and the second is refused by the heat rail,
+    on stop-risk that exists ONLY in the in-cycle dict — the ledger is not
+    reloaded mid-cycle and `open_buys()` is never consulted again."""
+    broker = scripted_cycle("short", symbols=_TWO,
+                            max_portfolio_heat_pct=0.3)
+    assert len(broker.bracket_calls) == 1, (
+        "the second short must not reach the broker; with `action` hardcoded "
+        "to \"buy\" the first short's $366.50 of stop-risk reads as $0.00 and "
+        "the cap it has already breached lets the second one through")
+    rejected = _rejections(broker)
+    assert len(rejected) == 1
+    assert rejected[0]["rail"] == "heat"
+    assert rejected[0]["action"] == "short"
+
+
+def test_the_heat_cap_still_refuses_a_second_same_cycle_buy_the_same_way(
+        scripted_cycle):
+    """The twin, differing only in direction and in the cap value the banner
+    above accounts for. This half never regressed — "buy" is what the code
+    hardcoded — so it is the assertion proving the short fix was not bought
+    by breaking the long's heat accounting."""
+    broker = scripted_cycle("buy", symbols=_TWO, max_portfolio_heat_pct=0.5)
+    assert len(broker.bracket_calls) == 1
+    rejected = _rejections(broker)
+    assert len(rejected) == 1
+    assert rejected[0]["rail"] == "heat"
+    assert rejected[0]["action"] == "buy"
+
+
+def test_a_second_same_cycle_short_is_permitted_when_the_cap_has_room(
+        scripted_cycle):
+    """The other boundary. The rail above must fire on the NUMBER and not
+    merely on "a second entry exists" — raise the cap clear of both positions
+    and the second short must go through."""
+    broker = scripted_cycle("short", symbols=_TWO, max_portfolio_heat_pct=5.0)
+    assert len(broker.bracket_calls) == 2
+    assert _rejections(broker) == []
+
+
+def test_a_second_same_cycle_buy_is_still_permitted_when_the_cap_has_room(
+        scripted_cycle):
+    """The twin."""
+    broker = scripted_cycle("buy", symbols=_TWO, max_portfolio_heat_pct=5.0)
+    assert len(broker.bracket_calls) == 2
+    assert _rejections(broker) == []

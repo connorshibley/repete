@@ -120,6 +120,26 @@ def resolve_counterfactuals(broker, judgments, cfg, now=None, lessons=None) -> i
     now = now or datetime.now(timezone.utc)
     n = 0
     for j in judgments.unresolved():
+        # LOAD-BEARING: `!= "buy"`, deliberately NOT `not in ENTRY_ACTIONS`.
+        #
+        # This is the guard that keeps vetoed SHORTS out of the counterfactual
+        # scorer, and it is the only thing standing between src/counterfactual.py
+        # and a systematically corrupted learning loop. simulate_veto_counterfactual
+        # is hard-coded long at lines 45-48: it fires the stop on `low <= stop`
+        # and the target on `high >= tp`, and it returns `(exit - entry)/entry`
+        # unsigned. A short's stop sits ABOVE entry, so the FIRST bar's low is
+        # already below it — every vetoed short would resolve `stop_loss` on
+        # bar one, and `_pct(stop)` on a stop above entry is POSITIVE. Result:
+        # every vetoed short scored as a missed WINNER, without exception and
+        # without a single failing test, teaching the judge that its short
+        # vetoes were always wrong.
+        #
+        # Before widening this to ENTRY_ACTIONS, counterfactual.py must first
+        # take the trade's direction and (a) test `high >= stop` / `low <= tp`
+        # for a short and (b) sign `_pct` the way main.handle_close now does.
+        # That is its own commit with its own evidence implications — the
+        # judgment ledger is what judge calibration is computed from, so a
+        # wrong resolution is a permanent false record, not a missed one.
         if j["executed"] or j["action"] != "buy":
             continue
         if not counterfactual.resolution_due(j["ts"], min_days, extra, now):

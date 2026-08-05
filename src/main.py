@@ -98,8 +98,21 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
     """
     entry = open_rec.get("entry_price") or exit_price
     qty = open_rec.get("qty") or 0
-    pnl = (exit_price - entry) * qty
-    pnl_pct = (exit_price - entry) / entry * 100 if entry else 0.0
+    # A short profits when the exit is BELOW entry. Quantity is stored
+    # POSITIVE on both sides (direction lives in `action`), so the un-signed
+    # `(exit - entry) * qty` booked a profitable short as a LOSS — and
+    # `result` ("win" if pnl > 0) inverted with it. That outcome record is
+    # the input to the lesson generator, the scorecard and the decay
+    # monitor, so the learning loop would have been fed a mirror image of
+    # the bot's own short book: exactly the failure that is hardest to spot
+    # later, because every number is plausible and merely backwards.
+    #
+    # Keyed off `== "short"` like risk.portfolio_heat, so a record with no
+    # `action` — every record written before Group C — reads as a long and
+    # computes byte-identically to before.
+    direction = -1 if open_rec.get("action") == "short" else 1
+    pnl = direction * (exit_price - entry) * qty
+    pnl_pct = direction * (exit_price - entry) / entry * 100 if entry else 0.0
 
     # Alpha over the identical window. Best-effort by design: a benchmark
     # problem must never block recording the trade that actually happened.
@@ -150,7 +163,13 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
                                         source=trade_id)
         ledger.log_event("lesson_created", f"{lid} from trade {trade_id}")
 
-    recap = {**closed, "action": "sell"}
+    # The action that CLOSED the position, not the one that opened it —
+    # `closed` still carries the entry action, and the recap describes the
+    # exit. A short is closed by a cover, so the hardcoded "sell" would have
+    # announced a covered short to the public feed (and to the post archive
+    # the blog and lesson loop read back) as a sell. Identity for a long.
+    recap = {**closed,
+             "action": "cover" if open_rec.get("action") == "short" else "sell"}
     if lesson:  # close recaps carry what the bot learned
         recap["lesson_hypothesis"] = lesson["hypothesis"]
     link = journal_and_link(recap, cfg)
@@ -189,9 +208,20 @@ def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
             if "filled" in sub["status"].lower() and sub["filled_avg_price"]:
                 return sub["filled_avg_price"], _leg_reason(sub.get("type"))
 
+    # The side that CLOSES this position, not "sell" unconditionally: a long
+    # is closed by a SELL, a short by a BUY. Matching "sell" for a short
+    # either found nothing or — the realistic case, since closed_orders comes
+    # back newest-first and the short's own opening SELL is in that list —
+    # matched the ENTRY order and returned the entry price as the exit.
+    # handle_close then wrote a fabricated ~$0 P&L into the append-only
+    # record, which is worse than failing to resolve: a false outcome is
+    # indistinguishable from a real one afterwards. A record with no `action`
+    # (everything written before Group C) is a long and matches "sell" as
+    # before.
+    closing_side = "buy" if open_rec.get("action") == "short" else "sell"
     try:
         for o in broker.closed_orders(symbol):
-            if o["side"].lower().endswith("sell") and o["filled_avg_price"]:
+            if o["side"].lower().endswith(closing_side) and o["filled_avg_price"]:
                 reason = ("stop_loss" if "stop" in o["type"].lower()
                           else "take_profit" if "limit" in o["type"].lower()
                           else "closed_order")
@@ -267,14 +297,24 @@ def position_entry_ts(rec: dict) -> str | None:
     return rec.get("entry_ts") or rec.get("ts")
 
 
-def _recover_fill_ts(broker, symbol: str) -> str | None:
-    """Real BUY fill time from the broker's closed orders (Alpaca's Position
-    model carries no timestamp). Fail-open: None on any problem."""
+def _recover_fill_ts(broker, symbol: str, action: str = "buy") -> str | None:
+    """Real ENTRY fill time from the broker's closed orders (Alpaca's Position
+    model carries no timestamp). Fail-open: None on any problem.
+
+    `action` selects the side that OPENED the position: a long is opened by a
+    BUY, a short by a SELL. Matching "buy" unconditionally meant an adopted
+    short recovered either nothing or a prior round trip's cover, so its
+    holding clock restarted at the adoption write and the swing guard blocked
+    its exit for another min_holding_days — the regression this function was
+    added to fix, still live on the short side. Defaults to the long side, so
+    any caller that does not pass it behaves exactly as before."""
     if broker is None:
         return None
+    opening_side = "sell" if action == "short" else "buy"
     try:
         for o in broker.closed_orders(symbol):
-            if str(o.get("side", "")).lower().endswith("buy") and o.get("filled_at"):
+            if (str(o.get("side", "")).lower().endswith(opening_side)
+                    and o.get("filled_at")):
                 return o["filled_at"]
     except Exception as e:  # noqa: BLE001 — adoption must never crash a cycle
         log.warning("Fill-time lookup failed for %s: %s", symbol, e)
@@ -296,15 +336,29 @@ def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
         if symbol in tracked:
             continue
         try:
+            # A broker reports a SHORT's qty NEGATIVE (src/broker.py copies
+            # Alpaca's own float(p.qty)), so `qty <= 0: continue` skipped
+            # every short — a ghost short stayed a ghost forever, which is
+            # precisely the silent omission from the P&L, the learning loop
+            # and the public track record this function exists to prevent,
+            # applied to one direction only. `== 0` keeps the real boundary:
+            # a symbol the broker reports FLAT is not a position to rescue.
             qty = int(pos.get("qty") or 0)
-            if qty <= 0:
+            if qty == 0:
                 continue
+            action = "short" if qty < 0 else "buy"
+            qty = abs(qty)      # the ledger stores magnitude; `action` carries
+                                # the direction, as everywhere else in Phase 2
             entry = pos.get("avg_entry")
             if not entry:  # defensive: derive from market value if absent
-                entry = (pos.get("market_value", 0.0) / qty) if qty else 0.0
-            fill_ts = _recover_fill_ts(broker, symbol)
+                # abs(): market_value is negative for a short, and qty is now
+                # positive, so an unsigned divide would record a NEGATIVE
+                # entry price and poison every P&L, stop distance and heat
+                # number derived from it. Identity on a long.
+                entry = (abs(pos.get("market_value", 0.0)) / qty) if qty else 0.0
+            fill_ts = _recover_fill_ts(broker, symbol, action)
             tid = ledger.log_decision(
-                symbol, "buy", "adopted: broker position with no ledger record",
+                symbol, action, "adopted: broker position with no ledger record",
                 {}, None, executed=True,
                 order={"id": None, "symbol": symbol, "adopted": True},
                 entry_price=float(entry), qty=qty,
@@ -408,7 +462,17 @@ def record_fill_quality(broker, ledger: Ledger, max_checks: int = 20):
             if not fill:
                 continue  # not filled yet — retried next cycle
             signal = rec["entry_price"]
-            sign = 1 if rec["action"] == "buy" else -1  # worse-than-signal is +
+            # Worse-than-signal is +, and "worse" depends on whether the order
+            # BUYS or SELLS — not on whether it opens or closes. An order that
+            # pays (buy to open, cover to close) is worse the HIGHER it fills;
+            # one that receives (sell to close, short to open) is worse the
+            # LOWER it fills. `== "buy"` happened to get short right and got
+            # COVER — the only way a short is ever closed — backwards,
+            # reporting every cover's slippage COST as a saving and biasing
+            # GUIDE §9's measured-cost comparison in the flattering direction.
+            # No-op for "buy" and "sell", the only two actions anything in
+            # this repo currently emits.
+            sign = 1 if rec["action"] in ("buy", "cover") else -1
             bps = sign * (fill - signal) / signal * 1e4
             ledger.log_fill_quality(rec["trade_id"], rec["symbol"],
                                     rec["action"], signal, fill, bps)
