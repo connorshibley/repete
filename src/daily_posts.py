@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from broker import Broker
 from ledger import Ledger
+from strategies.base import ENTRY_ACTIONS
 import llm
 import regime as regime_mod
 import risk
@@ -126,8 +127,12 @@ def gather_plan_facts(cfg: dict, broker) -> dict | None:
         for name, _params in strategies.enabled(cfg):
             sig = strategies.generate(name, symbol, bars, cfg, False,
                                       cross_section=xs_ctx.get(name))
-            if sig.action == "buy":
+            # ENTRY_ACTIONS, not `== "buy"`. This is the public plan post; a
+            # short candidate that never appeared here would make the journal
+            # describe a long-only bot while the book carried shorts.
+            if sig.action in ENTRY_ACTIONS:
                 setups.append({"symbol": symbol, "strategy": name,
+                               "action": sig.action,
                                "reason": sig.reason})
                 break
     return {"kind": "plan",

@@ -112,3 +112,84 @@ def test_the_outcome_record_itself_carries_no_action(tmp_path):
                     exit_reason="take_profit")
     outcome = [r for r in led.all_records() if r["type"] == "outcome"][0]
     assert "action" not in outcome
+
+
+# ---------------------------------------------------------------------------
+# The `== "buy"` audit — three sites Phase 2-C did not reach.
+#
+# Phase 2-C replaced `action == "buy"` with ENTRY_ACTIONS across main.py's live
+# cycle. Re-running that audit against src/ after the short leg landed found
+# three survivors OUTSIDE the cycle. Two are integrity checks, which is what
+# makes them worth a commit rather than a follow-up: a check that skips a leg
+# does not merely miss shorts, it reports PASS on records it never inspected.
+#
+# All three are no-ops today, provably: "buy" is in ENTRY_ACTIONS and nothing
+# emits "short". Each test therefore has a buy-side twin — the twin is what
+# says the substitution did not move the path production runs.
+# ---------------------------------------------------------------------------
+
+def _decisions(action):
+    return [{"type": "decision", "trade_id": "t1", "symbol": "SPY",
+             "action": action, "executed": True, "pnl": -12.0,
+             "llm_review": {"verdict": "approve"}}]
+
+
+def test_the_outcome_embargo_check_inspects_a_short_entry(tmp_path):
+    """A short entry carrying leaked outcome fields must be CAUGHT. Under
+    `== "buy"` this returned pass=True while the violation sat in the pack."""
+    import evidence
+    res = evidence.invariants_check({}, _decisions("short"), root=str(tmp_path))["checks"]
+    assert res["outcome_embargo"]["pass"] is False
+
+
+def test_the_outcome_embargo_check_still_catches_a_long_entry(tmp_path):
+    import evidence
+    res = evidence.invariants_check({}, _decisions("buy"), root=str(tmp_path))["checks"]
+    assert res["outcome_embargo"]["pass"] is False
+
+
+def test_the_outcome_embargo_check_ignores_an_EXIT(tmp_path):
+    """The boundary the widening must not cross: a "sell" or "cover" is not an
+    entry, and counting one here would report a violation that is not one."""
+    import evidence
+    res = evidence.invariants_check({}, _decisions("cover"), root=str(tmp_path))["checks"]
+    assert res["outcome_embargo"]["pass"] is True
+
+
+def test_an_unjudged_short_entry_is_counted_as_unjudged(tmp_path):
+    """The second integrity check. Invariant: every executed entry carries a
+    real judge verdict. A short with none must appear in the count."""
+    import evidence
+    recs = _decisions("short")
+    recs[0].pop("pnl")
+    recs[0]["llm_review"] = None
+    res = evidence.invariants_check({}, recs, root=str(tmp_path))["checks"]
+    assert res["every_entry_judged"]["pass"] is False
+
+
+def test_an_unjudged_long_entry_is_still_counted(tmp_path):
+    import evidence
+    recs = _decisions("buy")
+    recs[0].pop("pnl")
+    recs[0]["llm_review"] = None
+    res = evidence.invariants_check({}, recs, root=str(tmp_path))["checks"]
+    assert res["every_entry_judged"]["pass"] is False
+
+
+def test_the_x_backfill_does_not_skip_a_short_entry():
+    """The third site, and narration rather than integrity — but a backfill
+    that silently dropped shorts leaves a hole in the public record that reads
+    as a quiet day rather than an omission."""
+    import backfill_posts
+    recs = _decisions("short")
+    assert [r["trade_id"] for r in backfill_posts.pending_buys(recs, set())] == ["t1"]
+
+
+def test_the_x_backfill_still_picks_up_a_long_entry():
+    import backfill_posts
+    assert backfill_posts.pending_buys(_decisions("buy"), set())
+
+
+def test_the_x_backfill_still_ignores_an_exit():
+    import backfill_posts
+    assert backfill_posts.pending_buys(_decisions("sell"), set()) == []

@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger import Ledger
+from strategies.base import ENTRY_ACTIONS
 import disclaimer
 import modelver
 import review
@@ -131,10 +132,16 @@ def invariants_check(cfg: dict, records: list[dict], root: str = ".") -> dict:
         os.path.join(root, ledger_path))
 
     # Outcome embargo: no still-open trade may carry outcome fields.
+    #
+    # ENTRY_ACTIONS, not `== "buy"`. Both checks in this block exist to CATCH a
+    # violation, so a filter that skips one leg does not merely miss shorts —
+    # it reports PASS on records it never inspected. An integrity check going
+    # quietly blind is worse than not having one, because the evidence pack
+    # carries its verdict forward as though the ground had been covered.
     open_with_outcome = [
         r["trade_id"] for r in records
         if r.get("type") == "decision" and r.get("executed")
-        and r.get("action") == "buy"
+        and r.get("action") in ENTRY_ACTIONS
         and ("pnl" in r or "result" in r)]
     checks["outcome_embargo"] = {
         "pass": not open_with_outcome,
@@ -145,7 +152,7 @@ def invariants_check(cfg: dict, records: list[dict], root: str = ".") -> dict:
     # Every executed entry has a judge record on it (LLM reviewed, never
     # generated) — reconciled broker-side closes legitimately lack one.
     executed_buys = [r for r in records if r.get("type") == "decision"
-                     and r.get("executed") and r.get("action") == "buy"]
+                     and r.get("executed") and r.get("action") in ENTRY_ACTIONS]
     # A `degraded` review is the FALLBACK verdict, not a judgement: the judge
     # was unreachable or unconfigured, and the trade was approved at full size
     # regardless. Testing only for the PRESENCE of an llm_review block let this
