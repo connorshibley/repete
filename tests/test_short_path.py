@@ -1812,3 +1812,79 @@ def test_the_cycle_still_runs_when_no_strategy_is_configured_to_short(
     monkeypatch.setattr(main, "Broker", lambda c: broker)
     started = main._bootstrap_cycle()
     assert started is not None
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: judge_model.apply must enforce invariant #2 (the LLM may only VETO
+# or DOWNSIZE, never enlarge or reverse) through the SAME clamp llm.py uses
+# for a real verdict (`llm._clamp_scale`), not a bare `int(qty * scale)` that
+# trusts whatever the calibration histogram holds. Latent today — the
+# histogram is built from already-clamped LIVE judgments, so every scale it
+# has ever held was in [0, 1] — which is the reason this is cheap to fix,
+# not a reason it can be skipped: nothing about the histogram FORMAT
+# guarantees that stays true.
+# ---------------------------------------------------------------------------
+
+def _rigged_cal_file(tmp_path, monkeypatch, histogram, veto_rate=0.0):
+    """A calibration file whose histogram holds whatever a hand-edited file
+    or a future writer might produce — these tests care what apply() does
+    with an out-of-range scale, not how one could arise from the real
+    calibration pipeline (scripts/calibrate_judge.py)."""
+    import judge_model
+    path = tmp_path / "judge_calibration.json"
+    cal = {"n_judged_buys": 146, "min_sample": 50, "veto_rate": veto_rate,
+          "scale_histogram": histogram}
+    path.write_text(json.dumps(cal))
+    monkeypatch.setattr(judge_model, "_CAL_PATH", str(path))
+    judge_model._cache = None
+    return path
+
+
+def _judge_cfg(salt="fix3"):
+    return {"backtest": {"judge_model": {"enabled": True, "salt": salt}}}
+
+
+def test_a_calibration_scale_above_one_is_clamped_to_full_size(
+        tmp_path, monkeypatch):
+    """The failure this fix closes: every draw lands in the single 1.5
+    bucket (corrupt file, hand edit, future format) — a bare
+    int(qty * scale) would ENLARGE a 10-share intent to 15. The clamp must
+    cap it at scale 1.0, same as the live judge would be forced to."""
+    import judge_model
+    _rigged_cal_file(tmp_path, monkeypatch, {"1.5": 100})
+    out = judge_model.apply(10, "AAPL", "2025-01-01", _judge_cfg())
+    assert out == 10
+
+
+def test_a_normal_downsize_scale_is_unaffected_by_the_clamp(
+        tmp_path, monkeypatch):
+    """The twin: a genuine in-range downsize must pass through the clamp
+    untouched — proves the fix caps a bad value without also capping a
+    legitimate one."""
+    import judge_model
+    _rigged_cal_file(tmp_path, monkeypatch, {"0.5": 100})
+    out = judge_model.apply(10, "AAPL", "2025-01-01", _judge_cfg())
+    assert out == 5
+
+
+def test_a_negative_calibration_scale_cannot_reverse_the_trade(
+        tmp_path, monkeypatch):
+    """The other half of invariant #2: an un-clamped negative scale would
+    make qty * scale negative — a 'downsize' that flips a buy into a
+    negative-quantity sell instead of merely skipping it. Must clamp to 0.0,
+    the same floor a real veto produces."""
+    import judge_model
+    _rigged_cal_file(tmp_path, monkeypatch, {"-0.5": 100})
+    out = judge_model.apply(10, "AAPL", "2025-01-01", _judge_cfg())
+    assert out == 0
+
+
+def test_a_genuine_veto_still_zeroes_the_trade_exactly_as_before(
+        tmp_path, monkeypatch):
+    """The twin: an in-range veto (scale 0.0, drawn via veto_rate) must still
+    be honoured exactly as it always was — the clamp is a ceiling/floor on a
+    bad value, not a reinterpretation of a legitimate zero."""
+    import judge_model
+    _rigged_cal_file(tmp_path, monkeypatch, {"0.5": 100}, veto_rate=1.0)
+    out = judge_model.apply(10, "AAPL", "2025-01-01", _judge_cfg())
+    assert out == 0

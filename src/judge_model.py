@@ -30,6 +30,13 @@ sim/live divergence created by the code fixing the eighth. Keeping the model in
 a module the live path never imports makes that mistake structurally impossible
 rather than merely discouraged. `main.py` must never import this file.
 
+This module DOES import `llm` (for `_clamp_scale`, invariant #2's one home —
+see that function's docstring). That is the opposite direction and carries no
+version of the risk above: `main.py` already imports `llm` directly, so
+nothing about main's import graph changes, and `llm`/`llm_client` import
+nothing from this repo but stdlib — no cycle, and no path back into
+`judge_model` from `main.py`.
+
 DETERMINISM
 -----------
 Gate re-runs have to reproduce byte-identically (the same requirement §24 put on
@@ -43,6 +50,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+
+import llm
 
 _CAL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                          "knowledge", "judge_calibration.json")
@@ -167,7 +176,17 @@ def apply(qty: int, symbol: str, ts: str, cfg: dict) -> int:
     """
     if qty <= 0:
         return qty
-    scale = scale_for(symbol, ts, cfg)
+    # scale_for reads straight out of the calibration histogram — nothing
+    # about it guarantees the result lands in [0, 1]. Today the histogram is
+    # built from already-clamped LIVE judgments (llm._clamp_scale runs before
+    # a verdict is ever recorded), so this is latent, not live. Latent is not
+    # the same as impossible: a hand-edited or future-format calibration file
+    # could carry a stray value outside the range, and invariant #2 (the LLM
+    # may only VETO or DOWNSIZE, never enlarge or reverse) has to hold for the
+    # simulator too, not just for a live model call. Routed through the exact
+    # same clamp `llm.py` uses so there is one place this invariant is
+    # enforced, not two copies that could drift apart.
+    scale = llm._clamp_scale({"scale": scale_for(symbol, ts, cfg)})["scale"]
     out = int(qty * scale)
     # Counted only when the model is live. `scale_for` returns 1.0 for a
     # disabled model, and counting those as "sized" would make a judge-less run
