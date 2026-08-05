@@ -25,6 +25,7 @@ import counterfactual
 import llm
 import lessons as lessons_mod
 import judgments as judgments_mod
+from strategies.base import ENTRY_ACTIONS
 
 log = logging.getLogger("learn")
 
@@ -120,27 +121,32 @@ def resolve_counterfactuals(broker, judgments, cfg, now=None, lessons=None) -> i
     now = now or datetime.now(timezone.utc)
     n = 0
     for j in judgments.unresolved():
-        # LOAD-BEARING: `!= "buy"`, deliberately NOT `not in ENTRY_ACTIONS`.
+        # WIDENED to ENTRY_ACTIONS on 2026-08-05, and the history matters
+        # because the narrow form was correct right up until it wasn't.
         #
-        # This is the guard that keeps vetoed SHORTS out of the counterfactual
-        # scorer, and it is the only thing standing between src/counterfactual.py
-        # and a systematically corrupted learning loop. simulate_veto_counterfactual
-        # is hard-coded long at lines 45-48: it fires the stop on `low <= stop`
-        # and the target on `high >= tp`, and it returns `(exit - entry)/entry`
-        # unsigned. A short's stop sits ABOVE entry, so the FIRST bar's low is
-        # already below it — every vetoed short would resolve `stop_loss` on
-        # bar one, and `_pct(stop)` on a stop above entry is POSITIVE. Result:
-        # every vetoed short scored as a missed WINNER, without exception and
-        # without a single failing test, teaching the judge that its short
-        # vetoes were always wrong.
+        # This read `!= "buy"` and was annotated LOAD-BEARING: it was the only
+        # thing standing between src/counterfactual.py and a systematically
+        # corrupted learning loop. That function was hard-coded long — stop on
+        # `low <= stop`, target on `high >= tp`, and an unsigned
+        # `(exit - entry)/entry`. A short's stop sits ABOVE entry, so the first
+        # bar's low was already beneath it: every vetoed short resolved
+        # `stop_loss` on bar one, at a POSITIVE return. Every short veto scored
+        # as a missed WINNER, without exception and without a failing test,
+        # teaching the judge its short vetoes were always wrong.
         #
-        # Before widening this to ENTRY_ACTIONS, counterfactual.py must first
-        # take the trade's direction and (a) test `high >= stop` / `low <= tp`
-        # for a short and (b) sign `_pct` the way main.handle_close now does.
-        # That is its own commit with its own evidence implications — the
-        # judgment ledger is what judge calibration is computed from, so a
-        # wrong resolution is a permanent false record, not a missed one.
-        if j["executed"] or j["action"] != "buy":
+        # The two conditions that comment set for widening are both met in this
+        # same commit: simulate_veto_counterfactual now (a) tests
+        # `high >= stop` / `low <= tp` for a short and (b) signs its return the
+        # way main.handle_close does. Widening in a LATER commit than the fix
+        # would have been the safe order; widening in an earlier one would have
+        # written permanent false rows into the judgment ledger, which is what
+        # judge calibration is computed from. Same commit is the only ordering
+        # where the guard is never briefly wrong.
+        #
+        # `direction` is passed explicitly below rather than defaulted, so a
+        # future action added to ENTRY_ACTIONS arrives here as itself and not
+        # as a long.
+        if j["executed"] or j["action"] not in ENTRY_ACTIONS:
             continue
         if not counterfactual.resolution_due(j["ts"], min_days, extra, now):
             continue
@@ -157,7 +163,8 @@ def resolve_counterfactuals(broker, judgments, cfg, now=None, lessons=None) -> i
             continue
         result = counterfactual.simulate_veto_counterfactual(
             bars, j["ts"], j["price_at_decision"],
-            j.get("stop_price"), j.get("tp_price"), horizon)
+            j.get("stop_price"), j.get("tp_price"), horizon,
+            direction=j["action"])
         if result is None:
             continue
         assessment = judgments_mod.assess(j["verdict"], False, result["pnl_pct"])

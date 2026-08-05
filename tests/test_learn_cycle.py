@@ -177,3 +177,85 @@ def test_inline_pass_never_raises(env, monkeypatch):
     learn.inline_pass(ledger, lessons, judgments, cfg)  # the point is: no raise
     events = [r for r in ledger.all_records() if r["type"] == "event"]
     assert any(e["event"] == "learning_error" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Vetoed SHORTS reach the counterfactual scorer (2026-08-05).
+#
+# learn.py's filter read `!= "buy"` and was annotated LOAD-BEARING: it was the
+# only thing keeping shorts away from a hard-coded-long counterfactual that
+# would have scored every short veto as a missed WINNER. Widened to
+# ENTRY_ACTIONS in the same commit that made counterfactual.py directional.
+#
+# BarsBroker serves high=101, low=85, close=95 against a decision at 100, which
+# is what makes these two tests a MEASUREMENT rather than a smoke test:
+#
+#   short, stop 110 / tp 85, read correctly -> low 85 reaches the tp
+#                                              -> take_profit, +15.0
+#   the same short read with the LONG geometry -> low 85 <= stop 110 on bar one
+#                                              -> stop_loss at _pct(110) = +10.0
+#
+# Different reason AND different sign of story, so a regression cannot hide.
+# ---------------------------------------------------------------------------
+
+def test_a_vetoed_short_is_resolved_not_skipped(env):
+    ledger, lessons, judgments, cfg = env
+    judgments.log_judgment("t1", "SPY", "short", "veto", 1.0, 100.0,
+                           None, "llm", False, stop_price=110.0, tp_price=85.0)
+    late = datetime.now(timezone.utc) + timedelta(days=8)
+    assert learn.resolve_counterfactuals(BarsBroker(), judgments, cfg,
+                                         now=late) == 1
+
+
+def test_the_resolved_short_reads_the_SHORT_geometry(env):
+    """The old behaviour is named in the assertions so this cannot silently
+    revert: stop_loss/+10.0 was the corrupted answer, take_profit/+15.0 is the
+    correct one."""
+    ledger, lessons, judgments, cfg = env
+    judgments.log_judgment("t1", "SPY", "short", "veto", 1.0, 100.0,
+                           None, "llm", False, stop_price=110.0, tp_price=85.0)
+    late = datetime.now(timezone.utc) + timedelta(days=8)
+    learn.resolve_counterfactuals(BarsBroker(), judgments, cfg, now=late)
+    res = next(iter(judgments.replay().values()))["resolution"]
+    assert res["exit_reason"] == "take_profit"     # NOT stop_loss on bar one
+    assert res["pnl_pct"] == 15.0                  # NOT the +10.0 of _pct(110)
+
+
+def test_a_vetoed_buy_still_resolves_exactly_as_before(env):
+    """The twin, and the one that runs in production: nothing shorts, so every
+    counterfactual this bot has ever resolved took this path and it must be
+    untouched by the widening."""
+    ledger, lessons, judgments, cfg = env
+    judgments.log_judgment("t1", "SPY", "buy", "veto", 1.0, 100.0,
+                           None, "llm", False, stop_price=90.0, tp_price=115.0)
+    late = datetime.now(timezone.utc) + timedelta(days=8)
+    assert learn.resolve_counterfactuals(BarsBroker(), judgments, cfg,
+                                         now=late) == 1
+    res = next(iter(judgments.replay().values()))["resolution"]
+    assert res["exit_reason"] == "stop_loss"
+    assert res["pnl_pct"] == -10.0
+
+
+def test_an_EXECUTED_short_is_still_skipped(env):
+    """The other half of the same condition. A counterfactual answers "what
+    would the blocked trade have done"; a trade that was not blocked has a real
+    outcome, and resolving it twice would write a fabricated row beside the
+    true one."""
+    ledger, lessons, judgments, cfg = env
+    judgments.log_judgment("t1", "SPY", "short", "approve", 1.0, 100.0,
+                           None, "llm", True, stop_price=110.0, tp_price=85.0)
+    late = datetime.now(timezone.utc) + timedelta(days=8)
+    assert learn.resolve_counterfactuals(BarsBroker(), judgments, cfg,
+                                         now=late) == 0
+
+
+def test_an_exit_action_never_reaches_the_counterfactual_scorer(env):
+    """ENTRY_ACTIONS, not "any action": a "cover" is an EXIT, and asking what a
+    blocked exit "would have returned" is not a question this function can
+    answer — it prices an entry at the decision price."""
+    ledger, lessons, judgments, cfg = env
+    judgments.log_judgment("t1", "SPY", "cover", "veto", 1.0, 100.0,
+                           None, "llm", False, stop_price=110.0, tp_price=85.0)
+    late = datetime.now(timezone.utc) + timedelta(days=8)
+    assert learn.resolve_counterfactuals(BarsBroker(), judgments, cfg,
+                                         now=late) == 0
