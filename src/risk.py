@@ -1320,12 +1320,29 @@ def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
 
     # Portfolio heat cap (2026-07-21): total open stop-risk plus this entry's
     # risk must stay under max_portfolio_heat_pct of equity. Entries only.
+    #
+    # `new_risk` is the CANDIDATE order's own contribution, on top of
+    # portfolio_heat's tally of what is already open. Same class of bug
+    # portfolio_heat had (see its docstring): `price - candidate_stop` is
+    # only ever a magnitude when the stop sits below price. A short's
+    # candidate stop sits ABOVE price, so the un-fixed formula went negative,
+    # `max(..., 0.0)` clamped it to $0.00, and the very order the cap is
+    # deciding on contributed nothing to the decision. Direction-select the
+    # same way portfolio_heat does, so the two agree: `action` (this
+    # function's own parameter) selects (candidate_stop - price) for a short
+    # vs (price - candidate_stop) for a long, and the `max(..., 0.0)` clamp
+    # survives on both sides to catch a nonsensical stop for whichever
+    # direction `action` claims.
     heat_cap_pct = cfg["risk"].get("max_portfolio_heat_pct", 0)
     if action in ENTRY_ACTIONS and heat_cap_pct > 0 and open_trades is not None:
         heat = portfolio_heat(open_trades, cfg, account["equity"])
-        new_risk = (qty * max(price - candidate_stop, 0.0) if candidate_stop
-                    else account["equity"]
-                    * cfg["risk"].get("risk_per_trade_pct", 1.0) / 100)
+        if candidate_stop:
+            dist = ((candidate_stop - price) if action == "short"
+                    else (price - candidate_stop))
+            new_risk = qty * max(dist, 0.0)
+        else:
+            new_risk = (account["equity"]
+                        * cfg["risk"].get("risk_per_trade_pct", 1.0) / 100)
         cap = account["equity"] * heat_cap_pct / 100
         if heat + new_risk > cap:
             raise RiskRejection(

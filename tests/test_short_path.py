@@ -365,6 +365,96 @@ def test_short_bracket_is_none_when_atr_is_zero_or_negative_too():
 
 
 # ---------------------------------------------------------------------------
+# pre_trade_checks: the heat cap's own `new_risk` term — the CANDIDATE
+# order's contribution, on top of portfolio_heat's tally of what is already
+# open — must price a short's stop distance too. Group A fixed
+# portfolio_heat; it did not touch this second site, which computed the same
+# `max(price - candidate_stop, 0.0)` magnitude for the order under review
+# right now. A short's candidate stop sits ABOVE price, so the un-fixed
+# formula clamped the very order the cap is deciding on to $0.00 — the cap
+# was blind to its own decision.
+# ---------------------------------------------------------------------------
+
+def _entries_cfg(**risk_overrides):
+    """pre_trade_checks reaches keys _cfg() above never had to set: entries
+    read `max_open_positions` by direct key access (not `.get`), and the
+    heat cap only binds when `max_portfolio_heat_pct` is set."""
+    overrides = {"max_open_positions": 5, "max_trades_per_day": 0,
+                 "max_portfolio_heat_pct": 0.3}
+    overrides.update(risk_overrides)
+    return _cfg(**overrides)
+
+
+def test_a_short_candidates_own_stop_risk_is_counted_not_zeroed(
+        tmp_path, monkeypatch):
+    """An empty book means portfolio_heat == 0, so the cap decision rests
+    entirely on THIS candidate's own risk: 50 shares x |27.33 - 20.00| =
+    $366.50 of a $100k book breaches a 0.3% ($300) cap. The un-fixed clamp
+    read this order's own risk as $0.00 and let it straight through."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg()
+    with pytest.raises(risk.RiskRejection) as exc_info:
+        risk.pre_trade_checks("short", "AAPL", 50, 20.00, ACCOUNT, {}, cfg,
+                              open_trades={}, candidate_stop=27.33)
+    assert exc_info.value.rail == "heat"
+
+
+def test_a_long_candidates_own_stop_risk_is_still_counted_the_same_way(
+        tmp_path, monkeypatch):
+    """The long twin: this half of the formula was already correct, and
+    fixing the short side must not disturb it — same magnitude, same cap,
+    same refusal."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg()
+    with pytest.raises(risk.RiskRejection) as exc_info:
+        risk.pre_trade_checks("buy", "AAPL", 50, 27.33, ACCOUNT, {}, cfg,
+                              open_trades={}, candidate_stop=20.00)
+    assert exc_info.value.rail == "heat"
+
+
+def test_a_short_candidate_under_the_cap_is_not_refused(tmp_path, monkeypatch):
+    """The other boundary: raise the cap clear of the same $366.50 and the
+    short must be admitted — proves the rail fires on the NUMBER, not on
+    'a short candidate exists'."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg(max_portfolio_heat_pct=5.0)
+    risk.pre_trade_checks("short", "AAPL", 50, 20.00, ACCOUNT, {}, cfg,
+                          open_trades={}, candidate_stop=27.33)  # no raise
+
+
+def test_a_long_candidate_under_the_cap_is_still_not_refused(
+        tmp_path, monkeypatch):
+    """The twin."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg(max_portfolio_heat_pct=5.0)
+    risk.pre_trade_checks("buy", "AAPL", 50, 27.33, ACCOUNT, {}, cfg,
+                          open_trades={}, candidate_stop=20.00)  # no raise
+
+
+def test_a_shorts_nonsensical_stop_below_price_still_clamps_new_risk_to_zero(
+        tmp_path, monkeypatch):
+    """The `max(..., 0.0)` clamp must survive on the short side exactly as it
+    always has on the long side: a short candidate whose stop is BELOW price
+    is nonsensical (that stop could never trigger) and must contribute $0 —
+    not a negative number that would UNDERSTATE the cap check."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg(max_portfolio_heat_pct=0.0001)  # any real risk would breach
+    risk.pre_trade_checks("short", "AAPL", 50, 27.33, ACCOUNT, {}, cfg,
+                          open_trades={}, candidate_stop=20.00)  # no raise: clamped
+
+
+def test_a_longs_nonsensical_stop_above_price_still_clamps_new_risk_to_zero(
+        tmp_path, monkeypatch):
+    """The twin: unchanged behaviour for a long whose recorded stop sits
+    above price — this is the case the `max(..., 0.0)` clamp originally
+    existed to catch, before a short ever needed the same protection."""
+    monkeypatch.chdir(tmp_path)
+    cfg = _entries_cfg(max_portfolio_heat_pct=0.0001)
+    risk.pre_trade_checks("buy", "AAPL", 50, 20.00, ACCOUNT, {}, cfg,
+                          open_trades={}, candidate_stop=27.33)  # no raise: clamped
+
+
+# ---------------------------------------------------------------------------
 # broker.market_order: the last untreated case of "anything that isn't buy is
 # a sell". Phase 1 removed that fallthrough from bracket_market_order; this
 # section pins the same fix here. main.py routes every non-bracket action
@@ -1540,24 +1630,21 @@ def test_a_sell_that_fills_above_the_signal_price_still_scores_better(
 # either side: the bracket distance is the same magnitude whichever way the
 # position points.
 #
-# The two caps below are NOT the same number, and that asymmetry is not a
-# mistake in the pair. risk.pre_trade_checks computes the CANDIDATE order's
-# own risk as `qty * max(price - candidate_stop, 0.0)` — still long-only, so
-# a short candidate's stop sits above price, the clamp fires, and its own
-# risk enters the cap as $0.00. (A further short-side arithmetic defect,
-# deliberately NOT fixed here: it lives in risk.py, and this commit is
-# main.py's sign-aware half.) The consequence is that a short's first entry
-# is measured as $0 and a long's as $366.50, so no single cap can admit the
-# first entry and refuse the second on BOTH sides. Each side therefore gets
-# the cap that puts the boundary between its own first and second entry:
+# Before the short-path Fix 1 (pre_trade_checks' own `new_risk` term, in
+# risk.py), the two caps below had to be DIFFERENT numbers: a short
+# candidate's own risk read as $0.00 (its stop sits above price, and the
+# un-fixed `max(price - candidate_stop, 0.0)` clamped that to zero), so only
+# the long side's cap could put the boundary between its own first and
+# second entry. Fix 1 makes both sides measure the same $366.50 for their
+# own candidate order, so the SAME cap now puts the boundary in the same
+# place on both sides:
 #
-#   short: cap $300  -> 1st: $0 + $0 ok | 2nd: $366.50 + $0 REFUSED
-#   long:  cap $500  -> 1st: $0 + $366.50 ok | 2nd: $366.50 + $366.50 REFUSED
+#   cap $500 (0.5%) -> 1st: $0 + $366.50 ok | 2nd: $366.50 + $366.50 REFUSED
 #
 # What the pair holds constant is the thing under test: in both cases the
 # refusal is driven by the FIRST entry's $366.50 read out of the in-cycle
-# dict, and in both cases it is $0.00 when `action` is hardcoded to "buy"
-# — for the long, because hardcoding "buy" IS what the long already wrote.
+# dict (portfolio_heat, Group A's fix) plus the SECOND entry's own $366.50
+# candidate risk (pre_trade_checks, Fix 1).
 _TWO = ["SPY", "AAPL"]
 
 
@@ -1569,16 +1656,21 @@ def _rejections(broker) -> list:
 
 def test_the_heat_cap_refuses_a_second_same_cycle_short_on_the_first_ones_risk(
         scripted_cycle):
-    """THE test that would have caught defect 7. Two symbols, both shorted in
-    one cycle: the first executes and the second is refused by the heat rail,
-    on stop-risk that exists ONLY in the in-cycle dict — the ledger is not
-    reloaded mid-cycle and `open_buys()` is never consulted again."""
+    """Two symbols, both shorted in one cycle: the first executes and the
+    second is refused by the heat rail. This pins TWO fixes at once: defect 7
+    (main.py must record the in-cycle position as `action: "short"`, not a
+    hardcoded "buy", or the first short's stop-risk reads as $0 out of
+    portfolio_heat) and short-path Fix 1 (pre_trade_checks' own `new_risk`
+    term must price the second short's candidate risk instead of clamping it
+    to $0 too) — either regression alone would let the second short
+    through."""
     broker = scripted_cycle("short", symbols=_TWO,
-                            max_portfolio_heat_pct=0.3)
+                            max_portfolio_heat_pct=0.5)
     assert len(broker.bracket_calls) == 1, (
-        "the second short must not reach the broker; with `action` hardcoded "
-        "to \"buy\" the first short's $366.50 of stop-risk reads as $0.00 and "
-        "the cap it has already breached lets the second one through")
+        "the second short must not reach the broker: the first short's "
+        "$366.50 of stop-risk (portfolio_heat, Group A's fix) plus the "
+        "second short's own $366.50 candidate risk (pre_trade_checks, "
+        "Fix 1) together exceed the $500 cap")
     rejected = _rejections(broker)
     assert len(rejected) == 1
     assert rejected[0]["rail"] == "heat"
@@ -1587,10 +1679,12 @@ def test_the_heat_cap_refuses_a_second_same_cycle_short_on_the_first_ones_risk(
 
 def test_the_heat_cap_still_refuses_a_second_same_cycle_buy_the_same_way(
         scripted_cycle):
-    """The twin, differing only in direction and in the cap value the banner
-    above accounts for. This half never regressed — "buy" is what the code
-    hardcoded — so it is the assertion proving the short fix was not bought
-    by breaking the long's heat accounting."""
+    """The twin, now at the SAME cap value as the short above — Fix 1 made
+    the two sides symmetric, so there is no longer a reason for them to
+    differ. This half never had the action-vocabulary defect ("buy" is what
+    the code always wrote) and pre_trade_checks' own new_risk term was
+    already correct for a long, so this is the assertion proving neither fix
+    broke behaviour that was already right."""
     broker = scripted_cycle("buy", symbols=_TWO, max_portfolio_heat_pct=0.5)
     assert len(broker.bracket_calls) == 1
     rejected = _rejections(broker)
