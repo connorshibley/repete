@@ -5447,3 +5447,98 @@ side effect.**
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 1 pass in 15, and that one pass carries §51's survivorship qualification.**
+
+## §53 — DOES THE 130/30 CONFIGURATION BEHAVE? — REJECTED ×3 of 4, 2026-08-05
+
+**DIAGNOSTIC, K unchanged at 15.** Four periods, three arms each, frozen
+together before any ran (`research/specs/s53a-d.yaml`, run record
+`research/s53_run_2026-08-05.txt`).
+
+**OUTCOME (1) OF THE PRE-COMMITTED READING RULE: the 130/30 configuration is
+refuted on this data. `xsmom` is NOT enabled and Phase 3 stops here.** The rule
+said two or more clause-(b) failures decide it; three of four failed.
+
+| period | baseline | xsmom_long_only | **xsmom_130_30** | SPY | (b) |
+|---|---|---|---|---|---|
+| 2000–2006 | −7.91% | −7.91% | **−7.91%** | +10.01% | FAIL |
+| 2007–2013 | +2.85% | +1.47% | **+3.73%** | +51.30% | FAIL |
+| 2014–2019 | +95.89% | +118.36% | **+79.73%** | +97.39% | FAIL |
+| 2022–2026 | +105.84% | +139.50% | **+81.06%** | +63.52% | PASS |
+
+### The finding is not the failure count — it is the middle column
+
+The third arm is why this was not a two-arm run, and it earns its wall time. In
+**both periods where the short leg actually traded**, adding it made the book
+worse than the same strategy long-only:
+
+| | long_only | 130/30 | short leg cost |
+|---|---|---|---|
+| 2014–2019 | +118.36% | +79.73% | **−38.63pp** |
+| 2022–2026 | +139.50% | +81.06% | **−58.44pp** |
+
+A two-arm run would have shown 130/30 beating the baseline in 2022–2026
+(+81.06% vs +105.84% — actually losing) and left the attribution unresolved.
+With the middle arm there is nothing to resolve: `xsmom`'s **long** leg is what
+moved those periods, and the short leg subtracted from it.
+
+**And it subtracted while being handed a cost-free borrow.** Divergence #16 —
+no stock-loan fee is charged, in this simulator or in paper. The short leg lost
+to its own long-only arm *before* paying the cost a real one would.
+
+### Two of the three failures are degenerate, and saying so is the point
+
+2000–2006 and 2007–2013 did not test the configuration. The drawdown rail
+blocked **97–99% of all signals** in both (26,380 of 27,124; 27,791 of 29,037),
+deployment sat at 2.21% and 7.44%, and the short leg opened **zero** positions in
+the first period and **two** in the second. All three arms are byte-identical in
+2000–2006 for that reason.
+
+The frozen rule counts them as failures and the verdict stands — a rule that is
+re-read after the numbers arrive is not a rule. But the honest weight is on
+2014–2019 and 2022–2026, which is where the configuration could express itself,
+and both of those fail on the middle column rather than on the benchmark.
+
+### The net-exposure band was never enabled — so this does not test a *banded* 130/30
+
+`risk.net_exposure_pct: {min: 80, max: 120}` is **commented out** in
+`config.yaml`. The 130/30 design called that band "what makes 130/30 a fact
+rather than an intention", and it is not in force. The consequence is measured:
+
+- `net_exposure` appears in **no** arm's block census — the rail never fired.
+- Net exposure reached **−15.89%** in 2014–2019 and **−1.34%** in 2022–2026. The
+  book was, at moments, net SHORT. That is not a 130/30 book.
+- Gross did reach the premise: **134.60%** max in 2022–2026, **163.84%** in
+  2014–2019.
+
+So what is refuted is *`xsmom`'s short leg added to the book without a net
+constraint*. A banded configuration is a **different** experiment and would need
+its own pre-registration — it cannot be read out of these four runs, and
+outcome (2) is not available by arguing the band would have changed them.
+
+### What this does NOT say
+
+- **Not that shorting cannot work.** Survivorship runs against the short leg
+  here: every wide snapshot is built from today's index membership, so the names
+  that fell and never recovered — precisely what a momentum short would have
+  held — are deleted. §48 sized the long-side flattery at up to +130.06pp and
+  §51 at +200.28pp. Outcome (1) is a decision to stop spending on this
+  direction, not a proof about the direction.
+- **Not an EDGE claim.** §52's freeze is untouched and K stays 15.
+- **Not comparable with §43, §48, §50 or §51.** Those ran before divergence #17
+  was closed, when the simulator let every strategy enter every symbol in the
+  snapshot. On 2022–2026 that difference alone moves deployment 4.09% → 75.18%.
+  A table putting these rows beside those compares two different simulators.
+- **Nothing about `reclaim`.** It is disabled in all twelve arms, so the
+  collision with the short leg (23 of `xsmom`'s 30 names sit in `reclaim`'s
+  universe) is untested.
+
+### What was kept
+
+Phase 1 and 2's safety work stands regardless — the design pre-committed to
+that: *"if Phase 3's diagnostic says the long book cannot deploy near 130%, stop
+there: the ratio was the premise, and Phase 1's safety fixes are worth keeping
+anyway."* The rails, the signed simulator, divergence #16 and #17, and the
+direction-aware counterfactual are all independent of the verdict.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. `xsmom.enabled`
+stays `false`.**
