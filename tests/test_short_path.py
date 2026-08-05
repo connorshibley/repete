@@ -688,8 +688,13 @@ def scripted_cycle(tmp_path, monkeypatch, cfg):
         with open("config.yaml", "w") as f:
             yaml.safe_dump(local, f)
 
+        # `position_side` is accepted and unused: this fixture scripts the
+        # ACTION directly, so it never has to derive one from the side. It must
+        # still appear in the signature — main.py now passes it on the exit
+        # path, and a fake that refuses an argument the real dispatch accepts
+        # fails the cycle for a reason unrelated to what the test is asserting.
         def _scripted(name, symbol, bars, cfg_, holding,
-                      cross_section=None, entry_ts=None):
+                      cross_section=None, entry_ts=None, position_side=None):
             want = holding_action if holding else action
             if want is None:
                 return Signal(symbol, "hold", "scripted hold", {}, name)

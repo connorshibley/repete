@@ -102,7 +102,8 @@ def max_lookback_bars(cfg: dict) -> int:
 
 def generate(name: str, symbol: str, bars: list[dict], cfg: dict,
              holding: bool, cross_section=None,
-             entry_ts: str | None = None) -> Signal:
+             entry_ts: str | None = None,
+             position_side: str | None = None) -> Signal:
     """Dispatch to one strategy with its own params sub-dict."""
     mod = REGISTRY[name]
     params = strategy_params(cfg, name)
@@ -114,11 +115,18 @@ def generate(name: str, symbol: str, bars: list[dict], cfg: dict,
     # became a silent trap the moment a second one existed: `reclaim` would have
     # been handed entry_ts=None, its max_hold_days would have measured nothing,
     # and no test would fail — the strategy would just never time out.
+    #
+    # Accumulated into kwargs rather than branched: two independent optional
+    # arguments make four combinations, and an if/elif chain over them is the
+    # shape that quietly drops one. A module that declares neither flag is
+    # called with EXACTLY the arguments it was called with before.
+    extra: dict = {}
     if getattr(mod, "NEEDS_ENTRY_TS", False):
-        return mod.generate(symbol, bars, params, holding,
-                            cross_section=cross_section, entry_ts=entry_ts)
+        extra["entry_ts"] = entry_ts
+    if getattr(mod, "NEEDS_POSITION_SIDE", False):
+        extra["position_side"] = position_side
     return mod.generate(symbol, bars, params, holding,
-                        cross_section=cross_section)
+                        cross_section=cross_section, **extra)
 
 
 def prepare_one(cfg: dict, name: str, all_bars: dict,

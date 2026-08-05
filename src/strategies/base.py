@@ -7,6 +7,7 @@ signals. Modules follow a duck-typed contract:
     NEEDS_CROSS_SECTION: bool
     def required_lookback(params) -> int
     NEEDS_ENTRY_TS: bool                        # optional, default False
+    NEEDS_POSITION_SIDE: bool                   # optional, default False
     def prepare(all_bars, params, cfg=None) -> ctx   # cross-sectional only
     def generate(symbol, bars, params, holding, cross_section=None) -> Signal
 
@@ -21,6 +22,21 @@ required by any strategy with a max-hold rule. It is DECLARED rather than
 inferred from the module name; the dispatch used to test `name == "meanrev"`,
 which silently gave a second such strategy `entry_ts=None` and a max-hold that
 measured nothing.
+
+`NEEDS_POSITION_SIDE = True` makes it pass `position_side=` — `"long"`,
+`"short"` or `None` when flat. `holding: bool` says only THAT a position exists,
+never which way it points, and for a strategy with a short leg that is not
+enough to choose an exit action:
+
+    the owner-only exit branch (main.py) calls generate(owner, ..., True, ...)
+    for any held name. Asked about a SHORT with only `holding=True` to go on,
+    a long-biased strategy answers "sell" — which EXIT_ACTIONS accepts and
+    broker.market_order maps to SELL, DOUBLING the short instead of closing it.
+
+Declared, not inferred, for the same reason as NEEDS_ENTRY_TS: a strategy that
+silently receives `None` where it expected a side does not fail, it just decides
+wrongly. Every strategy that does not declare it keeps its exact call signature,
+so adding the flag cannot move a strategy that has no short leg.
 """
 from dataclasses import dataclass, field
 
@@ -51,6 +67,35 @@ ENTRY_ACTIONS = ("buy", "short")
 #: without first checking whether `swing_guard`'s caller still needs it — that
 #: is exactly the check that was missed the first time.
 EXIT_ACTIONS = ("sell", "cover")
+
+
+def side_of_qty(qty) -> str | None:
+    """`"long"` | `"short"` | `None`, from a SIGNED quantity.
+
+    The one implementation of "which way does this position point", because the
+    live cycle and the offline simulator both have to answer it and a strategy
+    that gets two different answers is a divergence by construction.
+
+    A signed quantity is the input on purpose. `broker.positions()` copies
+    Alpaca's own `float(p.qty)`, negative for a short, and main.py's in-cycle
+    view was made to match that sign in Phase 2-C. Deriving the side anywhere
+    else — from an action, from a market value, from the sign of unrealised P&L
+    — would be a second source of truth for something the position record
+    already carries.
+
+    **Zero is `None`, not `"long"`.** A flat book is not a long one, and
+    `qty == 0` reaches here from a fully-exited position whose record has not
+    been dropped yet. Returning `"long"` there would tell a strategy it holds
+    something it does not.
+    """
+    if qty is None:
+        return None
+    q = float(qty)
+    if q > 0:
+        return "long"
+    if q < 0:
+        return "short"
+    return None
 
 
 def sector_map(cfg: dict) -> dict:

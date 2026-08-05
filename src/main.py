@@ -37,7 +37,7 @@ import store
 import strategies
 import strategy
 import x_poster
-from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS, side_of_qty
 
 
 def journal_and_link(trade: dict, cfg: dict) -> str | None:
@@ -1627,9 +1627,15 @@ def _run_cycle(completed_bars_only: bool = False):
                 ledger.log_event("ensemble_orphan",
                                  f"{symbol}: unknown owner {owner}; bracket legs remain")
                 continue
+            # position_side comes off the SIGNED qty the broker reports (and
+            # that this cycle's own entries write), never off the open_trades
+            # record's action — the broker is the authority on what is actually
+            # held, and divergence #7's whole lesson is that the two can differ.
             sig = strategies.generate(owner, symbol, bars, cfg, True,
                                       cross_section=xs_ctx.get(owner),
-                                      entry_ts=entry_ts)
+                                      entry_ts=entry_ts,
+                                      position_side=side_of_qty(
+                                          positions[symbol].get("qty")))
             # EXIT_ACTIONS, not "sell": the owning strategy of a SHORT closes
             # it with a "cover", and on the old condition that cover fell into
             # the `else` and was logged as a HOLD — the position's own exit

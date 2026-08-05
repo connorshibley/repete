@@ -9,6 +9,17 @@ from strategies.base import Signal, total_return
 NAME = "xsmom"
 NEEDS_CROSS_SECTION = True
 
+#: This is the strategy that will carry the short leg, so it is the one that
+#: cannot work from `holding: bool` alone — see strategies/base.py's contract
+#: note for what goes wrong when a short is asked for an exit with only that.
+#:
+#: Declared BEFORE the short leg exists, and deliberately IGNORED by generate()
+#: below until it does. That makes the wiring live and testable end to end
+#: while this change is still provably a no-op for every signal xsmom emits —
+#: as opposed to landing the plumbing dead, which is how `short_bottom_fraction`
+#: shipped naming nothing and had to be fixed in a later PR.
+NEEDS_POSITION_SIDE = True
+
 
 def required_lookback(params: dict) -> int:
     return params["rank_lookback_bars"] + params.get("skip_bars", 21) + 1
@@ -40,7 +51,13 @@ def prepare(all_bars: dict, params: dict, cfg: dict | None = None) -> dict:
 
 
 def generate(symbol: str, bars: list[dict], params: dict, holding: bool,
-             cross_section: dict | None = None) -> Signal:
+             cross_section: dict | None = None,
+             position_side: str | None = None) -> Signal:
+    # `position_side` is accepted and NOT read yet: the short leg is a later
+    # commit, and until it lands every position xsmom owns is a long, so
+    # branching on the side could only reproduce today's behaviour under a
+    # longer expression. Reading it before there is a short to read it for is
+    # how a "no-op" quietly stops being one.
     if not cross_section or cross_section.get("n", 0) < 4:
         return Signal(symbol, "hold", "cross-section unavailable or too small",
                       strategy=NAME)
