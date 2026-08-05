@@ -176,22 +176,40 @@ def test_a_deliberately_disabled_judge_is_not_an_outage(monkeypatch):
 
 # ---- the asymmetry that would actually hurt --------------------------------
 
-def test_main_blocks_only_buys_never_exits():
-    """THE LOAD-BEARING TEST. Blocking a sell because the reviewer is down
+def test_main_blocks_only_entries_never_exits():
+    """THE LOAD-BEARING TEST. Blocking an exit because the reviewer is down
     would trap an open position and ENLARGE risk through the reviewer's
     absence — the precise inversion invariant 2 exists to prevent.
 
     Asserted against main.py's real source rather than by re-implementing the
     condition here: a test that restates the logic it is checking passes
     whenever the restatement is wrong in the same direction.
+
+    The pinned SPELLING moved from `sig.action == "buy"` to `sig.action in
+    ENTRY_ACTIONS` in Phase 2 Group C. That is the same policy, not a relaxed
+    one: ENTRY_ACTIONS is ("buy", "short"), so the refusal still fires on
+    every risk-ADDING action and on neither exit action. Keeping the literal
+    would have been the real weakening — a "short" the judge could not judge
+    would have proceeded UNREVIEWED under on_unavailable=block, which is the
+    outcome this test exists to make impossible.
     """
     src = open(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "src", "main.py")).read()
     guard = re.search(
-        r'if\s+sig\.action\s*==\s*"buy"\s+and\s+review\.get\(\s*"unavailable_block"\s*\)',
+        r'if\s+sig\.action\s+in\s+ENTRY_ACTIONS\s+and\s+'
+        r'review\.get\(\s*"unavailable_block"\s*\)',
         src)
     assert guard, ("main.py must gate the unavailable-block refusal on "
-                   "sig.action == 'buy'; an unguarded block would trap exits")
+                   "sig.action in ENTRY_ACTIONS; an unguarded block would "
+                   "trap exits")
+    # The half the old regex could not express: the gate must not be spelled
+    # in terms of an EXIT, and the NAME it pins must still mean "entry". A pin
+    # on a constant proves nothing if the constant is later redefined to
+    # include an exit — that redefinition is exactly how this guard would come
+    # back inverted while the regex kept passing.
+    from strategies.base import ENTRY_ACTIONS
+    assert "sell" not in ENTRY_ACTIONS and "cover" not in ENTRY_ACTIONS
+    assert "buy" in ENTRY_ACTIONS and "short" in ENTRY_ACTIONS
 
 
 def test_the_block_is_ledgered_as_degraded_not_as_a_veto():

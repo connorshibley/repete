@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import uuid
 
 import store as store_mod
+from strategies.base import ENTRY_ACTIONS
 
 
 class Ledger:
@@ -169,11 +170,28 @@ class Ledger:
         return self._store.read_all()
 
     def open_buys(self) -> dict:
-        """trade_id -> decision record for executed buys with no outcome yet."""
+        """trade_id -> decision record for executed ENTRIES with no outcome yet.
+
+        ENTRY_ACTIONS, not `== "buy"`. This is the ONLY path by which the live
+        bot reloads its open book from persisted state (main.py reads it at
+        cycle start, and reconcile/adopt both key off it), so on the old filter
+        a restart would have silently dropped every open SHORT: the position
+        would still exist at the broker, but the bot would hold no record of
+        it — no owner to route its exit, no stop-risk in the heat cap, and
+        `adopt_untracked_positions` would then re-adopt it as a fresh trade
+        with a fabricated entry price.
+
+        The NAME is deliberately unchanged. It is now imprecise (it returns
+        shorts too), but renaming it would rewrite ~25 call sites across six
+        test files and three read-only mirrors inside the largest single
+        commit this project has made — churn, in the one commit where diff
+        size is itself a risk. Flagged for a follow-up rename to
+        `open_entries()`; do not read the name as evidence that shorts are
+        excluded."""
         records = self.all_records()
         closed = {r["trade_id"] for r in records if r["type"] == "outcome"}
         return {r["trade_id"]: r for r in records
-                if r["type"] == "decision" and r["action"] == "buy"
+                if r["type"] == "decision" and r["action"] in ENTRY_ACTIONS
                 and r["executed"] and r["trade_id"] not in closed}
 
     def closed_trades(self) -> list[dict]:
