@@ -567,7 +567,18 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
         if needs_xs:
             hist_by_sym = {s: sym_bars[s][:idx[s][ts] + 1]
                            for s in sym_bars if ts in idx[s]}
-            xs_ctx = smod.prepare(hist_by_sym, sparams)
+            # Through the shared entry point, not smod.prepare directly: the
+            # universe/held scoping and the cfg argument must be identical to
+            # the live cycle's, or this simulator silently scores a different
+            # strategy than the one that will trade.
+            # `universe=` is the symbols THIS RUN is simulating, not
+            # cfg["symbols"]: `--symbols` overrides config, and scoping a
+            # cross-sectional strategy by a universe it was not given produces
+            # an empty ranking and zero trades — output indistinguishable from
+            # "the strategy found nothing".
+            xs_ctx = strategies.prepare_one(cfg, strategy_name, hist_by_sym,
+                                            held=set(acct.positions),
+                                            universe=set(hist_by_sym))
         entry_cap = sparams.get("max_entries_per_cycle", 0)
         blackout_days = sparams.get("earnings_blackout_days", 0)
         buys_queued_today = 0
@@ -967,7 +978,11 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
             if smod.NEEDS_CROSS_SECTION:
                 hist_by_sym = {s: sym_bars[s][:idx[s][ts] + 1]
                                for s in sym_bars if ts in idx[s]}
-                xs_ctx[name] = smod.prepare(hist_by_sym, sparams)
+                # Shared entry point — see the single-strategy loop above and
+                # strategies.prepare_one's docstring. `held` is this account's
+                # open book, mirroring main.py passing its own open trades.
+                xs_ctx[name] = strategies.prepare_one(
+                    cfg, name, hist_by_sym, held=set(acct.positions))
 
         # ONE pass over symbols, mirroring the live cycle's structure exactly
         # (main.py "Phase 3: per-symbol ensemble loop with position ownership"):

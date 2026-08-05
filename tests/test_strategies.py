@@ -49,12 +49,53 @@ def test_prepare_cross_sections_includes_disabled_owner(cfg):
                   "skip_bars": 1, "buy_top_fraction": 0.25,
                   "exit_below_fraction": 0.5},
     }
+    # A strategy now ranks its own UNIVERSE rather than whatever bars it is
+    # handed, so the config has to say which symbols xsmom trades. This test
+    # always meant "the four names being ranked"; under the old code that was
+    # implicit because the universe was ignored entirely. The assertion below is
+    # unchanged — only the fact the new model needs has been supplied.
+    cfg["symbols"] = ["A", "B", "C", "D"]
     all_bars = {s: _long_bars([100 + i for i in range(20)])
                 for s in ("A", "B", "C", "D")}
     assert strategies.prepare_cross_sections(cfg, all_bars) == {}
     ctx = strategies.prepare_cross_sections(cfg, all_bars,
                                             extra_owners={"xsmom"})
     assert "xsmom" in ctx and ctx["xsmom"]["n"] == 4
+
+
+def test_held_symbol_outside_the_universe_is_still_rankable(cfg):
+    """The trap that scoping the cross-section introduces, pinned.
+
+    A strategy can own a position in a symbol that is NOT in its universe —
+    removed from config.yaml, or entered through a past news nomination
+    (main.py's scan list explicitly keeps scanning both). Scope the
+    cross-section to the universe alone and that symbol vanishes from `ranks`,
+    so xsmom answers "insufficient history for ranking" and HOLDS, every cycle,
+    forever: a position nothing will close.
+
+    `held` is what prevents it, so this asserts the symbol is ranked BECAUSE it
+    is held, and that it is absent when it is not — the boundary pair. Without
+    the second half the first would pass on a function that simply ignored the
+    universe."""
+    cfg["strategies"] = {
+        "xsmom": {"enabled": True, "priority": 1, "rank_lookback_bars": 5,
+                  "skip_bars": 1, "buy_top_fraction": 0.25,
+                  "exit_below_fraction": 0.5},
+    }
+    cfg["symbols"] = ["A", "B", "C", "D"]
+    all_bars = {s: _long_bars([100 + i for i in range(20)])
+                for s in ("A", "B", "C", "D", "GONE")}
+
+    without = strategies.prepare_cross_sections(cfg, all_bars)
+    assert "GONE" not in without["xsmom"]["ranks"], (
+        "a symbol outside the universe must not dilute the percentile")
+    assert without["xsmom"]["n"] == 4
+
+    withheld = strategies.prepare_cross_sections(cfg, all_bars,
+                                                 held={"GONE"})
+    assert "GONE" in withheld["xsmom"]["ranks"], (
+        "a HELD symbol must stay rankable or its exit can never fire")
+    assert withheld["xsmom"]["n"] == 5
 
 
 def test_max_lookback_covers_disabled_owners(cfg):

@@ -849,6 +849,17 @@ def _market_context(cfg: dict, broker, ledger: Ledger, positions: dict):
     # config.yaml. Extras are appended AFTER the rotation — held positions must
     # always be scanned for exits, and their order is not a contended resource.
     scan_symbols = risk.scan_order(list(cfg["symbols"]), cfg)
+    # Symbols belonging to an ENABLED strategy's non-core universe, appended
+    # after the rotation for the same reason positions are: the §24 rotation
+    # exists to circulate first refusal on scarce slots within the CORE
+    # universe, and re-sorting it around ~90 extra names would change which
+    # core symbol gets scanned first — a quantity §22 measured as worth 2.66pp
+    # of OOS return. Gated on `enabled(cfg)`, so a disabled `reclaim` adds
+    # nothing to the scan and the cycle stays exactly as long as it is today.
+    for _name, _ in strategies.enabled(cfg):
+        for s in sorted(strategies.universe_for(cfg, _name)):
+            if s not in scan_symbols:
+                scan_symbols.append(s)
     scan_symbols += [s for s in nominated if s not in scan_symbols]
     scan_symbols += [s for s in positions if s not in scan_symbols]
     return news_ctx, nominated, scan_symbols
@@ -944,8 +955,16 @@ def _precompute(cfg: dict, all_bars: dict, open_trades: dict,
     """
     open_owners = {rec.get("strategy") or strategies.DEFAULT_OWNER
                    for rec in open_trades.values()}
+    # `held` comes from open_trades, the same source as `open_owners`: a
+    # cross-sectional strategy must be able to RANK every symbol it holds, or
+    # its exit signal never fires (see prepare_cross_sections). Taken from the
+    # ledger's open book rather than the broker's positions so the two arguments
+    # describe the same set of trades — an owner with no rankable symbol is the
+    # bug this pairing prevents.
+    held = {rec.get("symbol") for rec in open_trades.values() if rec.get("symbol")}
     xs_ctx = strategies.prepare_cross_sections(cfg, all_bars,
-                                               extra_owners=open_owners)
+                                               extra_owners=open_owners,
+                                               held=held)
 
     # PER-STRATEGY param, off by default: block NEW entries in names reporting
     # within that strategy's N days. Deterministic, computed before the loop;
@@ -1646,6 +1665,21 @@ def _run_cycle(completed_bars_only: bool = False):
         hold_reasons: dict = {}
         entered = False
         for name, params in strategies.enabled(cfg):
+            # PER-STRATEGY UNIVERSE — entries only, and deliberately here rather
+            # than inside `strategies.generate()`, which the EXIT path calls
+            # too. Filtering there would strand a position whose symbol had left
+            # its strategy's universe: no strategy willing to emit its exit, a
+            # rail refusing to close risk. See `strategies.in_universe`.
+            #
+            # A news-nominated symbol is exempt by construction. Nominations are
+            # defined as "outside the backtested universe" (see the news_note
+            # above), so applying a universe filter to them would delete the
+            # feature outright — silently, since the symbol would simply never
+            # produce a signal.
+            if not is_nominated and not strategies.in_universe(cfg, name, symbol):
+                hold_reasons[name] = {"reason": f"{symbol} is not in {name}'s "
+                                                f"universe"}
+                continue
             cd = risk.cooldown_days_for(cfg, name)
             if cd and risk.cooldown_blocked(
                     last_exit.get(symbol),

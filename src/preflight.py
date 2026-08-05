@@ -8,6 +8,8 @@ or a corrupted ledger tail must not trade at all. Pure checks, no network.
 import json
 import os
 
+import strategies   # SECTORS_UNIVERSE — the universe names kept in one place
+
 # Rails where zero is meaningless or dangerous, so the value must be positive.
 # min_holding_days at 0 switches off the swing guard (invariant #3);
 # daily_loss_limit_pct at 0 switches off the kill switch; either sizing
@@ -301,6 +303,56 @@ def run(cfg: dict) -> list[str]:
             if not isinstance(v, int) or v < floor:
                 fails.append(f"learning.regime.{key} must be an int >= {floor} "
                              f"({v!r}) — vol_period < 2 divides by zero")
+
+    # ---- the sector map and the strategy universes that depend on it ----
+    #
+    # Every failure below is SILENT at runtime, which is why they are convicted
+    # here: a malformed map does not raise, it quietly changes which names a
+    # strategy may buy and how many of them the concentration cap allows.
+    # Preflight's polarity is fail-safe, so each is a refusal to start.
+    sectors = cfg.get("sectors")
+    if sectors is not None:
+        if not isinstance(sectors, dict):
+            fails.append("sectors must be a mapping of sector name -> symbol list")
+        else:
+            seen: dict = {}
+            for sector, syms in sectors.items():
+                if not isinstance(syms, list) or not syms:
+                    fails.append(f"sectors.{sector} must be a non-empty list")
+                    continue
+                for s in syms:
+                    if s in seen:
+                        # Ambiguous membership makes risk.sector_open_count
+                        # answer differently depending on which lookup wins, so
+                        # the concentration cap becomes evadable by construction.
+                        fails.append(f"symbol {s} appears in two sectors "
+                                     f"({seen[s]} and {sector})")
+                    seen[s] = sector
+
+    known_universes = {None, strategies.SECTORS_UNIVERSE}
+    for sname, sparams in (cfg.get("strategies") or {}).items():
+        key = (sparams or {}).get("universe")
+        if key not in known_universes:
+            # universe_for() returns the EMPTY set for an unknown key, so a typo
+            # does not widen a universe — it silently EMPTIES one, and the
+            # strategy stops trading with nothing in the logs to say why.
+            fails.append(f"strategies.{sname}.universe {key!r} is not a known "
+                         f"universe — the strategy would silently trade nothing")
+        if key == strategies.SECTORS_UNIVERSE and not cfg.get("sectors"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.SECTORS_UNIVERSE}' but no sectors: "
+                         f"block is configured")
+
+    scfg = (cfg.get("risk") or {}).get("sector_concentration")
+    if isinstance(scfg, dict) and scfg.get("enabled"):
+        cap = scfg.get("max_per_sector")
+        if isinstance(cap, bool) or not isinstance(cap, int) or cap < 1:
+            # 0 or negative would refuse EVERY entry in a mapped sector — an
+            # outage wearing a rail's name. bool is rejected explicitly because
+            # True is an int and would otherwise pass as a cap of 1.
+            fails.append(f"risk.sector_concentration.max_per_sector must be an "
+                         f"int >= 1 ({cap!r}) — 0 or less blocks every entry "
+                         f"in a mapped sector")
 
     ledger_path = cfg.get("memory", {}).get("ledger_path", "memory/ledger.jsonl")
     mem_dir = os.path.dirname(ledger_path) or "."

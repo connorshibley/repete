@@ -13,6 +13,7 @@ from strategies.base import Signal, sma, rsi
 
 NAME = "meanrev"
 NEEDS_CROSS_SECTION = False
+NEEDS_ENTRY_TS = True     # max_hold_days; see strategies.generate dispatch
 
 RSI_HISTORY = 30  # bars fed to Wilder smoothing beyond the raw period
 

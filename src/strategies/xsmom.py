@@ -14,11 +14,16 @@ def required_lookback(params: dict) -> int:
     return params["rank_lookback_bars"] + params.get("skip_bars", 21) + 1
 
 
-def prepare(all_bars: dict, params: dict) -> dict:
+def prepare(all_bars: dict, params: dict, cfg: dict | None = None) -> dict:
     """Rank the universe by skip-adjusted trailing return.
     Returns {"ranks": {symbol: 0-based rank}, "n": universe size,
              "returns": {symbol: momentum}} — symbols with insufficient
-    history are excluded (they simply can't signal this cycle)."""
+    history are excluded (they simply can't signal this cycle).
+
+    `cfg` is part of the prepare() contract and unused here: this ranking needs
+    nothing outside its own params. `all_bars` now arrives already scoped to
+    this strategy's universe (plus anything it holds), so the percentile this
+    computes still means what its gate measured."""
     rets = {}
     need = required_lookback(params)
     for sym, bars in all_bars.items():

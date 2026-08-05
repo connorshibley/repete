@@ -20,7 +20,7 @@ import logging
 import math
 from datetime import date, datetime, timezone
 
-from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS, sector_of
 
 log = logging.getLogger("risk")
 
@@ -1128,6 +1128,29 @@ def net_exposure_pct(positions: dict, equity: float) -> float:
                for p in positions.values()) / equity * 100
 
 
+def sector_open_count(cfg: dict, symbol: str, positions: dict) -> int:
+    """How many OTHER open positions sit in the same sector as `symbol`.
+
+    THE single implementation, called by `pure_checks` and therefore by the
+    live cycle and both simulators alike. `strategy_slots` is the cautionary
+    precedent: its count is derived in two places (`risk.py` and
+    `backtest.py`), and re-derived counters are the shape behind §13's missing
+    rails, §19b's global counters and §22's symbol order. `scan_order`'s
+    docstring states the rule outright — one entry point, because four sim/live
+    divergences have already cost real rework.
+
+    `symbol` itself is excluded: adding to a position already held is what
+    `max_position_pct` governs, and counting it here would make the cap fire one
+    name early on the book it is already part of. An unmapped symbol has no
+    sector, so it never contributes to anyone's count.
+    """
+    sector = sector_of(cfg, symbol)
+    if sector is None:
+        return 0
+    return sum(1 for s in positions
+               if s != symbol and sector_of(cfg, s) == sector)
+
+
 def pure_checks(action: str, symbol: str, qty: int, price: float,
                 account: dict, positions: dict, cfg: dict,
                 regime_label: str | None = None,
@@ -1256,6 +1279,49 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
     if action == "cover" and positions.get(symbol, {}).get("market_value", 0.0) >= 0:
         raise RiskRejection(f"no short position in {symbol} to cover — holding "
                             f"none or long (state desync guard)", rail="desync_cover")
+
+    # DIRECTION CONFLICT. A long book and a short book must never hold the same
+    # name in opposite directions: the two legs would pay each other's spread
+    # and commissions to express no view, the net position is whatever the
+    # arithmetic happens to leave, and every per-symbol number downstream
+    # (P&L attribution, fill quality, the trade plan) is computed per TRADE and
+    # would describe a position that does not exist in isolation.
+    #
+    # The 130/30 design deconflicts the legs upstream — `reclaim` only ever buys
+    # ABOVE the 200-DMA and the xsmom short leg will never short above it, so
+    # they are mechanically disjoint. THAT is the design; this is the rail that
+    # makes a future mistake impossible rather than merely unlikely, in the
+    # place where a rail can still refuse the order.
+    if action in ENTRY_ACTIONS:
+        mv = positions.get(symbol, {}).get("market_value", 0.0)
+        if action == "short" and mv > 0:
+            raise RiskRejection(
+                f"cannot short {symbol} while holding it long "
+                f"(${mv:,.0f}) — close the long first",
+                rail="direction_conflict")
+        if action == "buy" and mv < 0:
+            raise RiskRejection(
+                f"cannot buy {symbol} while holding it short "
+                f"(${mv:,.0f}) — cover the short first",
+                rail="direction_conflict")
+
+    # SECTOR CONCENTRATION. Entries only; an exit must never be blocked.
+    scfg = r.get("sector_concentration") or {}
+    if action in ENTRY_ACTIONS and scfg.get("enabled"):
+        cap = scfg.get("max_per_sector")
+        sector = sector_of(cfg, symbol)
+        # An UNMAPPED symbol is unconstrained. The core universe carries no
+        # sector map, so this rail is inert for every pre-existing strategy —
+        # which is why it can be added without re-gating any of them. Treating
+        # "no sector" as a sector would instead lump all 38 core names together
+        # under one cap and silently throttle the whole ensemble.
+        if cap and sector is not None:
+            n = sector_open_count(cfg, symbol, positions)
+            if n >= cap:
+                raise RiskRejection(
+                    f"sector concentration cap: {n} open position(s) already "
+                    f"in {sector} (max {cap}) — co-moving names are one bet",
+                    rail="sector_concentration")
 
 
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
