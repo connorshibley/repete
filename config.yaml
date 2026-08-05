@@ -250,8 +250,14 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     # MEASURED TRADE RATE, 2026-08-05, before any rail rejects anything:
     # replaying these exact params over the 2020-2026 wide snapshot at DAILY
     # resolution (a reclaim is a single-bar event, so a coarser step
-    # undercounts proportionally) produced **80 entry signals across 1337
-    # trading days on 127 names — about 15 per year.**
+    # undercounts proportionally) produced **72 entry signals across 1337
+    # trading days on 127 names — about 14 per year.**
+    #
+    # (It was 80 before the base test was corrected to exclude the reclaim bar
+    # itself. Those 8 were the falling-knife case the base test exists to
+    # refuse: a name in freefall gapping up hard enough that the one bar
+    # dragged its own short SMA above where it had been, making "the base is
+    # rising" true because of the very bar whose validity was in question.)
     #
     # STATE THE CONSEQUENCE PLAINLY: the evidence plan wants ~200 closed
     # round-trips before a result is read. At 15/yr that is THIRTEEN YEARS, and

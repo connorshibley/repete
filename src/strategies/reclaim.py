@@ -232,18 +232,27 @@ def generate(symbol: str, bars: list[dict], params: dict, holding: bool,
     # BASE: the decline has stalled. Both halves matter — price back above the
     # short SMA says "it is lifting", the SMA's own slope says "the lift is not
     # just one green bar".
+    # MEASURED AS OF THE PREVIOUS BAR, excluding today's close on both sides.
+    # The base is a claim about the run-up TO the reclaim, and including the
+    # reclaim bar lets that one bar satisfy it: a name in freefall that gaps up
+    # violently drags its own short SMA above where the SMA sat three bars ago,
+    # so "the base is rising" becomes true because of the very bar whose
+    # validity the base test exists to judge. That is precisely the falling
+    # knife this check is here to refuse — caught by
+    # test_no_buy_without_a_base, which a same-bar formulation passed.
     base_p = params["base_sma_period"]
     slope_n = params["base_slope_bars"]
-    base_now = sma(closes, base_p)
-    base_then = sma(closes[:len(closes) - slope_n], base_p)
-    if base_now is None or base_then is None:
+    prior = closes[:-1]
+    base_prev = sma(prior, base_p)
+    base_before = sma(prior[:len(prior) - slope_n], base_p)
+    if base_prev is None or base_before is None:
         return Signal(symbol, "hold", "no base SMA", ind, NAME)
-    ind[f"sma{base_p}"] = round(base_now, 2)
-    if close <= base_now:
+    ind[f"sma{base_p}"] = round(base_prev, 2)
+    if prior[-1] <= base_prev:
         return Signal(symbol, "hold",
                       f"close is not above SMA{base_p} — still falling",
                       ind, NAME)
-    if base_now <= base_then:
+    if base_prev <= base_before:
         return Signal(symbol, "hold",
                       f"SMA{base_p} is not rising over {slope_n} bars — no "
                       "base has formed", ind, NAME)

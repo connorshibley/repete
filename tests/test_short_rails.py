@@ -48,13 +48,20 @@ def test_the_same_book_under_the_cap_is_permitted():
                      regime_label="down_trend")
 
 
+# Both halves below say "adding to an existing SHORT" and originally passed
+# action="buy" — the only entry verb that existed when they were written. In the
+# vocabulary Phase 1 and 2 established, "buy" means OPEN A LONG, so buying a
+# name held short is a direction conflict rather than an addition, and the
+# `direction_conflict` rail now refuses it. The action is corrected to "short",
+# which is what both docstrings already describe; the arithmetic under test —
+# that the per-name cap measures MAGNITUDE — is unchanged.
 def test_the_concentration_cap_measures_a_short_by_magnitude():
     """Adding to an existing SHORT in the same name must count against the
     per-name cap. Raw addition would read -$9,000 + $2,000 as tiny."""
     cfg = _cfg(max_position_pct=10.0)
     positions = {"TSLA": {"market_value": -9_000.0}}
     with pytest.raises(risk.RiskRejection) as e:
-        risk.pure_checks("buy", "TSLA", 20, 100.0, ACCOUNT, positions, cfg)
+        risk.pure_checks("short", "TSLA", 20, 100.0, ACCOUNT, positions, cfg)
     assert e.value.rail == "position_cap"
 
 
@@ -64,7 +71,7 @@ def test_the_short_under_the_cap_is_permitted():
     on a short that is legitimately within bounds."""
     cfg = _cfg(max_position_pct=10.0)
     positions = {"TSLA": {"market_value": -9_000.0}}
-    risk.pure_checks("buy", "TSLA", 5, 100.0, ACCOUNT, positions, cfg)
+    risk.pure_checks("short", "TSLA", 5, 100.0, ACCOUNT, positions, cfg)
 
 
 # ---- shorts are ENTRIES; covers are EXITS ----

@@ -307,10 +307,15 @@ def test_the_backtester_runs_under_FEWER_rails_than_live_and_the_gap_is_pinned()
     # the live-only gap and would require one. (Don't let this comment grow
     # into a list of every rail ever added — the reasoning is what matters,
     # not the roll call.)
+    # `direction_conflict` and `sector_concentration` (2026-08-05, with the
+    # `reclaim` leg) land in `pure_checks` for the same reason and with the same
+    # consequence: the simulator inherits them, so the gap below is unchanged
+    # and no divergence entry is owed.
     assert _rails_in("pure_checks") == {
         "zero_qty", "order_value_cap", "drawdown", "max_open_positions",
         "strategy_slots", "position_cap", "regime_exposure", "desync_sell",
-        "desync_cover", "net_exposure"}
+        "desync_cover", "net_exposure", "direction_conflict",
+        "sector_concentration"}
     assert _rails_in("pre_trade_checks") == {"halt", "daily_cap", "heat",
                                              "correlation"}
 
