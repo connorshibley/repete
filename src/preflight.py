@@ -329,6 +329,35 @@ def run(cfg: dict) -> list[str]:
                                      f"({seen[s]} and {sector})")
                     seen[s] = sector
 
+    # ---- the ETF list, and the strategies that subtract it ----
+    #
+    # Same polarity and the same failure mode as the sector map above: nothing
+    # here raises at runtime. `excluded_etfs` subtracts a SET, so a name that is
+    # misspelled, or that is not in `symbols:` at all, subtracts nothing and the
+    # exclusion silently does not happen. The strategy keeps ranking the basket
+    # it was supposed to stop ranking, with no log line and no failing test —
+    # which is exactly how `short_bottom_fraction` shipped naming nothing.
+    etfs = cfg.get("etfs")
+    if etfs is not None:
+        if not isinstance(etfs, list) or not etfs:
+            fails.append("etfs must be a non-empty list of symbols")
+        else:
+            core = set(cfg.get("symbols") or ())
+            for s in etfs:
+                if s not in core:
+                    fails.append(f"etfs lists {s}, which is not in symbols: — "
+                                 f"the exclusion would silently match nothing")
+            if len(set(etfs)) != len(etfs):
+                fails.append("etfs contains a duplicate symbol")
+
+    for sname, sparams in (cfg.get("strategies") or {}).items():
+        if (sparams or {}).get("exclude_etfs") and not cfg.get("etfs"):
+            # The mirror: opting in with no list to subtract is a strategy that
+            # believes it excludes ETFs and does not. Convicted here rather than
+            # left to read as "there simply are no ETFs in this universe".
+            fails.append(f"strategies.{sname}.exclude_etfs is set but no etfs: "
+                         f"list is configured — nothing would be excluded")
+
     known_universes = {None, strategies.SECTORS_UNIVERSE}
     for sname, sparams in (cfg.get("strategies") or {}).items():
         key = (sparams or {}).get("universe")

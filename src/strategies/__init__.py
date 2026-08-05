@@ -42,6 +42,34 @@ def sector_universe(cfg: dict) -> set:
     return {s for syms in (cfg.get("sectors") or {}).values() for s in (syms or ())}
 
 
+def excluded_etfs(cfg: dict, name: str) -> set:
+    """The ETFs `name` must not rank or enter — empty unless it opts in with
+    `exclude_etfs: true`.
+
+    WHY A STRATEGY WOULD OPT IN. The core universe is 38 symbols, EIGHT of them
+    ETFs (SPY, QQQ, DIA, IWM, and the four sector funds). Ranking a basket
+    against its own constituents is a category error in a cross-section: XLK is
+    not a peer of AAPL, it is partly made of it, so a percentile that contains
+    both is measuring two different kinds of thing on one scale.
+
+    It stops being merely wrong and starts being expensive once a short leg
+    exists. §49 measured the overlap: 11 of the 13 symbol pairs at or above the
+    0.85 correlation threshold involve an ETF, against 2 of 435 stock-vs-stock
+    pairs. Shorting XLK while the ensemble is long AAPL, MSFT and NVDA is not
+    alpha — it unwinds the book's own longs, and the correlation cap is the only
+    rail that would notice, one position at a time.
+
+    OPT-IN, not universal. ma_crossover, tsmom and meanrev were gated ON the
+    38-name list including its ETFs; silently removing eight names from under
+    them would change live behaviour on strategies whose whole evidence record
+    was measured with them in.
+    """
+    params = strategy_params(cfg, name) or {}
+    if not params.get("exclude_etfs"):
+        return set()
+    return set(cfg.get("etfs") or ())
+
+
 def universe_for(cfg: dict, name: str) -> set:
     """The symbols `name` may ENTER.
 
@@ -62,10 +90,20 @@ def universe_for(cfg: dict, name: str) -> set:
     params = strategy_params(cfg, name) or {}
     key = params.get("universe")
     if key is None:
-        return set(cfg.get("symbols") or ())
-    if key == SECTORS_UNIVERSE:
-        return sector_universe(cfg)
-    return set()
+        base = set(cfg.get("symbols") or ())
+    elif key == SECTORS_UNIVERSE:
+        base = sector_universe(cfg)
+    else:
+        return set()
+    # Subtracted HERE, at the entries-only boundary, rather than inside
+    # xsmom.prepare. prepare_one adds back whatever the strategy HOLDS, and the
+    # comment there spells out why that matters: drop a held symbol from the
+    # cross-section and generate() finds it absent from `ranks`, answers
+    # "insufficient history for ranking", and HOLDS forever — a filter refusing
+    # to close risk. Excluding inside prepare() would have no way to make that
+    # exception, so it would turn an ETF this strategy somehow held into an
+    # unexitable position.
+    return base - excluded_etfs(cfg, name)
 
 
 def in_universe(cfg: dict, name: str, symbol: str) -> bool:
@@ -181,8 +219,15 @@ def prepare_one(cfg: dict, name: str, all_bars: dict,
     # layer down. Including a held symbol cannot corrupt the percentile in the
     # other direction either, since it is a position the strategy already owns
     # and must be able to rank in order to exit.
-    allowed = (universe if universe is not None
-               else universe_for(cfg, name)) | (held or set())
+    # The ETF subtraction is applied to the OVERRIDE too, not only to
+    # universe_for's answer. `backtest.py --symbols ...` names a symbol list for
+    # the run, and if that list carried ETFs the simulator would rank a
+    # cross-section the live cycle cannot rank — a strategy scored on a universe
+    # it does not trade, which is the §22 symbol-order failure in a new costume.
+    # Re-subtracting on the non-override path is a no-op; universe_for already
+    # did it.
+    base = universe if universe is not None else universe_for(cfg, name)
+    allowed = (base - excluded_etfs(cfg, name)) | (held or set())
     scoped = {s: b for s, b in all_bars.items() if s in allowed}
     # `cfg` as well as `params`: a cross-section can depend on config OUTSIDE
     # the strategy's own sub-dict — `reclaim` needs the top-level `sectors:`
