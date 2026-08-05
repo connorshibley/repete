@@ -61,7 +61,11 @@ exit is day 2; the broker-side bracket legs protect before that.
 from datetime import datetime
 from statistics import median
 
-from strategies.base import Signal, sma, sector_of
+# No `sector_of` here on purpose: `prepare` builds the symbol -> sector mapping
+# once and hands it to `generate` inside the cross-section context, so per-symbol
+# generation stays a pure function of (bars, params, ctx) and never reaches back
+# into cfg. `risk.py` is the module that imports the helper.
+from strategies.base import Signal, sma
 
 NAME = "reclaim"
 NEEDS_CROSS_SECTION = True   # sector ranking is a whole-universe question
