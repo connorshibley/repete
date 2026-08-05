@@ -84,16 +84,13 @@ def anthropic_key_shape_fail(value: str) -> str | None:
     return llm_client.key_shape_fail(value, llm_client.PROVIDERS["anthropic"])
 
 
-def run(cfg: dict, account: dict | None = None) -> list[str]:
-    """All failures found (empty list = clear to trade).
+def run(cfg: dict) -> list[str]:
+    """All failures the config alone can convict (empty list = clear to trade).
 
-    `account` is OPTIONAL and defaults to None so every existing caller
-    (cfg only) keeps working unchanged. When supplied, it answers a question
-    config alone cannot: is this brokerage account permitted to do what the
-    config tells the bot to do? Config can be internally consistent — a
-    strategy configured to short — while the account it will actually trade
-    on cannot short at all; only the broker's own capability flags can catch
-    that, so it is passed in rather than inferred from cfg.
+    Pure by design (see the module docstring): no network, so nothing here
+    can depend on the broker's own state. `run_account_checks` is the
+    second, account-aware pass — see its docstring for why that could not
+    live here and still be true to "pure checks, no network".
     """
     fails: list[str] = []
 
@@ -311,10 +308,32 @@ def run(cfg: dict, account: dict | None = None) -> list[str]:
         fails.append(f"memory dir {mem_dir} not writable")
     fails.extend(_ledger_tail_fails(cfg, ledger_path))
 
+    return fails
+
+
+def run_account_checks(cfg: dict, account: dict) -> list[str]:
+    """The second pre-flight pass: failures only the broker's own state can
+    convict, checked once the account is actually known.
+
+    `run(cfg)` cannot do this and stay true to its own module docstring
+    ("Pure checks, no network") — a strategy configured to short is
+    internally consistent config; whether the ACCOUNT it will trade on can
+    short at all is a fact about the broker, not the file. Kept as a
+    separate function rather than an optional parameter on `run()` so a
+    caller cannot half-run this by forgetting to pass `account=`: main.py's
+    2026-08 defect was exactly that — `preflight.run(cfg)` ran before
+    `Broker(cfg)` even existed, so no caller ever had an account to pass,
+    and this check was unreachable in production despite passing every test
+    written for it in isolation. Call this explicitly, after the broker and
+    its account are both in hand, and treat a non-empty result exactly like
+    a `run()` failure — abort the cycle before it trades.
+    """
+    fails: list[str] = []
+
     # A bot configured to short on an account that cannot short does not fail
     # loudly — it fails one order at a time, at submission, and quietly runs
     # long-only. Preflight's polarity is FAIL SAFE, so this is a refusal.
-    if account is not None and not account.get("shorting_enabled", False):
+    if not account.get("shorting_enabled", False):
         shorting = [name for name, s in (cfg.get("strategies") or {}).items()
                     if s.get("enabled") and s.get("short_bottom_fraction")]
         if shorting:

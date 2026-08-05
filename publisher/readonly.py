@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "src"))
 
 import store as store_mod  # noqa: E402
+from strategies.base import ENTRY_ACTIONS  # noqa: E402
 
 
 class ReadOnlyLedger:
@@ -29,10 +30,18 @@ class ReadOnlyLedger:
         return self._store.read_all()
 
     def open_buys(self) -> dict:
+        """Mirror of `Ledger.open_buys` — ENTRY_ACTIONS, not `== "buy"`.
+
+        Extended in lockstep with the writable Ledger deliberately. This is a
+        MIRROR whose whole value is agreeing with the thing it mirrors; had
+        only the writable side learned about shorts, the published dashboard
+        and the bot would have disagreed about how many positions are open,
+        which is precisely the class of contradiction the per-position marks
+        were added to catch on 2026-07-25."""
         out = {}
         for r in self.all_records():
             if r.get("type") == "decision" and r.get("executed") \
-                    and r.get("action") == "buy":
+                    and r.get("action") in ENTRY_ACTIONS:
                 out[r["trade_id"]] = r
             elif r.get("type") == "outcome":
                 out.pop(r.get("trade_id"), None)

@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from strategies.base import ENTRY_ACTIONS  # noqa: E402
+
 HEARTBEAT_FILE = "memory/heartbeat"
 HALT_FILE = "HALT"
 # The heartbeat is written by the trading cycle, which fires at 15:45 ET on
@@ -107,12 +109,18 @@ def heartbeat_age_hours(path: str = HEARTBEAT_FILE,
 
 
 def _open_buys_count(records: list[dict]) -> int:
-    """Open executed buys, matching ledger.open_buys / ReadOnlyLedger — an
-    outcome record closes its trade. Used by the read-only status path."""
+    """Open executed ENTRIES, matching ledger.open_buys / ReadOnlyLedger — an
+    outcome record closes its trade. Used by the read-only status path.
+
+    ENTRY_ACTIONS, moved in lockstep with both of those. This docstring's
+    claim to "match" them is the whole contract of this function, and leaving
+    `== "buy"` here would have made health report a smaller open book than the
+    bot is actually carrying the moment a short exists — a monitor that
+    disagrees with the thing it monitors."""
     open_ids: set = set()
     for r in records:
         if (r.get("type") == "decision" and r.get("executed")
-                and r.get("action") == "buy"):
+                and r.get("action") in ENTRY_ACTIONS):
             open_ids.add(r.get("trade_id"))
         elif r.get("type") == "outcome":
             open_ids.discard(r.get("trade_id"))

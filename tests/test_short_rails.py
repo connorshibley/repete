@@ -495,16 +495,20 @@ def _short_cfg(enabled):
 
 
 def test_preflight_refuses_shorts_when_the_broker_forbids_them():
+    """The account-aware check moved to its own function (short-path Fix 2b,
+    Phase 2): `run(cfg)` never had an account to test in production — see
+    run_account_checks' docstring — so this exercises the function main.py
+    actually calls, not the pure pass that never could."""
     import preflight
-    fails = preflight.run(_short_cfg(True),
-                          account={"shorting_enabled": False})
+    fails = preflight.run_account_checks(_short_cfg(True),
+                                         {"shorting_enabled": False})
     assert any("shorting" in f for f in fails)
 
 
 def test_preflight_is_silent_when_the_broker_allows_shorts():
     import preflight
-    fails = preflight.run(_short_cfg(True),
-                          account={"shorting_enabled": True})
+    fails = preflight.run_account_checks(_short_cfg(True),
+                                         {"shorting_enabled": True})
     assert not any("shorting" in f for f in fails)
 
 
@@ -512,17 +516,21 @@ def test_preflight_is_silent_when_no_strategy_shorts():
     """The paired half that matters most right now: Phase 1 ships with shorts
     OFF, so this check must be completely inert until Phase 2."""
     import preflight
-    fails = preflight.run(_short_cfg(False),
-                          account={"shorting_enabled": False})
+    fails = preflight.run_account_checks(_short_cfg(False),
+                                         {"shorting_enabled": False})
     assert not any("shorting" in f for f in fails)
 
 
-def test_preflight_still_works_with_no_account_argument():
-    """Every existing caller passes cfg only. The signature must stay
-    backward-compatible or the cycle aborts at main.py's preflight call."""
+def test_run_no_longer_accepts_an_account_argument():
+    """`run()`'s `account=` parameter is gone, not just unused: keeping a
+    parameter that silently did nothing when the one production call site
+    never passed it is exactly how this guard went dead in the first place
+    (never firing, never failing a test, never raising). A caller who still
+    thinks passing account= here enables the check must get a loud TypeError,
+    not a quiet no-op — use run_account_checks(cfg, account) instead."""
     import preflight
-    fails = preflight.run(_short_cfg(False))
-    assert not any("shorting" in f for f in fails)
+    with pytest.raises(TypeError):
+        preflight.run(_short_cfg(False), account={"shorting_enabled": False})
 
 
 # ---- invariant #2 holds on the short side ----

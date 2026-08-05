@@ -20,6 +20,7 @@ from ledger import Ledger
 from lessons import LessonStore
 from judgments import (JudgmentStore, calibration_metrics, calibration_line,
                        confidence_calibration_lines)
+from strategies.base import ENTRY_ACTIONS
 
 GATE_MIN_DAYS = 60          # "2-3 months" — use the low end as the floor
 GATE_MIN_CLOSED = 30
@@ -122,13 +123,18 @@ def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
         "n_decisions": len(decisions),
         "n_executed": len(executed),
         "n_closed": len(closed),
-        # Executed BUYS minus closed — `executed` also holds sells, and a sell
-        # is an exit, not an opening. Counting them inflated the open book by
+        # Executed ENTRIES minus closed — `executed` also holds exits, and an
+        # exit is not an opening. Counting them inflated the open book by
         # one per closed trade: the live ledger read "6 open positions" against
         # a 5-row table and a broker reporting 5. Found 2026-07-25, when
         # per-position marks made the page contradict itself. This is the same
-        # definition `Ledger.open_buys()` has always used.
-        "n_open": (len([r for r in executed if r.get("action") == "buy"])
+        # definition `Ledger.open_buys()` has always used — including its Phase
+        # 2 move to ENTRY_ACTIONS, made here in lockstep because
+        # tests/test_review.py pins `n_open == len(led.open_buys())` and
+        # because a count that drifted from the ledger's own is exactly the
+        # self-contradicting page this line was written to fix.
+        "n_open": (len([r for r in executed
+                        if r.get("action") in ENTRY_ACTIONS])
                    - len(closed)) if executed else 0,
         "win_rate": len(wins) / len(closed) if closed else None,
         "profit_factor": (gross_win / gross_loss if gross_loss > 0

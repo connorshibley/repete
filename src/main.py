@@ -37,6 +37,7 @@ import store
 import strategies
 import strategy
 import x_poster
+from strategies.base import ENTRY_ACTIONS, EXIT_ACTIONS
 
 
 def journal_and_link(trade: dict, cfg: dict) -> str | None:
@@ -97,8 +98,21 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
     """
     entry = open_rec.get("entry_price") or exit_price
     qty = open_rec.get("qty") or 0
-    pnl = (exit_price - entry) * qty
-    pnl_pct = (exit_price - entry) / entry * 100 if entry else 0.0
+    # A short profits when the exit is BELOW entry. Quantity is stored
+    # POSITIVE on both sides (direction lives in `action`), so the un-signed
+    # `(exit - entry) * qty` booked a profitable short as a LOSS — and
+    # `result` ("win" if pnl > 0) inverted with it. That outcome record is
+    # the input to the lesson generator, the scorecard and the decay
+    # monitor, so the learning loop would have been fed a mirror image of
+    # the bot's own short book: exactly the failure that is hardest to spot
+    # later, because every number is plausible and merely backwards.
+    #
+    # Keyed off `== "short"` like risk.portfolio_heat, so a record with no
+    # `action` — every record written before Group C — reads as a long and
+    # computes byte-identically to before.
+    direction = -1 if open_rec.get("action") == "short" else 1
+    pnl = direction * (exit_price - entry) * qty
+    pnl_pct = direction * (exit_price - entry) / entry * 100 if entry else 0.0
 
     # Alpha over the identical window. Best-effort by design: a benchmark
     # problem must never block recording the trade that actually happened.
@@ -149,7 +163,13 @@ def handle_close(trade_id: str, open_rec: dict, exit_price: float,
                                         source=trade_id)
         ledger.log_event("lesson_created", f"{lid} from trade {trade_id}")
 
-    recap = {**closed, "action": "sell"}
+    # The action that CLOSED the position, not the one that opened it —
+    # `closed` still carries the entry action, and the recap describes the
+    # exit. A short is closed by a cover, so the hardcoded "sell" would have
+    # announced a covered short to the public feed (and to the post archive
+    # the blog and lesson loop read back) as a sell. Identity for a long.
+    recap = {**closed,
+             "action": "cover" if open_rec.get("action") == "short" else "sell"}
     if lesson:  # close recaps carry what the bot learned
         recap["lesson_hypothesis"] = lesson["hypothesis"]
     link = journal_and_link(recap, cfg)
@@ -188,9 +208,20 @@ def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
             if "filled" in sub["status"].lower() and sub["filled_avg_price"]:
                 return sub["filled_avg_price"], _leg_reason(sub.get("type"))
 
+    # The side that CLOSES this position, not "sell" unconditionally: a long
+    # is closed by a SELL, a short by a BUY. Matching "sell" for a short
+    # either found nothing or — the realistic case, since closed_orders comes
+    # back newest-first and the short's own opening SELL is in that list —
+    # matched the ENTRY order and returned the entry price as the exit.
+    # handle_close then wrote a fabricated ~$0 P&L into the append-only
+    # record, which is worse than failing to resolve: a false outcome is
+    # indistinguishable from a real one afterwards. A record with no `action`
+    # (everything written before Group C) is a long and matches "sell" as
+    # before.
+    closing_side = "buy" if open_rec.get("action") == "short" else "sell"
     try:
         for o in broker.closed_orders(symbol):
-            if o["side"].lower().endswith("sell") and o["filled_avg_price"]:
+            if o["side"].lower().endswith(closing_side) and o["filled_avg_price"]:
                 reason = ("stop_loss" if "stop" in o["type"].lower()
                           else "take_profit" if "limit" in o["type"].lower()
                           else "closed_order")
@@ -266,14 +297,24 @@ def position_entry_ts(rec: dict) -> str | None:
     return rec.get("entry_ts") or rec.get("ts")
 
 
-def _recover_fill_ts(broker, symbol: str) -> str | None:
-    """Real BUY fill time from the broker's closed orders (Alpaca's Position
-    model carries no timestamp). Fail-open: None on any problem."""
+def _recover_fill_ts(broker, symbol: str, action: str = "buy") -> str | None:
+    """Real ENTRY fill time from the broker's closed orders (Alpaca's Position
+    model carries no timestamp). Fail-open: None on any problem.
+
+    `action` selects the side that OPENED the position: a long is opened by a
+    BUY, a short by a SELL. Matching "buy" unconditionally meant an adopted
+    short recovered either nothing or a prior round trip's cover, so its
+    holding clock restarted at the adoption write and the swing guard blocked
+    its exit for another min_holding_days — the regression this function was
+    added to fix, still live on the short side. Defaults to the long side, so
+    any caller that does not pass it behaves exactly as before."""
     if broker is None:
         return None
+    opening_side = "sell" if action == "short" else "buy"
     try:
         for o in broker.closed_orders(symbol):
-            if str(o.get("side", "")).lower().endswith("buy") and o.get("filled_at"):
+            if (str(o.get("side", "")).lower().endswith(opening_side)
+                    and o.get("filled_at")):
                 return o["filled_at"]
     except Exception as e:  # noqa: BLE001 — adoption must never crash a cycle
         log.warning("Fill-time lookup failed for %s: %s", symbol, e)
@@ -295,15 +336,29 @@ def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
         if symbol in tracked:
             continue
         try:
+            # A broker reports a SHORT's qty NEGATIVE (src/broker.py copies
+            # Alpaca's own float(p.qty)), so `qty <= 0: continue` skipped
+            # every short — a ghost short stayed a ghost forever, which is
+            # precisely the silent omission from the P&L, the learning loop
+            # and the public track record this function exists to prevent,
+            # applied to one direction only. `== 0` keeps the real boundary:
+            # a symbol the broker reports FLAT is not a position to rescue.
             qty = int(pos.get("qty") or 0)
-            if qty <= 0:
+            if qty == 0:
                 continue
+            action = "short" if qty < 0 else "buy"
+            qty = abs(qty)      # the ledger stores magnitude; `action` carries
+                                # the direction, as everywhere else in Phase 2
             entry = pos.get("avg_entry")
             if not entry:  # defensive: derive from market value if absent
-                entry = (pos.get("market_value", 0.0) / qty) if qty else 0.0
-            fill_ts = _recover_fill_ts(broker, symbol)
+                # abs(): market_value is negative for a short, and qty is now
+                # positive, so an unsigned divide would record a NEGATIVE
+                # entry price and poison every P&L, stop distance and heat
+                # number derived from it. Identity on a long.
+                entry = (abs(pos.get("market_value", 0.0)) / qty) if qty else 0.0
+            fill_ts = _recover_fill_ts(broker, symbol, action)
             tid = ledger.log_decision(
-                symbol, "buy", "adopted: broker position with no ledger record",
+                symbol, action, "adopted: broker position with no ledger record",
                 {}, None, executed=True,
                 order={"id": None, "symbol": symbol, "adopted": True},
                 entry_price=float(entry), qty=qty,
@@ -407,7 +462,17 @@ def record_fill_quality(broker, ledger: Ledger, max_checks: int = 20):
             if not fill:
                 continue  # not filled yet — retried next cycle
             signal = rec["entry_price"]
-            sign = 1 if rec["action"] == "buy" else -1  # worse-than-signal is +
+            # Worse-than-signal is +, and "worse" depends on whether the order
+            # BUYS or SELLS — not on whether it opens or closes. An order that
+            # pays (buy to open, cover to close) is worse the HIGHER it fills;
+            # one that receives (sell to close, short to open) is worse the
+            # LOWER it fills. `== "buy"` happened to get short right and got
+            # COVER — the only way a short is ever closed — backwards,
+            # reporting every cover's slippage COST as a saving and biasing
+            # GUIDE §9's measured-cost comparison in the flattering direction.
+            # No-op for "buy" and "sell", the only two actions anything in
+            # this repo currently emits.
+            sign = 1 if rec["action"] in ("buy", "cover") else -1
             bps = sign * (fill - signal) / signal * 1e4
             ledger.log_fill_quality(rec["trade_id"], rec["symbol"],
                                     rec["action"], signal, fill, bps)
@@ -636,6 +701,29 @@ def _bootstrap_cycle():
     account = broker.account()          # deterministic state: always from the broker,
     positions = broker.positions()      # never from memory or prior LLM output.
     log.info("Equity: $%.2f | Positions: %s", account["equity"], list(positions) or "none")
+
+    # Second pre-flight pass: account-aware, so it can only run now that the
+    # broker's own account is known. Aborts the cycle the same way the pure
+    # pass above does — this check was previously unreachable at all, because
+    # nothing ever called preflight.run(cfg, account=...) here or anywhere
+    # else in production; run_account_checks exists so it has exactly one
+    # call site, this one.
+    acct_fails = preflight.run_account_checks(cfg, account)
+    if acct_fails:
+        for f_msg in acct_fails:
+            log.critical("PREFLIGHT: %s", f_msg)
+        try:
+            ledger.log_event("preflight_failure", "; ".join(acct_fails)[:500])
+        except Exception:  # noqa: BLE001 — even the ledger may be the problem
+            pass
+        try:
+            from watchdog import notify
+            notify("trading-agent PREFLIGHT FAILED",
+                   acct_fails[0][:120] + (" (+more)" if len(acct_fails) > 1 else ""))
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     return cfg, ledger, memory, broker, account, positions, halted
 
 
@@ -1033,14 +1121,21 @@ def _run_cycle(completed_bars_only: bool = False):
     regime_label = None
 
     def _would_be_brackets(sig, bars, price):
-        """Deterministic bracket snapshot for blocked buys, so the
+        """Deterministic bracket snapshot for blocked ENTRIES, so the
         counterfactual later replays the same protective exits."""
-        if sig.action != "buy":
+        if sig.action not in ENTRY_ACTIONS:
             return None, None
         bcfg = cfg["risk"].get("brackets", {})
         prices = risk.bracket_prices(
             price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
-            vol_bucket=(market_regime or {}).get("vol"))
+            vol_bucket=(market_regime or {}).get("vol"),
+            # A short's bracket geometry is INVERTED (stop above entry).
+            # Without this the counterfactual would record a long's stop
+            # against a refused short, and every judge-calibration number
+            # measured off that judgment would be scored against protective
+            # exits that could never have been placed. `sig.action` is
+            # exactly "buy" or "short" here — the guard above proved it.
+            direction=sig.action)
         return prices if prices else (None, None)
 
     def _process_signal(sig, symbol, bars, price, entry_ts, open_rec,
@@ -1051,7 +1146,7 @@ def _run_cycle(completed_bars_only: bool = False):
         # Vendor cross-check verdict (set after the bars fetch): entries are
         # blocked before the LLM even looks — deterministic, and no judge can
         # override a data-integrity stop. Exits pass through untouched.
-        if sig.action == "buy" and entries_blocked_reason:
+        if sig.action in ENTRY_ACTIONS and entries_blocked_reason:
             tid = ledger.log_decision(
                 symbol, sig.action, sig.reason, sig.indicators, None,
                 executed=False,
@@ -1103,7 +1198,7 @@ def _run_cycle(completed_bars_only: bool = False):
         # it was never reached. Writing this to the judgment ledger as a veto
         # would attribute a decision to a model that never made one, and every
         # calibration measured off that ledger would inherit the lie.
-        if sig.action == "buy" and review.get("unavailable_block"):
+        if sig.action in ENTRY_ACTIONS and review.get("unavailable_block"):
             blocked_reason = (
                 f"judge unavailable "
                 f"({review.get('degraded_reason', 'unknown')}) and "
@@ -1116,7 +1211,8 @@ def _run_cycle(completed_bars_only: bool = False):
                 tid, symbol, sig.action, "degraded_block", 1.0, price,
                 regime_label, kind="degraded", executed=False,
                 reasoning=blocked_reason, strategy=sig.strategy)
-            log.warning("%s: BUY blocked — %s", symbol, blocked_reason)
+            log.warning("%s: %s blocked — %s", symbol, sig.action.upper(),
+                        blocked_reason)
             return "blocked"
 
         if review["verdict"] == "veto":
@@ -1140,15 +1236,27 @@ def _run_cycle(completed_bars_only: bool = False):
         # param-gated) needs the stop, and the same prices are reused at
         # execution so the sized risk and the placed stop always match.
         bracket_prices = None
-        if sig.action == "buy":
+        if sig.action in ENTRY_ACTIONS:
             bcfg = cfg["risk"].get("brackets", {})
+            # `direction=sig.action` on both calls. Inside this branch
+            # `sig.action` is exactly "buy" or "short" (ENTRY_ACTIONS), which
+            # is precisely the vocabulary risk.py's `direction` parameter
+            # takes, and for a buy it is byte-identical to the default.
+            #
+            # bracket_prices: a short's stop sits ABOVE entry. Sizing reads
+            # bracket_prices[0] as its stop below, so passing direction to one
+            # and not the other would hand stop-distance sizing a stop on the
+            # wrong side of price — which risk._risk_sizing_active refuses,
+            # silently dropping the short back to notional sizing.
             bracket_prices = risk.bracket_prices(
                 price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
-                vol_bucket=(market_regime or {}).get("vol"))
+                vol_bucket=(market_regime or {}).get("vol"),
+                direction=sig.action)
             full_qty = risk.size_order(account, price, cfg, bars=bars,
                                        strategy=sig.strategy,
                                        stop_price=bracket_prices[0]
-                                       if bracket_prices else None)
+                                       if bracket_prices else None,
+                                       direction=sig.action)
             qty = int(full_qty * review["scale"])
             # Whole-share truncation can silently delete an order. Both causes
             # used to surface as risk.py's "account too small for caps", which
@@ -1185,10 +1293,17 @@ def _run_cycle(completed_bars_only: bool = False):
                 log.warning("%s: %s", symbol, why)
                 return "blocked"
         else:
-            qty = int(positions.get(symbol, {}).get("qty", 0))  # exit full position
+            # abs(): a broker reports a SHORT's qty NEGATIVE (src/broker.py
+            # copies Alpaca's `float(p.qty)` verbatim, and the in-cycle view
+            # below now matches it). Without abs() a "cover" would compute a
+            # negative qty, `pure_checks` would raise `zero_qty`, and the
+            # short would be TRAPPED — a rail refusing the exit is the risk-
+            # enlarging inversion this codebase refuses everywhere else. A
+            # long's qty is already positive, so abs() is a no-op on it.
+            qty = abs(int(positions.get(symbol, {}).get("qty", 0)))  # full exit
 
         try:
-            if sig.action == "buy":
+            if sig.action in ENTRY_ACTIONS:
                 kill = risk.live_kill_blocked(ledger.closed_trades(),
                                               sig.strategy, cfg)
                 if kill:
@@ -1224,7 +1339,7 @@ def _run_cycle(completed_bars_only: bool = False):
         # Entry drift guard: last line of defense against acting on a price
         # the live market has left behind (fails OPEN on a quote outage —
         # bars_fresh covers that class). Entries only, never exits.
-        if sig.action == "buy":
+        if sig.action in ENTRY_ACTIONS:
             try:
                 live = broker.latest_price(symbol)
             except Exception as e:  # noqa: BLE001 — quote outage != bad price
@@ -1251,22 +1366,28 @@ def _run_cycle(completed_bars_only: bool = False):
                     tid, symbol, sig.action, "rails_reject", 1.0, price,
                     regime_label, kind="rails", executed=False, reasoning=msg,
                     stop_price=stop, tp_price=tp, strategy=sig.strategy)
-                log.warning("%s: buy REJECTED by drift guard — %s", symbol, msg)
+                log.warning("%s: %s REJECTED by drift guard — %s",
+                            symbol, sig.action, msg)
                 return "blocked"
 
-        # A strategy sell of a bracketed position must first cancel the
-        # surviving protective legs (they reserve the shares).
-        if sig.action == "sell" and open_rec and \
+        # A strategy EXIT of a bracketed position must first cancel the
+        # surviving protective legs (they reserve the shares). EXIT_ACTIONS,
+        # not "sell": a short's bracket legs reserve its shares exactly as a
+        # long's do, so a "cover" left on the old condition would submit its
+        # closing BUY while the stop leg still held the position — the
+        # double-fill this cancel exists to prevent, on the short side.
+        if sig.action in EXIT_ACTIONS and open_rec and \
                 (open_rec.get("order") or {}).get("order_class") in ("bracket", "oto"):
             try:
                 broker.cancel_open_orders(symbol)
-            except Exception as e:  # noqa: BLE001 — never risk a double-sell
+            except Exception as e:  # noqa: BLE001 — never risk a double-exit
                 ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                     review, executed=False,
-                                    detail=f"leg cancel failed, sell skipped: {e}",
+                                    detail=f"leg cancel failed, "
+                                           f"{sig.action} skipped: {e}",
                                     regime=regime_label, strategy=sig.strategy)
-                log.error("%s: leg cancel failed, skipping sell this cycle — %s",
-                          symbol, e)
+                log.error("%s: leg cancel failed, skipping %s this cycle — %s",
+                          symbol, sig.action, e)
                 return "blocked"
 
         # --- Execute ---
@@ -1276,17 +1397,29 @@ def _run_cycle(completed_bars_only: bool = False):
         coid = (f"ta-{symbol}-{sig.action}-"
                 f"{datetime.now(timezone.utc).strftime('%Y%m%d')}")
         try:
-            if sig.action == "buy" and bracket_prices:
+            if sig.action in ENTRY_ACTIONS and bracket_prices:
                 # Protective legs reuse the exact prices sizing saw above. If the
                 # bracket submission fails we must NOT fall back to a naked market
                 # order: the quantity may have been stop-distance-sized (meanrev),
                 # and a young position with no broker-side stop can only be exited
                 # by the daily-loss kill switch (the swing guard blocks strategy
                 # exits before min_holding_days). Refuse the entry instead.
+                #
+                # `side`/`entry_price` are passed ONLY for a short. Phase 1 made
+                # both REQUIRED for a short (its loss is unbounded, so its stop
+                # may not go unchecked) and left `entry_price` OPTIONAL for a
+                # long precisely because this call site has never passed one —
+                # passing it now would newly activate the long geometry check on
+                # the live path, which is the byte-identical promise this group
+                # is built around. Longs therefore send exactly the arguments
+                # they sent before this commit, positionally and by keyword.
+                short_kwargs = ({"side": sig.action, "entry_price": price}
+                                if sig.action == "short" else {})
                 try:
                     order = broker.bracket_market_order(symbol, qty,
                                                         *bracket_prices,
-                                                        client_order_id=coid)
+                                                        client_order_id=coid,
+                                                        **short_kwargs)
                 except Exception as e:  # noqa: BLE001 — no naked stop-sized entry
                     ledger.log_decision(
                         symbol, sig.action, sig.reason, sig.indicators, review,
@@ -1312,15 +1445,31 @@ def _run_cycle(completed_bars_only: bool = False):
         risk.record_trade()
         # Keep the in-cycle position view current so max_open_positions and
         # the concentration cap see THIS cycle's entries/exits too.
-        if sig.action == "buy":
-            positions[symbol] = {"qty": qty, "market_value": qty * price,
+        if sig.action in ENTRY_ACTIONS:
+            # SIGNED, matching what broker.positions() returns for a real
+            # short — src/broker.py copies Alpaca's own `float(p.qty)` and
+            # `float(p.market_value)`, both NEGATIVE for a short — so the
+            # in-cycle view and the broker's view agree on sign, not just on
+            # membership.
+            #
+            # Before this fix a "short" fell into the `else` and POPPED the
+            # symbol. Within the same cycle that made Phase 1's net-exposure
+            # band read a short book as flat (net_exposure_pct sums signed
+            # market_value) and the down-regime gross cap undercount it by
+            # the whole position (that cap sums magnitudes over the same
+            # dict). Both rails were merged days before anything could emit
+            # a short, so nothing would have failed — the rails would simply
+            # have been blind to every short opened earlier in the cycle.
+            signed_qty = -qty if sig.action == "short" else qty
+            positions[symbol] = {"qty": signed_qty,
+                                 "market_value": signed_qty * price,
                                  "avg_entry": price, "unrealized_pl": 0.0}
         else:
             positions.pop(symbol, None)
         # Record the game plan on ENTRIES only — an exit has no forward plan,
         # and inventing one would be noise in the record.
         plan = None
-        if sig.action == "buy":
+        if sig.action in ENTRY_ACTIONS:
             try:
                 plan = trade_plan.build(sig, cfg, price, qty, order,
                                         regime_label, review)
@@ -1332,20 +1481,30 @@ def _run_cycle(completed_bars_only: bool = False):
                                        entry_price=price, qty=qty, detail=detail_tag,
                                        regime=regime_label, strategy=sig.strategy,
                                        trade_plan=plan)
-        if sig.action == "buy":
+        if sig.action in ENTRY_ACTIONS:
             # Mirror this entry into the in-cycle open-trades view so the
             # portfolio-heat cap counts same-cycle entries too — otherwise a
-            # later buy this cycle measures heat against the stale cycle-start
-            # book. (max_open_positions and the correlation cap already see
-            # same-cycle entries via `positions`; this closes the gap.)
+            # later entry this cycle measures heat against the stale
+            # cycle-start book. (max_open_positions and the correlation cap
+            # already see same-cycle entries via `positions`; this closes the
+            # gap.)
+            #
+            # `sig.action`, not the literal "buy" it used to hardcode. Group A
+            # made risk.portfolio_heat pick the short formula off
+            # `rec.get("action") == "short"` — and this is the only writer of
+            # that key, so hardcoding "buy" left that fix permanently inert: a
+            # short's stop sits above entry, the long formula (entry - stop)
+            # goes negative, and the max(..., 0.0) clamp zeroed every short's
+            # real risk out of the heat cap invisibly.
             open_trades[trade_id] = {
-                "symbol": symbol, "action": "buy", "strategy": sig.strategy,
+                "symbol": symbol, "action": sig.action, "strategy": sig.strategy,
                 "qty": qty, "entry_price": price, "order": order,
                 "outcome": None,
             }
-        if sig.action == "buy":  # judge accountability: approvals get scored on close
+        if sig.action in ENTRY_ACTIONS:  # judge accountability: approvals scored on close
             memory.judgments.log_judgment(
-                trade_id, symbol, "buy", review["verdict"], review.get("scale", 1.0),
+                trade_id, symbol, sig.action, review["verdict"],
+                review.get("scale", 1.0),
                 price, regime_label, kind="llm", executed=True,
                 reasoning=review.get("reasoning", ""),
                 stop_price=order.get("stop_price"),
@@ -1355,12 +1514,16 @@ def _run_cycle(completed_bars_only: bool = False):
         log.info("%s: EXECUTED %s x%d @ ~$%.2f (trade %s, %s)",
                  symbol, sig.action.upper(), qty, price, trade_id, sig.strategy)
 
-        if sig.action == "buy":
-            recap = {"symbol": symbol, "action": "buy", "qty": qty,
+        if sig.action in ENTRY_ACTIONS:
+            # `sig.action`, not "buy": the public journal and the recap post
+            # are this bot's track record, and captioning a short as a buy
+            # would misstate the direction of a real trade to readers — and
+            # to the news-memory/lesson loop that reads the journal back.
+            recap = {"symbol": symbol, "action": sig.action, "qty": qty,
                      "entry_price": price, "strategy_reason": sig.reason,
                      "strategy": sig.strategy, "llm_reasoning": review["reasoning"]}
             link = journal_and_link(
-                {"trade_id": trade_id, "symbol": symbol, "action": "buy",
+                {"trade_id": trade_id, "symbol": symbol, "action": sig.action,
                  "qty": qty, "entry_price": price, "strategy": sig.strategy,
                  "strategy_reason": sig.reason, "indicators": sig.indicators,
                  "llm_review": review, "order": order,
@@ -1368,7 +1531,7 @@ def _run_cycle(completed_bars_only: bool = False):
             x_poster.post_recap(recap, cfg, llm.write_x_post(recap, cfg),
                                 link=link)
         else:
-            # find the open buy this sell closes
+            # find the open ENTRY this exit closes
             for tid, rec in list(open_trades.items()):
                 if rec["symbol"] == symbol:
                     # all_bars is populated in Phase 1, before this closure is
@@ -1448,7 +1611,13 @@ def _run_cycle(completed_bars_only: bool = False):
             sig = strategies.generate(owner, symbol, bars, cfg, True,
                                       cross_section=xs_ctx.get(owner),
                                       entry_ts=entry_ts)
-            if sig.action == "sell":
+            # EXIT_ACTIONS, not "sell": the owning strategy of a SHORT closes
+            # it with a "cover", and on the old condition that cover fell into
+            # the `else` and was logged as a HOLD — the position's own exit
+            # signal silently discarded, every cycle, forever. A "short" or
+            # "buy" arriving here still falls to HOLD: this branch only ever
+            # exits a position it already owns, it never pyramids into one.
+            if sig.action in EXIT_ACTIONS:
                 _process_signal(sig, symbol, bars, price, entry_ts, open_rec)
             else:
                 ledger.log_decision(symbol, "hold", sig.reason, sig.indicators,
@@ -1458,7 +1627,8 @@ def _run_cycle(completed_bars_only: bool = False):
             continue
 
         # Flat symbol: consult enabled strategies in priority order; the
-        # first buy that survives review + rails takes ownership.
+        # first ENTRY (buy or short) that survives review + rails takes
+        # ownership.
         is_nominated = symbol in nominated
         if is_nominated and news_entries >= cfg.get("news", {}).get(
                 "max_news_entries_per_cycle", 1):
@@ -1495,7 +1665,7 @@ def _run_cycle(completed_bars_only: bool = False):
                 continue
             sig = strategies.generate(name, symbol, bars, cfg, False,
                                       cross_section=xs_ctx.get(name))
-            if sig.action != "buy":
+            if sig.action not in ENTRY_ACTIONS:
                 hold_reasons[name] = {"reason": sig.reason, **sig.indicators}
                 continue
             # §23 relative-volume confirmation. Same rail, same helper, same
