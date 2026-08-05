@@ -156,14 +156,42 @@ class Broker:
                      client_order_id: str | None = None) -> dict:
         # client_order_id = idempotency key: Alpaca rejects a duplicate, so a
         # crash-and-rerun cycle cannot double-submit the same intended order.
+        #
+        # Explicit map, no fallthrough — the same fix Phase 1 already made to
+        # bracket_market_order. "cover" is an EXIT (closes a short) and must
+        # be a BUY; the old `... if side == "buy" else SELL` sent it as a
+        # SELL, which doubles the short instead of closing it, silently —
+        # nothing raised, nothing logged. "short" is an ENTRY and must be a
+        # SELL (opens the short) — it happened to fall into the old
+        # fallthrough's SELL bucket too, but by accident, alongside every
+        # other unrecognised value. Anything else — a typo, a wrong constant
+        # — is refused rather than defaulting to SELL, which is exactly what
+        # let "cover" slip through unnoticed before.
+        if side in ("buy", "cover"):
+            order_side = OrderSide.BUY
+        elif side in ("sell", "short"):
+            order_side = OrderSide.SELL
+        else:
+            raise ValueError(
+                f"side must be 'buy', 'sell', 'short', or 'cover', got {side!r}")
         order = self.trading.submit_order(MarketOrderRequest(
             symbol=symbol,
             qty=qty,
-            side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+            side=order_side,
             time_in_force=TimeInForce.DAY,
             client_order_id=client_order_id,
         ))
         log.info("Order submitted: %s %s x%s (id=%s)", side, symbol, qty, order.id)
+        # `side` echoes the INPUT verbatim, not the broker-level BUY/SELL —
+        # same choice bracket_market_order made (it returns "short", not
+        # "sell"). Nothing in this codebase reads this key: main.py stores
+        # the whole dict under the ledger record's "order" field for audit,
+        # and every place that branches on direction (fill-quality sign,
+        # trade_plan, evidence.lineage) reads the ledger record's "action"
+        # field instead, which already carries "cover"/"short" losslessly.
+        # Collapsing to "buy"/"sell" here would throw away exactly the
+        # buy-vs-cover / sell-vs-short distinction this group exists to get
+        # right, for no consumer that asked for it.
         return {"id": str(order.id), "symbol": symbol, "qty": qty, "side": side,
                 "status": str(order.status)}
 

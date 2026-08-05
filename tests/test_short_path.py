@@ -34,7 +34,10 @@ Boundary pairs throughout, in the style of tests/test_short_rails.py: each
 short-side assertion sits beside its long-side twin, differing only in the
 direction being sized or bracketed.
 """
+import pytest
+
 import risk
+from test_short_rails import _FakeTrading, _broker_with
 
 
 ACCOUNT = {"equity": 100_000.0, "cash": 100_000.0,
@@ -353,3 +356,80 @@ def test_short_bracket_is_none_when_atr_is_zero_or_negative_too():
     cfg = _cfg()
     assert risk.bracket_prices(100.0, 0.0, cfg, direction="short") is None
     assert risk.bracket_prices(100.0, -1.0, cfg, direction="short") is None
+
+
+# ---------------------------------------------------------------------------
+# broker.market_order: the last untreated case of "anything that isn't buy is
+# a sell". Phase 1 removed that fallthrough from bracket_market_order; this
+# section pins the same fix here. main.py routes every non-bracket action
+# (buy-without-a-bracket, sell, short, cover) through this one function as
+# `broker.market_order(symbol, qty, sig.action, ...)`, so an un-fixed
+# fallthrough sends "cover" to SELL — doubling a losing short instead of
+# closing it — with nothing raising and nothing logging.
+#
+# Boundary pairs throughout, reusing tests/test_short_rails.py's `_FakeTrading`
+# (captures the submitted request instead of hitting the network) rather than
+# inventing a second fake trading client for the same job.
+# ---------------------------------------------------------------------------
+
+def test_a_buy_still_submits_a_BUY():
+    """The unchanged case — the paired half of the cover test below."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).market_order("AAPL", 10, "buy")
+    assert fake.requests[0].side == OrderSide.BUY
+
+
+def test_a_cover_submits_a_BUY_not_a_SELL():
+    """The defect this group exists to fix: covering a short must submit a
+    BUY. Under the old `... if side == "buy" else SELL` fallthrough this sent
+    a SELL, which doubles the short instead of closing it — silently, with no
+    exception and no log line to catch it."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).market_order("AAPL", 10, "cover")
+    assert fake.requests[0].side == OrderSide.BUY
+
+
+def test_a_sell_still_submits_a_SELL():
+    """The unchanged case — the paired half of the short test below."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).market_order("TSLA", 10, "sell")
+    assert fake.requests[0].side == OrderSide.SELL
+
+
+def test_a_short_still_submits_a_SELL():
+    """Opening a short was already correct under the old fallthrough — by
+    accident, since it fell into the same "not buy" bucket as every other
+    unrecognised value. Pinned here so the explicit mapping this group adds
+    cannot regress the one case the old code happened to get right."""
+    from alpaca.trading.enums import OrderSide
+    fake = _FakeTrading()
+    _broker_with(fake).market_order("TSLA", 10, "short")
+    assert fake.requests[0].side == OrderSide.SELL
+
+
+def test_an_unrecognized_side_is_refused_before_reaching_the_broker():
+    """The other half of the old fallthrough's blast radius: a typo or a
+    wrong constant (anything that is not one of the four known actions) must
+    raise, not silently submit a SELL. `fake.requests` staying empty proves
+    the rejection happened BEFORE `submit_order`, not after."""
+    fake = _FakeTrading()
+    with pytest.raises(ValueError, match="oops"):
+        _broker_with(fake).market_order("AAPL", 10, "oops")
+    assert fake.requests == []
+
+
+def test_all_four_recognized_sides_are_accepted():
+    """The paired half of the rejection test above: every one of the four
+    values main.py's action vocabulary can actually send (ENTRY_ACTIONS =
+    buy/short, EXIT_ACTIONS = sell/cover) must be accepted, not just the two
+    that happen to map to BUY. A fix that narrowed the accepted set instead
+    of widening the rejected one would pass the unknown-side test above and
+    still be broken."""
+    fake = _FakeTrading()
+    b = _broker_with(fake)
+    for side in ("buy", "sell", "short", "cover"):
+        b.market_order("AAPL", 10, side)
+    assert len(fake.requests) == 4
