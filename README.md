@@ -34,16 +34,17 @@ Reformatting is deliberately *not* tampering: the hash tracks meaning, so a
 freeze that cried wolf would be one people learned to bypass.
 
 **A divergence register.** `docs/divergences.md` lists every place the simulator
-and the live bot were found to differ — 12 so far, each closed by a **named
-test**, because "fixed in code" has been wrong here before. Three were found in
-one day by reading code for an unrelated task, which is the honest reason the
-file does not claim to be complete.
+and the live bot were found to differ — **15 as of 2026-08-04**, twelve closed by
+a **named test** and three open by construction, because "fixed in code" has been
+wrong here before. Three of them were found within four days by reading code for
+an adjacent task, which is the honest reason the file does not claim to be
+complete.
 
 **Negative controls on the guards.** Every guard in this repo has been mutated
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**1,160 tests**, offline by design — no credentials, ever, in CI.
+**1,729 tests as of 2026-08-05**, offline by design — no credentials, ever, in CI.
 
 **The record is append-only.** `memory/ledger.jsonl` is the source of truth;
 the dashboard, blog and journal are views rendered from it.
@@ -54,11 +55,16 @@ the dashboard, blog and journal are views rendered from it.
 
 This is the section most repos leave out.
 
-**Every EDGE claim has been rejected.** Every pre-registered claim that some
-edge exists has been rejected. Not quietly dropped — written up in
-`knowledge/backtest_candidates.md` with the verdict, the frozen prior, and what
-the failure did and did not license. That file carries the running count and is
-the only place it is kept.
+**One EDGE claim in fifteen has passed — and it does not mean what it looks
+like.** As of 2026-08-04 the tally is **1 pass in 15**. The §51 pass ran on the
+most survivor-selected universe in the project, carrying **+200.28pp** of
+survivorship inflation — large enough to explain the result. Every spec froze the
+asymmetry before the run — *a FAIL is decisive, a PASS is not* — so the caveat
+was already in place when the pass arrived. §52 then found survivorship-free
+replication **blocked** and **froze the EDGE budget**. None of it was quietly
+dropped: every claim is written up in `knowledge/backtest_candidates.md` with the
+verdict, the frozen prior, and what the result did and did not license. That file
+carries the running count and is the only place it is kept.
 
 **The shipped configuration fails its own gate.** §43 pointed
 `backtest.enablement_gate` — the function that rejected every candidate — at the
@@ -75,6 +81,12 @@ simulator that models what the live bot does. It failed **all four**:
 The bar is buy-and-hold scaled to the exposure the bot actually carried — the
 fair comparison for a bot that spends most of its time in cash.
 
+Both columns come from the same survivor-selected universe, so the comparison is
+fair on its own terms (§48) — but neither number is what a real account would
+have seen. Over the identical 2000–2006 bars the snapshot's universe returned
++138.74% while SPY returned **+8.68%**. §51 sized the same effect at
+**+200.28pp** on the 38-name universe.
+
 **The one historical pass was an artifact.** 2014–2019 was the only period this
 bot ever cleared its own gate. It cleared it on a simulator that did not model
 the LLM judge, which downsizes 58% of live buys. With the judge modelled the
@@ -87,11 +99,11 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 4 closed round-trips** since 2026-07-14 — +16.78%, +10.67%,
-+6.40%, −8.59%. **n=4 decides nothing** in either direction, and no average of
-four numbers belongs in a README. Going live is gated behind **≥30 closed
-trades, ≥3 months, and attorney review**, and at the current rate that is
-months away.
+**Live record: 8 closed round-trips as of 2026-08-04**, since 2026-07-14 —
++16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.05%. **n=8 decides
+nothing** in either direction, and no average of eight numbers belongs in a
+README. Going live is gated behind **≥30 closed trades, ≥60 days, and attorney
+review**, and at the current rate that is months away.
 
 > **No performance number appears in this repo without its benchmark and its
 > sample size.** That rule is why the table above has a bar column and why the
@@ -120,13 +132,13 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 1160, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 1729, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```
 
 Preflight is not a separate command — `src/preflight.py` runs inside every
-cycle (`src/main.py:557`) and **fails the cycle closed** if the config is
+cycle (`src/main.py:576`) and **fails the cycle closed** if the config is
 unsafe, which is the opposite polarity from `deploycheck` (fail-open, advisory).
 A clean start prints nothing from it; a bad one prints `PREFLIGHT: <reason>` and
 stops before any order.
