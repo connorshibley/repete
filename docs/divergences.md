@@ -4,7 +4,7 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Sixteen such differences have been found. Until 2026-07-28 they existed **only as
+Seventeen such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
@@ -12,7 +12,9 @@ in fact for three days without anyone noticing. This file is the list.
 **Open as of 2026-08-05: #13, #14, #15 and #16.** All four are open *by
 construction* rather than by defect — a sampling fact about the live record, two
 judge inputs the simulator has no mechanism to represent, and a cost the paper
-broker does not charge.
+broker does not charge. **#17 is a DEFECT, found and closed the same day**, and
+it is the largest correction here: the simulator let every strategy enter every
+symbol in the snapshot.
 
 That count has been wrong before, in the direction that matters. This file said
 **"Open as of 2026-07-29: none"** while #15 had been open since the initial
@@ -41,6 +43,7 @@ code" is not closed; the repo has been wrong about that before.
 | 10 | **The simulator's equity peak advanced only on buy bars** | **closed 2026-07-28** | `tests/test_sim_peak_tracks_every_bar.py` |
 | 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
 | 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
+| 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
 
 ---
 
@@ -459,3 +462,91 @@ currently exposed to it.
 unchanged and stays frozen under §52; `knowledge/backtest_candidates.md` owns
 that count. This entry adds a required caveat to a future short-leg DIAGNOSTIC,
 and asserts nothing about whether the leg works.
+
+---
+
+## #17 — the simulator ignored per-strategy universes
+
+**Found and CLOSED 2026-08-05**, while reading `backtest.py` for the Phase 3
+short-leg work. It is the largest correction this register has recorded.
+
+`strategies.in_universe` has gated live entries since PR #90 introduced
+per-strategy universes — `main.py:1685`, entries only, with a comment explaining
+why it cannot live inside `generate()`. `simulate_ensemble` had **no
+counterpart**. Every strategy could enter every symbol in the snapshot, so on a
+500-name wide snapshot the incumbent traded 500 names in the simulator and 38
+live.
+
+### Why it hid
+
+The only two universe-scoped strategies, `xsmom` and `reclaim`, are **both
+cross-sectional**. `prepare_one` scopes their ranking, so `generate` answers
+"insufficient history for ranking" for a symbol outside their universe and the
+filter appeared to be working. That is a coincidence of those two being
+cross-sectional, not a filter — a per-symbol strategy with a `universe:` key
+would have traded the whole snapshot with nothing failing.
+
+The three ENABLED strategies have no `universe:` key, which means the core 38.
+They were the ones trading 500.
+
+### What it cost, measured
+
+Shipped configuration, `bars_wide_2022-01-01_2026-07-24.json.gz`, one arm, the
+only change being this fix:
+
+| | before | after |
+|---|---|---|
+| entry signals | 245,213 | 5,347 |
+| **blocked by `drawdown`** | **243,814 (99.4%)** | **4** |
+| executed | 29 | 969 |
+| bars fully in cash | 92.39% | 4.55% |
+| avg deployment | 4.09% | 75.18% |
+| return | −5.26% | +107.77% |
+
+**The mechanism is in the census, not in the return column.** With 500 candidate
+names the signal flow tripped the 10% drawdown latch almost immediately, and
+once latched it refused essentially every entry for the rest of the run — the
+simulator spent 92% of its bars fully in cash. Confined to the 38 names it can
+actually trade, the book never trips it: four drawdown blocks in the entire run.
+
+### What this does and does not say about the record
+
+§48 concluded that "the drawdown rail was masking measurement" and measured it
+blocking 94.58% of buy signals. **That conclusion survives — but a large share of
+the signal flow it was blocking came from names the live bot cannot trade.** The
+rail was masking measurement of a bot that did not exist.
+
+**The +107.77% is NOT evidence of an edge, and must not be read as one.** It is
+a survivor-selected universe (§51 sized the same effect at **+200.28pp**), it is
+not compared against SPY here, and §52's freeze stands unchanged. This entry
+reports a simulator correction, not a result.
+
+**No verdict is reopened or re-scored.** §43, §48, §50 and §51 stand as
+measurements of the bot as simulated then. §41 set that precedent exactly: its
+own simulator finding could have reopened ten verdicts and reopened none. The
+consequence that IS recorded: **re-running any wide-snapshot gate today will not
+reproduce its recorded numbers**, and the reason is this entry rather than
+nondeterminism or a dependency bump.
+
+### CLOSED by `tests/test_sim_honours_universes.py`
+
+Six tests. Entries: a strategy scoped to the sector map cannot enter outside it,
+an unrecognised `universe:` key enters nothing (inheriting `universe_for`'s
+fail-to-nothing polarity), a symbol in no enabled universe is never entered, and
+what the simulator entered is a subset of what `in_universe` — the same function
+`main.py` calls, not a copy — allows.
+
+Exits: `in_universe` starts answering False partway through a run, and positions
+already open must still close on `strategy_sell` rather than being stranded to
+`end_of_data`. That is the half that is easy to break while fixing the other,
+and it is the property `in_universe`'s docstring exists to protect.
+
+Mutation-proven: removing the filter and neutering it are both caught, and a
+control mutation of an unrelated entry guard correctly SURVIVES — so the tests
+are specific to this filter rather than to any change in the loop.
+
+### Not a claim of value
+
+**This is not an EDGE claim and nothing here is gated.** The EDGE tally is
+unchanged at 1-in-15 and frozen; `knowledge/backtest_candidates.md` owns that
+count.

@@ -14,6 +14,28 @@ one frozen `--bars-file` snapshot per comparison (2026-07-17 snapshot:
 `memory/bars_snapshot_2020_2026-07-10.json`). The 07-16 tsmom-gate adoption
 was a casualty of this and was reverted after frozen-data re-validation.
 
+## METHOD NOTE — every WIDE-SNAPSHOT number here predates divergence #17 (2026-08-05)
+Until 2026-08-05 `simulate_ensemble` applied **no per-strategy universe filter**,
+so on a 500-name wide snapshot the three enabled strategies traded all 500 names
+while live they trade 38. Measured on `bars_wide_2022-01-01_2026-07-24`, shipped
+config, with the fix as the only change: entry signals 245,213 → 5,347,
+**drawdown-blocked 243,814 → 4**, deployment 4.09% → 75.18%, bars fully in cash
+92.39% → 4.55%.
+
+**Consequence: re-running §43, §48, §50 or §51 today will NOT reproduce their
+recorded numbers**, and this is the reason — not nondeterminism, not a
+dependency bump.
+
+**No verdict is withdrawn or re-scored.** They stand as measurements of the bot
+as simulated then; §41 set that precedent when its own simulator finding could
+have reopened ten verdicts and reopened none. §48's conclusion that the drawdown
+rail was masking measurement SURVIVES, with the correction that much of the
+signal flow it blocked came from names the live bot cannot trade — so the rail
+was masking measurement of a bot that did not exist. The post-fix return is NOT
+evidence of an edge: same survivor-selected universe, §51 sized that at
++200.28pp, and §52's freeze is unchanged. Mechanism and closing tests:
+`docs/divergences.md` #17.
+
 ## 1. Earnings-blackout entry filter — SPLIT VERDICT 2026-07-17
 **Spec:** block new entries in single names (ETFs exempt) within N calendar
 days before a scheduled earnings report (tested N = 0, 3, 5). Exits

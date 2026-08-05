@@ -579,6 +579,12 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
             xs_ctx = strategies.prepare_one(cfg, strategy_name, hist_by_sym,
                                             held=set(acct.positions),
                                             universe=set(hist_by_sym))
+        # NO `in_universe` FILTER HERE, deliberately — see divergence #17 in the
+        # ensemble loop below. `--symbols A B C` means "score this strategy on
+        # A, B, C"; the run's symbol list IS its universe, which is exactly why
+        # `prepare_one` is given `universe=set(hist_by_sym)` three lines up.
+        # Applying cfg's universe on top would delete the flag's whole purpose
+        # and report zero trades, output indistinguishable from "found nothing".
         entry_cap = sparams.get("max_entries_per_cycle", 0)
         blackout_days = sparams.get("earnings_blackout_days", 0)
         buys_queued_today = 0
@@ -1033,6 +1039,35 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 continue
 
             for name, sparams in active:
+                # DIVERGENCE #17 — PER-STRATEGY UNIVERSE, entries only.
+                #
+                # `main.py:1685` has filtered entries by `in_universe` since
+                # PR #90 introduced per-strategy universes. This loop did not,
+                # so every strategy could enter every symbol in the snapshot:
+                # on a 500-name wide snapshot the incumbent traded 500 names
+                # here and 38 live.
+                #
+                # It went unnoticed because the only two universe-scoped
+                # strategies, `xsmom` and `reclaim`, are BOTH cross-sectional,
+                # and `prepare_one` scopes their ranking — so `generate` answers
+                # "insufficient history for ranking" for a name outside their
+                # universe and the filter appeared to be working. That is a
+                # coincidence of those two being cross-sectional, not a filter:
+                # a per-symbol strategy with a `universe:` key would have traded
+                # the whole snapshot here, silently.
+                #
+                # BEFORE generate(), mirroring live, which skips the strategy
+                # outright rather than asking it and discarding the answer.
+                #
+                # Entries only, and `in_universe`'s own docstring says why: exits
+                # route to the OWNING strategy regardless of universe, or a
+                # position whose symbol left a universe has no strategy willing
+                # to close it. The owner-only exit branch above is untouched.
+                #
+                # Live's news-nomination bypass has no counterpart here: this
+                # simulator has no news at all, which is divergence #14.
+                if not strategies.in_universe(cfg, name, sym):
+                    continue
                 sig = strategies.generate(name, sym, hist, cfg, False,
                                           cross_section=xs_ctx.get(name),
                                           entry_ts=None)
