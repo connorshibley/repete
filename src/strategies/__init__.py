@@ -6,14 +6,15 @@ exits always route to the position's owning strategy regardless of enabled
 section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
-from strategies import ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol
+from strategies import (ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol,
+                        reclaim)
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
 # Registered != enabled. `lowvol` (§32, 2026-07-27) ships DISABLED and stays
 # that way unless its pre-registered gate passes; being in this dict only means
 # a config MAY name it.
 REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
-                                donchian, lowvol)}
+                                donchian, lowvol, reclaim)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
@@ -108,11 +109,79 @@ def generate(name: str, symbol: str, bars: list[dict], cfg: dict,
     if params is None:
         return Signal(symbol, "hold", f"no config for strategy {name}",
                       strategy=name)
-    if name == "meanrev":  # only strategy that needs the entry timestamp
+    # DECLARED, not name-checked. This was `if name == "meanrev"`, which was
+    # accurate while meanrev was the only strategy with a max-hold rule and
+    # became a silent trap the moment a second one existed: `reclaim` would have
+    # been handed entry_ts=None, its max_hold_days would have measured nothing,
+    # and no test would fail — the strategy would just never time out.
+    if getattr(mod, "NEEDS_ENTRY_TS", False):
         return mod.generate(symbol, bars, params, holding,
                             cross_section=cross_section, entry_ts=entry_ts)
     return mod.generate(symbol, bars, params, holding,
                         cross_section=cross_section)
+
+
+def prepare_one(cfg: dict, name: str, all_bars: dict,
+                held: set | None = None, universe: set | None = None):
+    """THE single implementation of "prepare one strategy's cross-section".
+
+    One entry point on purpose, and for the same reason `scan_order` is one:
+    both offline simulators called `mod.prepare(hist_by_sym, sparams)` directly
+    (backtest.py, the single-strategy and ensemble loops), so any scoping rule
+    added here and not there becomes a live/sim divergence. Four of those have
+    already cost real rework (§13 missing rails, §19a fill timing, §19b global
+    counters, §22 symbol order), and this one would have been silent in the
+    worst way: `reclaim` in the simulator would receive no `cfg`, find no sector
+    map, rank no laggards, and simply never trade — a strategy that scores zero
+    because it never ran, indistinguishable in the output from one that ran and
+    found nothing.
+
+    `universe` OVERRIDES the strategy's declared universe, and exists for one
+    caller: the SINGLE-STRATEGY backtester, where the symbol list under test is
+    a property of the RUN, not of config — `backtest.py --symbols A B C` means
+    "score this strategy on A, B, C". Scoping that run by `cfg["symbols"]`
+    instead would hand a cross-sectional strategy an empty ranking and report
+    zero trades, which reads identically to "the strategy found nothing".
+    The ENSEMBLE backtester deliberately does NOT pass it: there, several
+    strategies with different universes run together and must be scoped exactly
+    as they are live, or the simulator stops mirroring the thing it simulates.
+
+    Returns None when `name` has no config or is not cross-sectional.
+    """
+    mod = REGISTRY[name]
+    params = strategy_params(cfg, name)
+    if params is None or not mod.NEEDS_CROSS_SECTION:
+        return None
+    # EACH STRATEGY RANKS ITS OWN UNIVERSE, PLUS WHATEVER IT HOLDS.
+    #
+    # The universe half: in the live cycle `all_bars` is keyed by
+    # `scan_symbols`, which is the UNION of every universe plus positions plus
+    # news nominations. Passing it through unfiltered would silently change what
+    # `xsmom` MEANS — its ranking is a PERCENTILE over the set it is given, and
+    # "top 25% of 38" and "top 25% of ~150" are different strategies. Nothing
+    # would fail; the numbers would just quietly stop being the ones its gate
+    # was run on.
+    #
+    # The `held` half is not a refinement, it is a correctness requirement, and
+    # scoping without it is a TRAP. A strategy can own a position in a symbol
+    # outside its universe — removed from config.yaml, or entered through a past
+    # news nomination; the scan-list comment in main.py names exactly this case.
+    # Drop that symbol from the cross-section and `xsmom.generate` finds
+    # `symbol not in ranks`, answers "insufficient history for ranking", and
+    # HOLDS — forever. The position becomes unexitable: a filter refusing to
+    # close risk, the same inversion `in_universe` is entries-only to avoid, one
+    # layer down. Including a held symbol cannot corrupt the percentile in the
+    # other direction either, since it is a position the strategy already owns
+    # and must be able to rank in order to exit.
+    allowed = (universe if universe is not None
+               else universe_for(cfg, name)) | (held or set())
+    scoped = {s: b for s, b in all_bars.items() if s in allowed}
+    # `cfg` as well as `params`: a cross-section can depend on config OUTSIDE
+    # the strategy's own sub-dict — `reclaim` needs the top-level `sectors:`
+    # map, which cannot live under `strategies.reclaim` because `risk.py`'s
+    # concentration rail reads it too and must not reach into a strategy's
+    # params. xsmom ignores it.
+    return mod.prepare(scoped, params, cfg)
 
 
 def prepare_cross_sections(cfg: dict, all_bars: dict,
@@ -120,39 +189,14 @@ def prepare_cross_sections(cfg: dict, all_bars: dict,
                            held: set | None = None) -> dict:
     """Once-per-cycle precompute for cross-sectional strategies: the enabled
     ones, plus any disabled strategy that still OWNS an open position — its
-    exit logic must keep working after it's disabled (ownership rule)."""
+    exit logic must keep working after it's disabled (ownership rule).
+
+    Scoping lives in `prepare_one`, which the offline simulators call too."""
     names = {name for name, _ in enabled(cfg)}
     names |= {o for o in (extra_owners or set()) if o in REGISTRY}
     out = {}
     for name in names:
-        mod = REGISTRY[name]
-        if mod.NEEDS_CROSS_SECTION:
-            params = strategy_params(cfg, name)
-            if params:
-                # EACH STRATEGY RANKS ITS OWN UNIVERSE, PLUS WHATEVER IT HOLDS.
-                #
-                # The universe half: `all_bars` is keyed by `scan_symbols`,
-                # which is now the UNION of every universe plus positions plus
-                # news nominations. Passing it through unfiltered would silently
-                # change what `xsmom` MEANS — its ranking is a PERCENTILE over
-                # the set it is given, and "top 25% of 38" and "top 25% of ~150"
-                # are different strategies. Nothing would fail; the numbers
-                # would just quietly stop being the ones its gate was run on.
-                #
-                # The `held` half is not a refinement, it is a correctness
-                # requirement, and scoping without it is a TRAP. A strategy can
-                # own a position in a symbol outside its universe — removed from
-                # config.yaml, or entered through a past news nomination; the
-                # scan-list comment in main.py names exactly this case. Drop
-                # that symbol from the cross-section and `xsmom.generate` finds
-                # `symbol not in ranks`, answers "insufficient history for
-                # ranking", and HOLDS — forever. The position becomes
-                # unexitable: a filter refusing to close risk, which is the same
-                # inversion `in_universe` is entries-only to avoid, one layer
-                # down. Including a held symbol cannot corrupt the percentile in
-                # the other direction either, since it is a position the
-                # strategy already owns and must be able to rank to exit.
-                allowed = universe_for(cfg, name) | (held or set())
-                scoped = {s: b for s, b in all_bars.items() if s in allowed}
-                out[name] = mod.prepare(scoped, params)
+        ctx = prepare_one(cfg, name, all_bars, held=held)
+        if ctx is not None:
+            out[name] = ctx
     return out

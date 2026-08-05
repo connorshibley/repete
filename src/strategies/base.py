@@ -6,8 +6,21 @@ signals. Modules follow a duck-typed contract:
     NAME: str
     NEEDS_CROSS_SECTION: bool
     def required_lookback(params) -> int
-    def prepare(all_bars, params) -> ctx        # optional, cross-sectional only
+    NEEDS_ENTRY_TS: bool                        # optional, default False
+    def prepare(all_bars, params, cfg=None) -> ctx   # cross-sectional only
     def generate(symbol, bars, params, holding, cross_section=None) -> Signal
+
+`prepare` receives `cfg` as well as its own `params` because a cross-section can
+depend on config outside the strategy's sub-dict (`reclaim` reads the top-level
+`sectors:` map). `generate` deliberately does NOT: everything it needs must be
+carried in the `cross_section` context `prepare` built, which keeps per-symbol
+signal generation a pure function of (bars, params, ctx).
+
+`NEEDS_ENTRY_TS = True` makes `strategies.generate` pass `entry_ts=` through —
+required by any strategy with a max-hold rule. It is DECLARED rather than
+inferred from the module name; the dispatch used to test `name == "meanrev"`,
+which silently gave a second such strategy `entry_ts=None` and a max-hold that
+measured nothing.
 """
 from dataclasses import dataclass, field
 

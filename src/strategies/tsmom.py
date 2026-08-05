@@ -18,7 +18,7 @@ def required_lookback(params: dict) -> int:
                params.get("index_sma_period", 0)) + 1
 
 
-def prepare(all_bars: dict, params: dict) -> dict:
+def prepare(all_bars: dict, params: dict, cfg: dict | None = None) -> dict:
     """Optional index-regime gate: entries allowed only while the index
     (default SPY) closes above its SMA(index_sma_period). Inactive when the
     param is absent/0, and fails OPEN on insufficient index history so the

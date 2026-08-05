@@ -32,7 +32,7 @@ def required_lookback(params: dict) -> int:
     return params.get("vol_period", 60) + 2
 
 
-def prepare(all_bars: dict, params: dict) -> dict:
+def prepare(all_bars: dict, params: dict, cfg: dict | None = None) -> dict:
     """Rank the universe by trailing realised volatility, calmest first.
 
     Returns {"ranks": {symbol: 0-based rank}, "vols": {symbol: annual vol},

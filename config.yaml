@@ -247,6 +247,25 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     universe: sectors  # the `sectors:` map above, NOT `symbols:`. Absent =>
                        # the core universe, so every other strategy is unchanged.
     # ---- sector selection: DEPTH, not breadth (owner decision 2026-08-05) ----
+    # MEASURED TRADE RATE, 2026-08-05, before any rail rejects anything:
+    # replaying these exact params over the 2020-2026 wide snapshot at DAILY
+    # resolution (a reclaim is a single-bar event, so a coarser step
+    # undercounts proportionally) produced **80 entry signals across 1337
+    # trading days on 127 names — about 15 per year.**
+    #
+    # STATE THE CONSEQUENCE PLAINLY: the evidence plan wants ~200 closed
+    # round-trips before a result is read. At 15/yr that is THIRTEEN YEARS, and
+    # that is the ceiling — correlation_cap, sector_concentration, portfolio
+    # heat and the down-regime gross cap all subtract from it. This strategy as
+    # configured cannot produce a decidable forward record on any useful
+    # horizon.
+    #
+    # The levers are `min_days_below`, `laggard_sector_count`, and the size of
+    # the sector universe. They are NOT being tuned here: the number above was
+    # measured AFTER these values were chosen, and re-picking them against it
+    # would be fitting to the very sample the gate is supposed to judge. Raising
+    # the rate is a pre-registered decision of its own, made before the run that
+    # scores it.
     sector_sma_period: 200
     laggard_sector_count: 4   # of 11. The bottom 4 by median constituent
                               # distance below its own 200-DMA are "unloved".
