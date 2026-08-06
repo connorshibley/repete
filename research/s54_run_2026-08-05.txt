@@ -1,0 +1,205 @@
+§54 — WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST?
+Four DIAGNOSTIC specs, FOUR arms each, frozen together before any ran.
+Rebuilt from research/verdicts.jsonl. K=15 (a DIAGNOSTIC spends no budget).
+
+==============================================================================
+===== s54a — 2000-2006 =====
+spec sha aa85fe660f1ec093…   ran 2026-08-06T00:36:03.566687+00:00   386s wall   judge ON
+
+  baseline           ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  19984  blocked  19947  |  drawdown 19411  zero_qty 499  expired_unfilled 19  heat 17  sector_concentration 1
+  reclaim_only       ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  20062  blocked  20025  |  drawdown 19487  zero_qty 501  expired_unfilled 19  heat 17  sector_concentration 1
+  xsmom_130_30       ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  27124  blocked  27087  |  drawdown 26380  zero_qty 667  expired_unfilled 22  heat 17  sector_concentration 1
+  both               ret    -7.91%  PF 0.231  maxDD 11.66%  trades    37  symbols  20  deploy(net)   2.21%
+                     signals  27202  blocked  27165  |  drawdown 26456  zero_qty 669  expired_unfilled 22  heat 17  sector_concentration 1
+
+  PRE-REGISTERED PASS MARK (both):
+    [FAIL] (a) deployment_at_least  2.21% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  -7.91% vs SPY +10.01% | maxDD 11.66% vs SPY 47.52% (reported, not gated)
+    [PASS] (c) min_trades  37 vs 30
+    [FAIL] (d) beats_exposure_matched  -7.91% vs +3.06% (B&H +138.54% x 2.2% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s54b — 2007-2013 =====
+spec sha 0196524b54946308…   ran 2026-08-06T00:39:23.793043+00:00   199s wall   judge ON
+
+  baseline           ret    +2.85%  PF 1.132  maxDD 11.28%  trades   131  symbols  26  deploy(net)   7.73%
+                     signals  21875  blocked  21744  |  drawdown 20860  zero_qty 584  regime_exposure 226  expired_unfilled 26  sector_concentration 23  heat 21
+  reclaim_only       ret    +2.85%  PF 1.132  maxDD 11.28%  trades   131  symbols  26  deploy(net)   7.73%
+                     signals  21956  blocked  21825  |  drawdown 20940  zero_qty 585  regime_exposure 226  expired_unfilled 26  sector_concentration 23  heat 21
+  xsmom_130_30       ret    +3.73%  PF 1.191  maxDD 10.59%  trades   119  symbols  26  deploy(net)   7.44%
+                     gross   7.52% (max  99.99%)   net min  -2.25%   shorts    2 in   2 names
+                     signals  29037  blocked  28918  |  drawdown 27791  zero_qty 765  regime_exposure 291  sector_concentration 27  expired_unfilled 26  heat 18
+  both               ret    +3.73%  PF 1.191  maxDD 10.59%  trades   119  symbols  26  deploy(net)   7.44%
+                     gross   7.52% (max  99.99%)   net min  -2.25%   shorts    2 in   2 names
+                     signals  29117  blocked  28998  |  drawdown 27870  zero_qty 766  regime_exposure 291  sector_concentration 27  expired_unfilled 26  heat 18
+
+  PRE-REGISTERED PASS MARK (both):
+    [FAIL] (a) deployment_at_least  7.44% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  +3.73% vs SPY +51.30% | maxDD 10.59% vs SPY 55.19% (reported, not gated)
+    [PASS] (c) min_trades  119 vs 30
+    [FAIL] (d) beats_exposure_matched  +3.73% vs +6.88% (B&H +92.48% x 7.4% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s54c — 2014-2019 =====
+spec sha a3d232fe3b43c146…   ran 2026-08-06T00:43:45.778116+00:00   230s wall   judge ON
+
+  baseline           ret   +95.89%  PF 1.732  maxDD 10.64%  trades  1292  symbols  31  deploy(net)  64.68%
+                     signals   9121  blocked   7829  |  drawdown 4964  regime_exposure 1214  zero_qty 872  sector_concentration 627  correlation 79  heat 32
+  reclaim_only       ret   +95.27%  PF 1.721  maxDD 11.18%  trades  1328  symbols  50  deploy(net)  64.95%
+                     signals   9120  blocked   7792  |  drawdown 4923  regime_exposure 1218  zero_qty 832  sector_concentration 680  correlation 72  expired_unfilled 26
+  xsmom_130_30       ret   +79.73%  PF 1.794  maxDD 12.37%  trades  1036  symbols  31  deploy(net)  54.40%
+                     gross  76.44% (max 163.84%)   net min -15.89%   shorts   86 in  25 names
+                     signals  12509  blocked  11473  |  drawdown 6328  regime_exposure 2328  sector_concentration 1037  zero_qty 1001  heat 676  correlation 77
+  both               ret   +63.45%  PF 1.558  maxDD 14.93%  trades  1023  symbols  45  deploy(net)  53.58%
+                     gross  76.90% (max 159.40%)   net min -12.37%   shorts   83 in  24 names
+                     signals  12132  blocked  11109  |  drawdown 6167  regime_exposure 2315  sector_concentration 1074  zero_qty 800  heat 637  correlation 90
+
+  PRE-REGISTERED PASS MARK (both):
+    [PASS] (a) deployment_at_least  53.58% deployed vs 25.0% required
+    [FAIL] (b) beats_benchmark_symbol  +63.45% vs SPY +97.39% | maxDD 14.93% vs SPY 19.35% (reported, not gated)
+    [PASS] (c) min_trades  1023 vs 30
+    [PASS] (d) beats_exposure_matched  +63.45% vs +48.44% (B&H +90.41% x 53.6% deployment)
+
+  VERDICT: REJECTED
+
+==============================================================================
+===== s54d — 2022-2026 =====
+spec sha aeb750a39de1bef4…   ran 2026-08-06T00:29:17.112411+00:00   261s wall   judge ON
+
+  baseline           ret  +105.84%  PF 1.698  maxDD  8.38%  trades  1163  symbols  31  deploy(net)  71.51%
+                     signals   3624  blocked   2461  |  regime_exposure 939  sector_concentration 647  zero_qty 564  heat 210  correlation 79  cooldown 21
+  reclaim_only       ret  +108.00%  PF 1.695  maxDD  8.38%  trades  1163  symbols  49  deploy(net)  71.72%
+                     signals   3816  blocked   2653  |  regime_exposure 981  zero_qty 684  sector_concentration 657  heat 235  correlation 77  cooldown 18
+  xsmom_130_30       ret   +81.06%  PF 1.740  maxDD 11.91%  trades   885  symbols  31  deploy(net)  59.49%
+                     gross  79.86% (max 134.60%)   net min  -1.34%   shorts  113 in  26 names
+                     signals   6718  blocked   5833  |  regime_exposure 1830  heat 1336  drawdown 1224  sector_concentration 849  zero_qty 533  correlation 46
+  both               ret   +89.57%  PF 1.733  maxDD 11.01%  trades   958  symbols  47  deploy(net)  63.38%
+                     gross  84.36% (max 148.61%)   net min  +0.00%   shorts  111 in  26 names
+                     signals   5815  blocked   4857  |  regime_exposure 1616  heat 947  sector_concentration 923  drawdown 705  zero_qty 610  correlation 48
+
+  PRE-REGISTERED PASS MARK (both):
+    [PASS] (a) deployment_at_least  63.38% deployed vs 25.0% required
+    [PASS] (b) beats_benchmark_symbol  +89.57% vs SPY +63.52% | maxDD 11.01% vs SPY 24.50% (reported, not gated)
+    [PASS] (c) min_trades  958 vs 30
+    [PASS] (d) beats_exposure_matched  +89.57% vs +28.59% (B&H +45.11% x 63.4% deployment)
+
+  VERDICT: PASS
+
+==============================================================================
+THE FALSIFIABLE PREDICTION, CHECKED FIRST
+
+  `prior` committed: direction_conflict will be ZERO in every arm of all
+  four periods, because ownership routing — not the rail — is what prevents
+  a long and a short in the same name. A non-zero count would have meant the
+  analysis in tests/test_reclaim_short_collision.py is wrong and would have
+  outranked every other number here.
+
+  16 arms checked. direction_conflict fired 0 times.
+  PREDICTION HELD.
+
+  Two other rails were never reached either: already_held 0 (redundant given
+  the same routing) and net_exposure 0 (risk.net_exposure_pct is commented out,
+  so the 130/30 band never armed — carried over unresolved from §53).
+
+==============================================================================
+THE PRE-COMMITTED READING RULE, APPLIED
+
+  `both` vs the BETTER of the two single-strategy arms, per period, total return:
+
+  period   baseline  reclaim_only  xsmom_130_30       both  best single      delta
+  s54a       -7.91%        -7.91%        -7.91%     -7.91%       -7.91%     +0.00pp  DEGENERATE
+  s54b       +2.85%        +2.85%        +3.73%     +3.73%       +3.73%     +0.00pp
+  s54c      +95.89%       +95.27%       +79.73%    +63.45%      +95.27%    -31.82pp
+  s54d     +105.84%      +108.00%       +81.06%    +89.57%     +108.00%    -18.43pp
+
+  `both` WORSE than the better single arm : 2 (s54c, s54d)
+  `both` AT LEAST the better single arm   : 1 (s54b)
+  DEGENERATE (every arm == baseline)      : 1 (s54a)
+
+  The frozen rule, quoted:
+
+    (1) If `both` is WORSE than the better single arm in TWO OR MORE of the
+    four periods, running the two together costs something beyond what
+    either costs alone. That is recorded as a constraint on any future
+    enablement — neither is enabled alongside the other without a new
+    registration — and the census is read to say which rail did the
+    displacing.
+
+  TWO of four are WORSE. OUTCOME (1). The pairing costs something.
+
+==============================================================================
+WHICH RAIL DID THE DISPLACING — the census, as the rule requires
+
+  sector_concentration blocks, by arm:
+
+  period  baseline  reclaim_only  xsmom_130_30      both
+  s54a           1             1             1         1
+  s54b          23            23            27        27
+  s54c         627           680          1037      1074
+  s54d         647           657           849       923
+
+  In BOTH decisive periods the count rises monotonically into `both` and is
+  higher there than in either single arm. That is the mechanism the `prior`
+  put 30% on, named before the run:
+
+    `sector_concentration` … is sign-blind, the cap is 3, and the overlap is
+    concentrated (5 names in Technology, 4 in Consumer Defensive), so a short
+    leg can fill a sector and lock reclaim out of it.
+
+  Rails whose block count is higher in `both` than in BOTH single arms:
+    s54c : correlation, sector_concentration
+    s54d : sector_concentration
+
+  sector_concentration is the only one that qualifies in both decisive
+  periods. `correlation` qualifies in s54c only, and by a much smaller margin
+  (72 / 77 -> 90) — see the correction below, because the spec predicted this
+  rail could not be measured here at all.
+
+  Every other rail — drawdown, heat, regime_exposure, zero_qty — blocks LESS
+  in `both` than in xsmom_130_30. That is what a displaced book looks like:
+  fewer signals reach those rails because the entries were never proposed.
+
+==============================================================================
+CORRECTIONS TO THE FROZEN SPEC
+
+  The spec cannot be edited — a verdict exists, and `register_gate.py` refuses
+  re-registration at that point, which is the apparatus working as designed.
+  So the errors are recorded here instead. §41's precedent: superseded text
+  gets a note, not an edit.
+
+  FAILURE MODE 4 IS WRONG. It says:
+
+    "`correlation` and `heat` live in `pre_trade_checks`, which the simulator
+     never calls (pinned by tests/test_rail_interactions.py), so this run says
+     nothing about it. A clean census here does not cover it."
+
+  The premise is right and the conclusion does not follow. Those rails do raise
+  inside `pre_trade_checks`, and the simulator does not call that function —
+  but `simulate_ensemble` REIMPLEMENTS the same three call sites inline
+  (`backtest.py:1026` heat, `:1039` correlation, `:937` daily_cap), routed
+  through the same `risk.*` helpers. So the census DOES measure the correlation
+  cap, and it shows the same direction-blind displacement the sector cap does,
+  smaller: 72 / 77 -> 90 in s54c.
+
+  The error was mine, made while reading `test_rail_interactions.py`'s rail
+  census as if it enumerated which rails RUN rather than which rails RAISE
+  inside each function. It was frozen into the spec before the run, which is
+  the correct order — and being frozen is why it can be caught here rather
+  than quietly forgotten.
+
+  Worth noting for its own sake: two call sites for one rail is exactly the
+  hazard `sector_open_count`'s docstring names — "`strategy_slots` is the
+  cautionary precedent: its count is derived in two places … and re-derived
+  counters are the shape behind §13's missing rails". Here the arithmetic is
+  shared (both sides call `risk.correlated_position_count` with thresholds from
+  the same config), so this is a structural risk rather than a live divergence
+  and no register entry is owed. It is written down so the next person does not
+  have to rediscover which functions the simulator does and does not call.
+
