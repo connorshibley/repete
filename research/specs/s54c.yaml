@@ -1,0 +1,218 @@
+# §54c — WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? (2014-2019)
+#
+# ONE DIAGNOSTIC IN FOUR FILES, written and frozen TOGETHER before any is run —
+# the convention §41, §44, §48 and §53 used. Running one period and reporting it
+# is period selection.
+#
+# WHY THIS EXISTS. §53's third failure mode recorded exactly what it did not
+# test: "`reclaim` AND THE SHORT LEG COMPETE FOR THE SAME NAMES, and reclaim is
+# DISABLED in every arm here, so this diagnostic does not test the interaction."
+# 23 of xsmom's 30 rankable symbols sit in reclaim's 127-name universe. This is
+# that test.
+#
+# WHAT CHANGED BETWEEN THE PLAN AND THIS SPEC, and it is the reason the reading
+# rule below is not the one the plan proposed. §54 was designed to read
+# `census["blocked"]["direction_conflict"]` as its headline number. Building the
+# tests first — the order the plan chose precisely so a defect could not be
+# discovered after the run — showed that number is STRUCTURALLY ZERO:
+#
+#   a held symbol routes to `pos["owner"]` and the branch `continue`s
+#   (`backtest.py:1157-1181`, `main.py:1615-1652`), so a second strategy is
+#   never offered a name that is already held, in either direction; the entry
+#   loop `break`s on the first claim, so two strategies cannot queue opposite
+#   orders on one name in one cycle; and a queued order that outlives its bar is
+#   dropped as `already_held` (`backtest.py:939-944`) ABOVE `pure_checks`.
+#
+# OWNERSHIP ROUTING is what prevents a long and a short in the same name.
+# `direction_conflict` is a last-gate backstop for a caller outside the cycle,
+# not the thing holding the line — which is what `risk.py`'s own comment claimed
+# and what `tests/test_reclaim_short_collision.py` now refutes. A census reading
+# of zero would have meant "the simulator cannot reach this rail", and reporting
+# it as "the collision is rare on this data" would have been a finding about
+# nothing.
+#
+# So this diagnostic measures the interaction that DOES exist: CONTENTION.
+# xsmom is priority 3 and reclaim is 6, they want overlapping names, and they
+# share every cap in `pure_checks` — including `sector_concentration`, which
+# counts a SHORT as a sector occupant exactly as a long (pinned, deliberately
+# not changed, in `tests/test_reclaim.py`).
+#
+# THIS PERIOD: The only period this bot has EVER cleared its own enablement gate
+#   (§42/§43 showed that pass was an artifact of a judge-less simulator). A
+#   long-only grind upward, so the prior is poor for BOTH legs being tested:
+#   a short leg has little to short, and reclaim's premise — a name that fell a
+#   long way and is turning — is rare in a market that mostly went up. §53
+#   measured the short leg subtracting 38.63pp here.
+#
+# WHY DIAGNOSTIC AND NOT EDGE. It decides nothing and can enable nothing. §52's
+# freeze is mechanical (`register_gate.py` refuses `claim: EDGE` on every
+# snapshot under `data/snapshots/`) and this spec does not work around it.
+id: s54c
+claim: DIAGNOSTIC
+title: "What does running reclaim alongside the 130/30 book cost? (2014-2019)"
+
+# Judge ON, matching live and matching §44/§48/§50/§51/§53.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2014-01-01_2019-12-31.json.gz
+  sha256: dca8dc85b8770f74697262750b767e796635f5b481c54efb475b12d9687916cd
+
+cash: 100000.0
+
+# K=15 so any significance figure stays comparable with the existing family.
+# THE COUNT DOES NOT RISE: a DIAGNOSTIC spends no multiple-comparisons budget,
+# the same treatment §38, §40, §42, §45, §47, §48 and §53 received.
+bonferroni_k: 15
+
+# FOUR ARMS. The two single-strategy arms are what make the fourth attributable:
+# without them, "`both` was worse" cannot be separated from "reclaim is a bad
+# strategy on its own", and reclaim has never passed an enablement gate.
+arms:
+  - name: baseline              # the SHIPPED configuration: both off
+
+  - name: reclaim_only
+    set:
+      strategies.reclaim.enabled: true
+
+  - name: xsmom_130_30
+    set:
+      strategies.xsmom.enabled: true              # short_bottom_fraction: 0.25 ships
+
+  - name: both
+    set:
+      strategies.reclaim.enabled: true
+      strategies.xsmom.enabled: true
+
+# Named explicitly. `default_candidate` picks arms[1], which here is
+# `reclaim_only` — the wrong experiment, and one that would only be discovered
+# after the run had already cost its wall time.
+candidate: both
+
+# CARRIED FROM §53 FOR COMPARABILITY, and NOT the finding. The finding is the
+# per-arm census and the four-way return comparison; see the reading rule.
+# `run_gate` records a verdict for a DIAGNOSTIC like any other claim, so these
+# produce real PASS/FAIL booleans — they simply license nothing.
+clauses:
+  - {id: a, rule: deployment_at_least, pct: 25}
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: c, rule: min_trades, n: 30}
+  - {id: d, rule: beats_exposure_matched}
+
+prior: >-
+  The honest expectation, at about 70/30, is OUTCOME (2): `both` lands between
+  `reclaim_only` and `xsmom_130_30` and close enough to `xsmom_130_30` that the
+  pairing shows no cost beyond the parts. The reasoning is mechanical rather
+  than hopeful — xsmom holds priority 3 against reclaim's 6 and therefore gets
+  first refusal on all 23 shared names, while reclaim's own signal rate is
+  roughly 14 entries a year across 127 names, so there is very little of
+  reclaim in the `both` arm to collide with anything.
+
+  The 30% sits on `sector_concentration`, which is the one rail with a
+  plausible mechanism for a real cost: it is sign-blind, the cap is 3, and the
+  overlap is concentrated (5 names in Technology, 4 in Consumer Defensive), so
+  a short leg can fill a sector and lock reclaim out of it. That is the outcome
+  (1) story, and if it happens the census is where it will show.
+
+  §53 already refuted the 130/30 configuration and reclaim has never cleared an
+  enablement gate, so no arm here is expected to be GOOD; the question is only
+  what the pairing costs relative to the parts. A FAIL of any clause is
+  therefore uninformative about the strategies and informative only about the
+  pairing — the asymmetry §51 pre-registered, pointed at a different question.
+
+  A FALSIFIABLE PREDICTION, stated so the structural argument in the header can
+  be wrong: `census["blocked"]["direction_conflict"]` will be ZERO in every arm
+  of all four periods. If any arm reports a non-zero count, the ownership-
+  routing analysis in `tests/test_reclaim_short_collision.py` is wrong and that
+  is the finding — it outranks everything else in this spec and must be resolved
+  before any other number here is believed.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, on `both` versus the BETTER of the
+  two single-strategy arms, per period, on total return:
+
+  (1) If `both` is WORSE than the better single arm in TWO OR MORE of the four
+  periods, running the two together costs something beyond what either costs
+  alone. That is recorded as a constraint on any future enablement — neither is
+  enabled alongside the other without a new registration — and the census is
+  read to say which rail did the displacing.
+
+  (2) If `both` is AT LEAST the better single arm in THREE OR MORE periods, the
+  pairing is not harmful on this data. That licenses exactly nothing about
+  enabling either strategy: §52's freeze stands, §53's refutation of 130/30
+  stands, and reclaim's own gate was never passed. It licenses only the removal
+  of "untested interaction" from the open-questions list.
+
+  (3) If the two single-strategy arms are themselves indistinguishable from
+  `baseline` — because the drawdown rail blocked almost everything, as §53
+  measured for 2000-2006 and 2007-2013 — that period is DEGENERATE and
+  contributes to neither count above. Declared here rather than decided later.
+
+  (4) Any other split is INDETERMINATE and licenses nothing. A rule that
+  resolves every outcome into a green light is not a rule.
+
+  Nothing in any outcome flips `enabled` on either strategy, and `mode: paper`
+  is unchanged regardless.
+
+failure_modes:
+  - >-
+    THE HEADLINE NUMBER IS NOT CLAUSE (b). This diagnostic measures contention
+    between two strategies. The clauses are carried from §53 so the rows can be
+    laid beside each other; they are not what is being asked. In particular a
+    `both` arm clearing (b) does NOT revive §53 — that refutation was decided
+    under its own frozen rule and is not reopened here (the §41 precedent).
+  - >-
+    `direction_conflict` CANNOT FIRE IN THIS SIMULATOR, and a zero must not be
+    read as "the collision is rare". Ownership routing means a held name is
+    never offered to a second strategy; the entry loop breaks on the first
+    claim; and a stale queued order is dropped as `already_held` before the
+    rails. The rail is a backstop for a caller outside the cycle. This is
+    asserted by `tests/test_reclaim_short_collision.py`, and the prior above
+    states the prediction in falsifiable form.
+  - >-
+    `sector_concentration` COUNTS A SHORT AS A SECTOR OCCUPANT, exactly as a
+    long — `sector_open_count` is sign-blind (`risk.py:1150`). So the short leg
+    starves reclaim's sector budget, and any `sector_concentration` count in
+    this census is a direction-blind cap behaving AS SHIPPED, not as designed.
+    Pinned deliberately in `tests/test_reclaim.py` rather than fixed, because
+    changing a shipped rail needs its own registration and changing it after
+    this run would void these numbers.
+  - >-
+    THE CORRELATION CAP IS SIGN-BLIND IN THE SAME WAY AND CANNOT BE MEASURED
+    HERE. `correlated_position_count` ignores direction, so a short that HEDGES
+    a held long counts against the cap as concentration. But `correlation` and
+    `heat` live in `pre_trade_checks`, which the simulator never calls
+    (pinned by `tests/test_rail_interactions.py`), so this run says nothing
+    about it. A clean census here does not cover it.
+  - >-
+    TWO PERIODS ARE EXPECTED DEGENERATE. §53 measured the drawdown rail blocking
+    97-99.9% of signals in 2000-2006 and 2007-2013, with the short leg opening
+    zero and two positions. reclaim's own signals are blocked by the same rail,
+    so the interaction may be unreachable in those periods for reasons having
+    nothing to do with the interaction. Outcome (3) of the reading rule handles
+    this; it is declared in advance, not decided from the output.
+  - >-
+    reclaim HAS NEVER PASSED A GATE, and `config.yaml` records that at roughly
+    15 entries a year a decidable forward record is thirteen years away. A
+    `reclaim_only` arm that looks good licenses nothing whatsoever.
+  - >-
+    DIVERGENCE #16 — NO BORROW COST is charged, in this simulator or in the
+    paper account, so every short-leg return is overstated by a cost nobody
+    paid, and most on exactly what a momentum short holds.
+  - >-
+    SURVIVORSHIP CUTS AGAINST THE SHORT LEG. Every wide snapshot is built from
+    TODAY's index membership, so names that fell and never recovered are
+    deleted. That flatters a long book (§48 up to +130.06pp; §51 +200.28pp) and
+    PENALISES the short leg, which would have made its money on precisely those
+    deleted names. It also flatters reclaim, whose whole premise is a name that
+    fell and came back — the survivors are the ones that came back.
+  - >-
+    DEPLOYMENT IS NET. `avg_deployment_pct` is (equity - cash) / equity, and
+    shorting raises cash, so a 130/30 arm and a flat 100%-long arm print the
+    same figure. Read `gross_exposure_avg_pct` beside it.
+  - >-
+    NOT COMPARABLE WITH §43, §48, §50 OR §51. Those ran before divergence #17
+    was closed, when the simulator let every strategy enter every symbol in the
+    snapshot. Comparable with §53, which ran after.
+  - >-
+    ONE PERIOD IS NOT THE CLAIM. s54a-d are read together under the rule in
+    `prior`.
