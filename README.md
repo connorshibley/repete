@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**1,864 tests as of 2026-08-05**, offline by design — no credentials, ever, in CI.
+**1,881 tests as of 2026-08-05**, offline by design — no credentials, ever, in CI.
 
 **The record is append-only.** `memory/ledger.jsonl` is the source of truth;
 the dashboard, blog and journal are views rendered from it.
@@ -132,7 +132,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 1864, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 1881, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

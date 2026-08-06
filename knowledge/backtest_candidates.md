@@ -5530,7 +5530,10 @@ outcome (2) is not available by arguing the band would have changed them.
   A table putting these rows beside those compares two different simulators.
 - **Nothing about `reclaim`.** It is disabled in all twelve arms, so the
   collision with the short leg (23 of `xsmom`'s 30 names sit in `reclaim`'s
-  universe) is untested.
+  universe) is untested. **CLOSED by §54 (2026-08-05)**: the collision cannot
+  occur — ownership routing, not `direction_conflict`, is what prevents it —
+  and the pairing nevertheless costs 18-32pp through the sign-blind
+  `sector_concentration` cap.
 
 ### What was kept
 
@@ -5542,3 +5545,130 @@ direction-aware counterfactual are all independent of the verdict.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. `xsmom.enabled`
 stays `false`.**
+
+---
+
+## §54 — WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? (DIAGNOSTIC, K=15, pre-registered 2026-08-05)
+
+**Claim type: DIAGNOSTIC. K stays 15 — no Bonferroni budget is spent.** Specs
+`research/specs/s54a-d.yaml`, written and frozen together before any ran; they
+differ only in `id`, `snapshot` and `title`, asserted by
+`tests/test_s54_arms.py`. Run: `research/s54_run_2026-08-05.txt`.
+
+This closes the last item §53 left open — its own third failure mode:
+*"`reclaim` AND THE SHORT LEG COMPETE FOR THE SAME NAMES, and reclaim is
+DISABLED in every arm here, so this diagnostic does not test the interaction."*
+
+### The finding that arrived before the run, and changed it
+
+§54 was designed to read `census["blocked"]["direction_conflict"]` as its
+headline number. Building the tests first — the order the plan chose precisely
+so a defect could not be found afterwards — showed **that number is
+structurally zero**, and the rail's own comment in `risk.py` was wrong about
+why it exists:
+
+> It is the ONLY thing preventing the conflict, and whichever strategy reaches
+> the name first takes it while the other is **refused here**.
+
+The other strategy is not refused there. **It is never consulted.** A held
+symbol routes to `pos["owner"]` and the branch `continue`s
+(`main.py:1615-1652`, `backtest.py:1157-1181`); the entry loop `break`s on the
+first strategy to claim a flat name; and a queued order outliving its bar is
+dropped as `already_held` above `pure_checks`. **Ownership routing** is what
+prevents a long and a short in the same name. `direction_conflict` is a
+last-gate backstop for a caller outside the cycle, and a backtest census can
+never count it.
+
+Reading a zero there as "the collision is rare on this data" would have been a
+finding about nothing. The comment is corrected in `risk.py`; the behaviour is
+pinned by `tests/test_reclaim_short_collision.py` with mutation proofs.
+
+So the spec was rewritten to measure the interaction that does exist —
+**contention** — and kept the old headline as a falsifiable prediction.
+
+### The prediction, checked first
+
+`prior` committed: `direction_conflict` will be zero in every arm of all four
+periods, and a non-zero count means the analysis is wrong and outranks
+everything else here. **16 arms checked. It fired 0 times. The prediction held.**
+
+Two other rails were never reached either: `already_held` (0 — redundant given
+the same routing) and `net_exposure` (0 — `risk.net_exposure_pct` is still
+commented out, so the 130/30 band has never armed, carried over unresolved
+from §53).
+
+### The result — OUTCOME (1), the pairing costs something
+
+| period | baseline | `reclaim_only` | `xsmom_130_30` | **`both`** | best single | delta |
+|---|---|---|---|---|---|---|
+| 2000–06 | −7.91% | −7.91% | −7.91% | **−7.91%** | −7.91% | +0.00pp *(degenerate)* |
+| 2007–13 | +2.85% | +2.85% | +3.73% | **+3.73%** | +3.73% | +0.00pp |
+| 2014–19 | +95.89% | +95.27% | +79.73% | **+63.45%** | +95.27% | **−31.82pp** |
+| 2022–26 | +105.84% | +108.00% | +81.06% | **+89.57%** | +108.00% | **−18.43pp** |
+
+`both` is worse than the better single arm in **two of four** periods →
+outcome (1) of the frozen rule: *running the two together costs something
+beyond what either costs alone.* Recorded as a constraint — **neither strategy
+is enabled alongside the other without a new registration.**
+
+2000–06 is degenerate: all four arms are byte-identical, the drawdown rail
+blocking 19,411 of 19,984 signals. In 2007–13 `reclaim_only` is identical to
+`baseline` — reclaim contributed **zero trades** there, so `both` equals
+`xsmom_130_30` exactly.
+
+### Which rail did the displacing
+
+The rule requires reading the census. `sector_concentration` blocks:
+
+| period | baseline | `reclaim_only` | `xsmom_130_30` | **`both`** |
+|---|---|---|---|---|
+| 2014–19 | 627 | 680 | 1037 | **1074** |
+| 2022–26 | 647 | 657 | 849 | **923** |
+
+It is the only rail higher in `both` than in *both* single arms across both
+decisive periods, and it is the mechanism the `prior` put its 30% on, named in
+advance: *"it is sign-blind, the cap is 3, and the overlap is concentrated (5
+names in Technology, 4 in Consumer Defensive), so a short leg can fill a sector
+and lock reclaim out of it."*
+
+`sector_open_count` is `sum(1 for s in positions if ...)` — sign never enters —
+so a short occupies a sector slot exactly as a long does. **Pinned, not fixed**
+(`tests/test_reclaim.py`): there is a real argument it is wrong, since the
+rail's own message says "co-moving names are one bet" and a short and a long in
+the same sector are partly offsetting. Changing a shipped rail needs its own
+registration, and changing it after this run would void these numbers.
+
+Every other rail — drawdown, heat, regime_exposure, zero_qty — blocks *less* in
+`both` than in `xsmom_130_30`. That is what a displaced book looks like: the
+entries were never proposed, so they never reached those rails.
+
+### What this does NOT license
+
+- **Nothing is enabled.** `reclaim.enabled` and `xsmom.enabled` both stay
+  `false`; `mode: paper` unchanged. A DIAGNOSTIC that licensed a config change
+  would have been mistyped.
+- **§53 is not reopened.** `both` cleared clause (b) in 2022–26 and that
+  licenses nothing; §53's refutation of 130/30 was decided under its own frozen
+  rule.
+- **`reclaim_only` beating SPY in 2022–26 (+108.00% vs +63.52%) is not a
+  result.** Reclaim's premise is a name that fell a long way and came back, and
+  a snapshot built from today's index membership contains only the names that
+  came back. Survivorship runs *directly along* this strategy's thesis, which
+  is worse than the usual case. §52's EDGE freeze stands.
+- **Divergence #16 still applies** — no borrow cost is charged, so every
+  short-leg return here is overstated.
+
+### A correction to the frozen spec
+
+Failure mode 4 claimed the simulator never runs the correlation cap, so §54
+could say nothing about it. **That is wrong.** `simulate_ensemble` reimplements
+the heat, correlation and daily-cap call sites inline (`backtest.py:1026`,
+`:1039`, `:937`) through the same `risk.*` helpers, rather than calling
+`pre_trade_checks`. The census does measure the correlation cap, and it shows
+the same direction-blind displacement, smaller: 72 / 77 → **90** in 2014–19.
+The spec cannot be edited — a verdict exists and re-registration is refused,
+which is the apparatus working — so the correction lives here and in the run
+file. Full reasoning in `research/s54_run_2026-08-05.txt`.
+
+**Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+1 pass in 15; K stays 15.**

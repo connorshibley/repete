@@ -92,6 +92,70 @@ def test_the_third_position_in_a_sector_is_permitted_and_the_fourth_is_not():
     assert e.value.rail == "sector_concentration"
 
 
+def test_a_SHORT_position_occupies_a_sector_slot_exactly_as_a_long_does():
+    """PINNED, NOT FIXED — §54, 2026-08-05. Read the whole comment before
+    changing this test, because the assertion below is deliberately asserting
+    something arguable.
+
+    `sector_open_count` is `sum(1 for s in positions if ...)` (`risk.py:1150`).
+    Sign never enters it, so a SHORT of AA1 fills a slot in Alpha exactly as a
+    long does. Consequence, now that `xsmom` has a short leg and `reclaim`
+    shares 23 of its 30 names: **the short leg starves reclaim's sector
+    budget**, through a rail nobody names when discussing the interaction —
+    everyone points at `direction_conflict`, which
+    `test_reclaim_short_collision.py` shows cannot even fire through the
+    ensemble.
+
+    IS IT RIGHT? The rail's own message says "co-moving names are one bet",
+    which is direction reasoning the code does not implement: a short and a long
+    in the same sector are partly OFFSETTING, not one bet. So there is a real
+    argument that this should count same-direction positions only.
+
+    It is pinned rather than changed because changing a shipped rail needs its
+    own registration, and changing it after §54 has run would void those
+    numbers. What this test buys is that the behaviour is now a DECISION with a
+    date on it rather than an artifact of `for s in positions`.
+
+    The all-long twin is directly below, differing in exactly the sign.
+    """
+    cfg = _sector_cfg(3)
+    with_a_short = {"AA1": {"market_value": 1_000.0},
+                    "AA2": {"market_value": -1_000.0},   # SHORT
+                    "AA3": {"market_value": 1_000.0}}
+    assert risk.sector_open_count(cfg, "AA4", with_a_short) == 3
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("buy", "AA4", 1, 1.0, ACCOUNT, with_a_short, cfg)
+    assert e.value.rail == "sector_concentration"
+
+    all_long = {s: {"market_value": 1_000.0} for s in ("AA1", "AA2", "AA3")}
+    with pytest.raises(risk.RiskRejection) as twin:
+        risk.pure_checks("buy", "AA4", 1, 1.0, ACCOUNT, all_long, cfg)
+    assert twin.value.rail == e.value.rail
+
+    # And the pair that shows the cap is a COUNT, not a sign test: drop to two
+    # positions, one of them short, and the third entry is permitted.
+    two = {"AA1": {"market_value": -1_000.0}, "AA2": {"market_value": 1_000.0}}
+    risk.pure_checks("buy", "AA3", 1, 1.0, ACCOUNT, two, cfg)
+
+
+def test_a_SHORT_entry_is_also_subject_to_the_sector_cap():
+    """The other half: the cap applies to what a short OPENS, not only to what
+    it occupies. `sector_concentration` is gated on ENTRY_ACTIONS, which is
+    `("buy", "short")` — so a short arriving at a full sector is refused just as
+    a buy is. Without this, adding a direction to the ensemble would have
+    quietly exempted it from the cap, which is the precise shape of the bug
+    ENTRY_ACTIONS was introduced to prevent."""
+    cfg = _sector_cfg(3)
+    full = {s: {"market_value": 1_000.0} for s in ("AA1", "AA2", "AA3")}
+    with pytest.raises(risk.RiskRejection) as e:
+        risk.pure_checks("short", "AA4", 1, 1.0, ACCOUNT, full, cfg)
+    assert e.value.rail == "sector_concentration"
+    # Twin: two open, so the short is permitted. "Refuses every short" would
+    # satisfy the half above on its own.
+    two = {s: {"market_value": 1_000.0} for s in ("AA1", "AA2")}
+    risk.pure_checks("short", "AA4", 1, 1.0, ACCOUNT, two, cfg)
+
+
 def test_the_cap_is_per_sector_not_global():
     """Three names in Alpha must not constrain a first name in Beta — otherwise
     the rail is just a smaller max_open_positions wearing a sector label."""
