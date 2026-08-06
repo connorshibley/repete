@@ -18,6 +18,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 = FULL history, and the secret scan below depends on
+          # it. The default is a shallow clone of depth 1, under which
+          # `gitleaks git` sees exactly one commit — so a credential committed
+          # and deleted later would pass, which is the specific case history
+          # mode exists to catch.
+          #
+          # Measured, not assumed (2026-08-06). A 4-commit repo with a fake AWS
+          # key added in c2 and deleted in c3:
+          #   shallow clone (depth 1) -> 1 commit visible  -> gitleaks exit 0, MISSED
+          #   full clone    (depth 0) -> 4 commits visible -> gitleaks exit 1, CAUGHT
+          # So without this line the step would have been green, permanent, and
+          # its own comment would have been false.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
