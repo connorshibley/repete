@@ -91,6 +91,13 @@ JOBS = [
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
     ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),
+    # Log rotation (2026-08-06). EVERY day, unlike backup: what this guards is
+    # a crash loop filling a disk, and that does not wait for a session. It
+    # belongs here as well as on launchd because docker-compose bind-mounts
+    # ./logs, so the container writes the same agent.log and agent.jsonl to a
+    # real volume. cron.log has no container equivalent — scheduler.py logs to
+    # stdout — and rotate_logs.sh simply skips files that are not there.
+    ("logrotate",    range(0, 7), 17,   5,  ["sh", "scripts/rotate_logs.sh"]),
     # §47 random-entry decay monitor. Sunday 11:30 ET, matching
     # com.trading-agent.decaycheck.plist — after the week's trading is closed
     # out and before the next week opens. ALERT-ONLY: it cannot halt trading

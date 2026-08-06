@@ -205,6 +205,15 @@ scripts/backup.sh + scripts/restore_drill.py  State backup (scheduler 17:00 ET, 
                  a matching hash. REPETE_OFFHOST_DIR overrides the mirror; the test
                  suite sets it so no test can write into real iCloud. In the container,
                  backups/ is a mounted volume so archives survive rebuild/redeploy.
+scripts/rotate_logs.sh  Bounds logs/ (daily 17:05, 5 MB x 5 generations). COPYTRUNCATE,
+                 not rename, and that is the whole design: FOUR processes write
+                 logs/agent.log (main, watchdog, daily_posts, backfill) and renaming
+                 would leave three of them appending into an orphaned inode. Truncating
+                 in place keeps the inode, so no Python handler needed changing — and
+                 it is the only thing that can bound cron.log (13 shell `>>` redirects)
+                 and launchd.err.log (StandardErrorPath in 12 plists), which Python
+                 cannot reach at all. Growth is ~17 KB/trading-day, so this is insurance
+                 against a crash loop, not a volume problem.
 scripts/install_launchd.sh  Renders the launchd plist templates ({{AGENT_ROOT}}
                  placeholder) for the current checkout, plutil-lints, installs to
                  ~/Library/LaunchAgents, optional --load. The plists ship path-agnostic

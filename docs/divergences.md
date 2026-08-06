@@ -4,15 +4,16 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Seventeen such differences have been found. Until 2026-07-28 they existed **only as
+Eighteen such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-05: #13, #14, #15 and #16.** All four are open *by
+**Open as of 2026-08-06: #13, #14, #15, #16 and #18.** All five are open *by
 construction* rather than by defect — a sampling fact about the live record, two
-judge inputs the simulator has no mechanism to represent, and a cost the paper
-broker does not charge. **#17 is a DEFECT, found and closed the same day**, and
+judge inputs the simulator has no mechanism to represent, a cost the paper
+broker does not charge, and a fill-session hazard that only materialises when
+the cycle runs long. **#17 is a DEFECT, found and closed the same day**, and
 it is the largest correction here: the simulator let every strategy enter every
 symbol in the snapshot.
 
@@ -44,6 +45,7 @@ code" is not closed; the repo has been wrong about that before.
 | 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
 | 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
 | 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
+| 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
 
 ---
 
@@ -550,3 +552,64 @@ are specific to this filter rather than to any change in the loop.
 **This is not an EDGE claim and nothing here is gated.** The EDGE tally is
 unchanged at 1-in-15 and frozen; `knowledge/backtest_candidates.md` owns that
 count.
+
+---
+
+## #18 — an overrunning cycle fills at the next open, and nothing checks the clock
+
+**Registered 2026-08-06. OPEN by construction.**
+
+Found while instrumenting cycle duration, not while looking for it.
+
+### The mechanism
+
+The cycle fires at **15:45 ET** against a **16:00 close**, so the entire budget
+is fifteen minutes. **No code anywhere compares the clock to the close before
+submitting an order.** Grep for a cutoff and there is none: not in
+`_process_signal`, not in `broker.market_order`, not in preflight.
+
+Exits go out as `TimeInForce.DAY` (`src/broker.py:181`). Alpaca does not reject
+a DAY order placed after the bell — it **queues it for the next session's
+open**. So a cycle that runs long does not fail loudly. It silently converts a
+**same-close fill into a next-open fill**, across an overnight gap.
+
+Every gate assumes the same-close fill. §19 states it directly
+(`knowledge/backtest_candidates.md:665-681`): *"The live scheduler runs one
+cycle at 15:45 ET and fills immediately, at today's close."* That assumption is
+load-bearing for every recorded number, and it is true only while the cycle
+finishes in time.
+
+### Why it is open rather than closed
+
+The same reason as #16. A test can prove the *alarm* fires — and one does, in
+`tests/test_cycle_timing.py`. No test can detect **"the broker filled this at
+the wrong session"**: the fill is legitimate, the order is legitimate, and
+nothing in the response distinguishes a 15:59 fill from an 09:30 one except a
+timestamp nobody compares. That makes this **structurally weaker than #13-#15**
+and exactly as weak as #16.
+
+Closing it would require either a hard cutoff that refuses to submit inside N
+minutes of the bell — a behaviour change, and a real one, since refusing an
+exit is not obviously safer than filling it late — or fill-session attribution
+in `record_fill_quality`. Both are decisions, not cleanups. Neither is in scope
+here.
+
+### What was actually shipped
+
+Visibility, not a fix:
+
+- `cycle_timing` on **every** cycle (`src/main.py`, in `run_cycle`'s `finally:`,
+  so a crashed cycle records too) carrying `duration_s`, `finished_at_et` and
+  `margin_min`.
+- One alert per day when `margin_min < ops.min_close_margin_min` (default 5).
+
+### The measurement that prompted it
+
+Seven launchd cycles, the only ones that exist: min **1.63 min**, median
+**~2.6**, max **7.72** on 2026-08-05 — which spent a 54 s stall and two
+~90-100 s broker socket hangs, and finished at 15:52:44 with **7m16s of
+margin**. Nothing had ever recorded any of it.
+
+**No verdict is reopened.** No gate has been shown to be affected, because no
+cycle has yet been shown to cross the bell. This entry records a hazard that is
+now instrumented rather than a correction to a past number.

@@ -508,6 +508,109 @@ def log_cycle_crash(exc: BaseException) -> None:
                      exc)
 
 
+_MARKET_CLOSE_ET_HOUR = 16
+_ET = "America/New_York"
+
+
+def record_cycle_timing(started_monotonic: float) -> None:
+    """How long the cycle took, and — the number that matters — how much room
+    was left before the close (2026-08-06).
+
+    WHY MARGIN AND NOT DURATION. The cycle fires at 15:45 ET against a 16:00
+    close, so the budget is 15 minutes. Duration alone misses the dangerous
+    case: on 2026-07-30 the laptop woke and launchd fired three backlogged jobs
+    at once — a cycle that STARTS at 15:58 and takes two minutes is fast and
+    still finishes after the bell. What you want alarmed is the margin.
+
+    Measured before this existed (7 launchd cycles): min 1.63 min, median ~2.6,
+    max 7.72 on 2026-08-05, which spent a 54 s stall and two ~90-100 s broker
+    socket hangs. Nothing had ever recorded any of it — `grep` for `duration`,
+    `elapsed`, `time.monotonic` across `src/` returned nothing about wall clock.
+
+    Written in `run_cycle`'s `finally:`, so a CRASHED cycle records its timing
+    too. That is precisely the cycle whose duration you want to see.
+
+    Deliberately NOT a field on `cycle_complete`: that event's position is
+    load-bearing (see `_finalize_cycle`) and the watchdog keys off it. A
+    separate event sits outside that contract and cannot disturb it.
+
+    Best-effort by construction — this runs in a `finally:` that may already
+    have an exception in flight, and instrumentation must never replace it.
+    """
+    try:
+        import json as _json
+        from zoneinfo import ZoneInfo
+
+        import yaml
+
+        duration_s = round(time.monotonic() - started_monotonic, 1)
+        now_et = datetime.now(ZoneInfo(_ET))
+        close_et = now_et.replace(hour=_MARKET_CLOSE_ET_HOUR, minute=0,
+                                  second=0, microsecond=0)
+        margin_min = round((close_et - now_et).total_seconds() / 60.0, 1)
+
+        with open("config.yaml") as fh:
+            cfg = yaml.safe_load(fh)
+        ledger = Ledger(cfg["memory"]["ledger_path"])
+        ledger.log_event("cycle_timing", _json.dumps({
+            "duration_s": duration_s,
+            "finished_at_et": now_et.isoformat(timespec="seconds"),
+            "margin_min": margin_min,
+        }))
+        _alarm_on_thin_margin(cfg, ledger, margin_min, duration_s, now_et)
+    except BaseException as e:  # noqa: BLE001 — measurement never kills a cycle
+        log.warning("cycle timing not recorded: %r", e)
+
+
+def _alarm_on_thin_margin(cfg: dict, ledger: Ledger, margin_min: float,
+                          duration_s: float, now_et) -> None:
+    """One alert per day when the cycle finished too close to the bell.
+
+    `ops.min_close_margin_min` (default 5, `0` disables) follows the `ops`
+    convention: escalate to a human, never HALT.
+
+    NOT a `degradation` event. Those are counted against
+    `ops.max_degradations_per_day` and a timing signal has no business
+    spending the fail-open error budget — it would also shift
+    `tests/test_main_cycle.py::test_degradation_slo_breach_logged_once`.
+
+    THE OFF-SCHEDULE GUARD is the fiddly part. A manual run at 22:00 ET has a
+    margin of -360 minutes, which is not a finding, it is a person at a
+    keyboard. So the alarm only fires inside a band that a real scheduled
+    cycle could occupy, and only on a weekday. A cycle that genuinely ran long
+    and crossed the bell lands at a small negative margin and still alarms —
+    that case is the whole point.
+    """
+    limit = float((cfg.get("ops") or {}).get("min_close_margin_min", 5))
+    if limit <= 0 or margin_min >= limit:
+        return
+    if margin_min < -120 or now_et.weekday() >= 5:
+        return
+
+    # Dedupe on the UTC date, matching `check_deploy_drift` exactly, because
+    # that is what `ts` is stamped in. The margin arithmetic is ET; the dedupe
+    # key is UTC. Mixing the two would silently reset the dedupe at 20:00 ET.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    already = any(r.get("event") == "cycle_margin_low"
+                  and (r.get("ts") or "")[:10] == today
+                  for r in ledger.all_records() if r.get("type") == "event")
+    if already:
+        return
+
+    msg = (f"cycle finished {margin_min:.1f} min before the 16:00 ET close "
+           f"(took {duration_s:.0f}s; threshold {limit:.0f} min). An order "
+           f"submitted after the bell is QUEUED FOR THE NEXT OPEN, not "
+           f"rejected — see divergence #18.")
+    # Ledger first, alert second: the record must survive a dead channel.
+    ledger.log_event("cycle_margin_low", msg)
+    try:
+        import alerting
+        alerting.send("trading-agent: thin margin to the close", msg)
+    except Exception:  # noqa: BLE001 — monitoring never kills a cycle
+        pass
+    log.warning("%s", msg)
+
+
 def run_cycle(completed_bars_only: bool = False):
     """One trading cycle.
 
@@ -517,6 +620,7 @@ def run_cycle(completed_bars_only: bool = False):
     close, which is what every gate measured. The 09:35 open cycle sets it
     True, because a five-minute-old stub is not a daily bar."""
     completed = False
+    started = time.monotonic()
     try:
         completed = bool(_run_cycle(completed_bars_only=completed_bars_only))
     except BaseException as e:  # noqa: BLE001 — recorded, then re-raised
@@ -543,6 +647,11 @@ def run_cycle(completed_bars_only: bool = False):
             alerting.heartbeat_ping(success=completed)
         except Exception as e:  # noqa: BLE001 — never break a cycle to alert
             log.warning("heartbeat ping failed: %s", e)
+        # LAST, deliberately. Liveness (heartbeat file, external ping) is what
+        # someone needs when this host dies; timing is instrumentation. If the
+        # two ever contend, instrumentation loses. Measuring here also makes
+        # `finished_at_et` honest — it is genuinely the end of the cycle.
+        record_cycle_timing(started)
 
 
 def check_deploy_drift(ledger: Ledger) -> dict:
