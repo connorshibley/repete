@@ -34,6 +34,8 @@ and its alert path.
 | Degradations (fail-open guard skips) | < `ops.max_degradations_per_day` (3) per day | ledgered `degradation` events, counted in main.py | `slo_breach` event + macOS alert |
 | Data freshness | no cycle trades on stale bars, ever | risk.bars_fresh gate (aborts/drops) | cycle log + ledger record |
 | Vendor agreement | entries only when both price vendors agree | datacheck.py per cycle | degradation event when they disagree |
+| Universe integrity | entries only when ≥ `risk.min_universe_fraction` (0.8) of the REQUESTED symbols have usable bars | `_fetch_and_validate_bars` per cycle; every loss down to one symbol also gets a `universe_truncated` event | `universe_floor_blocked` event, `rail: "universe"` on refused entries; exits are never blocked |
+| Broker call bounded | no broker call waits longer than `ops.broker_timeout_sec` (5s connect / 10s read), and total retrying stays inside `ops.broker_retry_budget_sec` (60s/cycle) | socket timeout installed on both alpaca-py clients at construction; `tests/test_broker_resilience.py` measures it against a server that never answers | budget exhaustion logged once per cycle; an overrun surfaces as the margin SLO above |
 | Backup restorability | weekly drill passes | scripts/restore_drill.py (Sat 10:00 in scheduler) | nonzero exit → scheduler error log |
 | Publisher availability | best-effort only — explicitly NOT an SLO on trading's level | /healthz | none beyond logs (invariant #9: trading never waits on it) |
 
