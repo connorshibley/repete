@@ -106,9 +106,18 @@ jobs:
         # and Slack bot token exit 1 -> probe commit dropped exit 0.
         #
         # The first probe SURVIVED and the reason is worth keeping: it used
-        # `AKIAIOSFODNN7EXAMPLE`, AWS's canonical documentation key, which
-        # gitleaks allowlists on purpose. A probe built from a vendor's own
-        # example value proves nothing. Use a fake that is merely well-formed.
+        # AWS's canonical *documentation* key id — the one that appears in their
+        # published examples — which gitleaks allowlists on purpose. It scanned
+        # 197 commits and reported nothing. A probe built from a vendor's own
+        # example value proves nothing; use a fake that is merely well-formed.
+        #
+        # That literal value is deliberately NOT written here, and the reason is
+        # itself a finding: writing it into this comment made
+        # `tests/test_secrets_hygiene.py::test_no_secret_shapes_in_tracked_files`
+        # fail, because its `AKIA[0-9A-Z]{16}` pattern has no allowlist. So the
+        # two scanners are NOT redundant — on this exact string the local
+        # shape test is the stricter of the two, and gitleaks is the one that
+        # sees history. Keep both.
         #
         # Pinned by version, same reasoning as requirements.lock: a floating
         # `@latest` action would change what this gate means with no commit.
