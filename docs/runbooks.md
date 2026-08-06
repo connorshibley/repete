@@ -384,6 +384,17 @@ guard reads a local file and cannot see the other machine.
 **Take a backup now:** `scripts/backup.sh`
 **Prove it restores:** `python scripts/restore_drill.py`
 
+Since 2026-08-06 every archive is written **twice**: `backups/` locally (newest
+14) and `~/Library/Mobile Documents/com~apple~CloudDocs/trading-agent-backups`
+(newest 30). The second is the one that survives this laptop.
+`REPETE_OFFHOST_DIR` overrides the destination; `""` disables the mirror.
+
+**If this disk is gone**, the archives are on any Mac signed into the same
+account, or at icloud.com:
+```bash
+ls -1t ~/Library/Mobile\ Documents/com~apple~CloudDocs/trading-agent-backups/
+```
+
 **Actual restore after data loss:**
 ```bash
 tar -xzf backups/agent-backup-<newest>.tar.gz -C /tmp/restore
@@ -396,6 +407,19 @@ The streams are append-only JSONL — a restore is a file copy, no database
 surgery. Anything traded between backup and restore is reconciled at the
 next cycle start from the BROKER (source of truth for positions, invariant
 #4); the ledger gap is honest history, note it in an `event` record.
+
+**`off-host copy missing`** from the drill means the mirror stopped — iCloud
+signed out, the folder moved, or the disk filled. The local archive is fine;
+what has failed is the copy that survives the machine. Fix it and re-run
+`scripts/backup.sh`, which re-mirrors the newest archive.
+
+**`archive is not a prefix of live`** is a different animal, and worse. These
+streams are append-only, so live should only ever have grown. Divergence means
+some historical record changed — a corrupted write, a restore from the wrong
+machine, or a hand-edit (`memory/lessons.jsonl` is generated; CLAUDE.md says
+never to edit it by hand). Do **not** overwrite the archive by taking a fresh
+backup: that would replace the evidence with the corruption. Diff the archive
+against live first and find out which record moved.
 
 ---
 
