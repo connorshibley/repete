@@ -1,0 +1,30 @@
+# Dependabot (2026-08-06).
+#
+# ONE ecosystem is configured for version updates, and the omission of the
+# other is the deliberate part.
+#
+# `pip` is NOT here. requirements.lock's own header states the rule: "bumping
+# any pin is a change that must be followed by re-running at least one frozen
+# gate and confirming the recorded numbers still reproduce" — because numpy and
+# pandas arrive transitively and a last-place float change moves profit factor
+# across the 1.3 enablement threshold. A weekly stream of pip bumps would
+# therefore be a weekly stream of PRs that each owe a gate run, during a period
+# when the owner has deliberately stopped building. That is manufactured work,
+# not safety.
+#
+# Security advisories for pip still arrive: Dependabot SECURITY updates are a
+# repository-level setting, enabled 2026-08-06, and are not governed by this
+# file. A CVE is worth interrupting for; a routine minor bump is not. CI also
+# runs pip-audit against the lockfile twice, blocking on HIGH/CRITICAL.
+#
+# `github-actions` IS here: those pins carry no gate arithmetic, so a bump is
+# reviewable on its own terms and a stale action is a real supply-chain risk.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"

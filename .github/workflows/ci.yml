@@ -69,8 +69,41 @@ jobs:
       # Its home is the weekly launchd job (com.trading-agent.secretcheck).
       #
       # A CI secret scan is a genuinely different tool — one that scans the REPO
-      # for committed credentials (gitleaks/trufflehog shape). Not in scope for
-      # W4; recorded here so the gap is visible rather than assumed covered.
+      # for committed credentials (gitleaks/trufflehog shape). The step below is
+      # that tool. This comment stays, because the DISTINCTION is the point and
+      # because the local checker still has no home here.
+      - name: Repo secret scan (gitleaks) — BLOCKING
+        # Fills the gap the comment above recorded on 2026-07-29.
+        #
+        # `git` mode, not `dir` mode, and the difference is the whole value: a
+        # credential committed and deleted three commits later is invisible to a
+        # working-tree scan and is exactly as leaked as one still present. This
+        # walks all history.
+        #
+        # BASELINE, measured before wiring it up (2026-08-06, gitleaks 8.30.1):
+        # 196 commits / 4.82 MB / ZERO findings. The working tree has 5, every
+        # one in a gitignored file that never reaches a runner — four in `.env`,
+        # which is that file's job, and one in a __pycache__ .pyc of the secret
+        # checker's own test FIXTURE. So this starts green on a genuinely clean
+        # history, rather than arriving pre-failing and being suppressed.
+        #
+        # PROVEN TO FAIL (before / while-mutated / after, against a clone of
+        # this repo): clean history exit 0 -> commit carrying a fake AWS key id
+        # and Slack bot token exit 1 -> probe commit dropped exit 0.
+        #
+        # The first probe SURVIVED and the reason is worth keeping: it used
+        # `AKIAIOSFODNN7EXAMPLE`, AWS's canonical documentation key, which
+        # gitleaks allowlists on purpose. A probe built from a vendor's own
+        # example value proves nothing. Use a fake that is merely well-formed.
+        #
+        # Pinned by version, same reasoning as requirements.lock: a floating
+        # `@latest` action would change what this gate means with no commit.
+        run: |
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --no-banner --redact --exit-code 1 .
+
       - name: Dependency CVE scan — advisory (all severities)
         # Every finding, visible, non-blocking. Runs against the lockfile, so
         # it finally covers transitive packages rather than the 12 direct ones.
