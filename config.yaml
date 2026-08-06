@@ -1138,6 +1138,27 @@ ops:
                                  # 'degradation' events in one day -> single slo_breach
                                  # event + macOS alert. Escalates to a human; never HALTs
                                  # (the daily-loss kill switch owns HALT). 0 disables.
+  min_close_margin_min: 5        # SLO (2026-08-06): alert once/day if the cycle finishes
+                                 # fewer than this many minutes before the 16:00 ET close.
+                                 # The cycle fires at 15:45, so the whole budget is 15 min.
+                                 # Measured over the first 7 launchd cycles: min 1.63 min,
+                                 # median ~2.6, max 7.72 (2026-08-05, which spent a 54s
+                                 # stall plus two ~90-100s broker socket hangs). None would
+                                 # have fired at 5; a repeat of 08-05's hangs plus any
+                                 # growth would.
+                                 #
+                                 # MARGIN, NOT DURATION, and the distinction is the point:
+                                 # a cycle that STARTS late (2026-07-30, three backlogged
+                                 # launchd jobs firing at once after the laptop woke) can
+                                 # be fast and still miss the bell. A late order is not
+                                 # rejected, it is QUEUED FOR THE NEXT OPEN - divergence
+                                 # #18 - which silently turns a same-close fill into a
+                                 # next-open one that no gate ever modelled.
+                                 #
+                                 # Escalates to a human; never HALTs. 0 disables.
+                                 # Deliberately NOT a 'degradation' event: those are
+                                 # counted against max_degradations_per_day above, and a
+                                 # timing signal must not spend the fail-open budget.
 
 reporting:
   starting_equity: 100000        # Alpaca paper account starting capital; the

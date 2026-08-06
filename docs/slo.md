@@ -14,11 +14,22 @@ and its alert path.
 > `tests/test_cycle_completion.py` replays the incident.
 >
 > The lesson generalises past this row. **A documented check is not a check.**
+>
+> **2026-08-06.** Two rows added, and the first arrived the same way. "Cycle
+> completion" was blind to *how long* the cycle took: it would score a run that
+> finished at 16:00:30 as a full pass. Nothing had ever measured duration —
+> `grep` for `elapsed`, `duration`, `time.monotonic` in `src/` returned nothing
+> about wall clock. The first measurements: min 1.63 min, median ~2.6, max
+> **7.72** against a **15-minute** window. The new row measures **margin to the
+> close**, not duration, because a cycle that STARTS late can be fast and still
+> miss the bell — see divergence #18 for what a late order actually does.
 
 | SLO | Target | Measured by | Alert path |
 |---|---|---|---|
 | Cycle completion | every market day gets a cycle (15:45, or 15:55 catch-up) that reaches `cycle_complete` | `watchdog.completed_on()` — a `cycle_complete` dated today, not merely a fresh heartbeat | catch-up re-runs it 15:55; watchdog 16:15 ET → `alerting.send()` (webhook if `ALERT_WEBHOOK_URL`, else macOS banner) |
 | Cycle crash visibility | a cycle that dies leaves a record saying so | `cycle_crashed` ledger event with the traceback tail | surfaced by the completion SLO above; `health.status()` names it |
+| Cycle finishes with room | ≥ `ops.min_close_margin_min` (5) minutes before the 16:00 ET close | `cycle_timing` ledger event on every cycle — `duration_s`, `finished_at_et`, `margin_min` — written in `run_cycle`'s `finally:`, so a crashed cycle records too | one `cycle_margin_low` event + alert per day |
+| Log directory bounded | no file exceeds 5 MB × 5 generations | `scripts/rotate_logs.sh`, daily 17:05, `copytruncate` so the four processes writing `agent.log` keep their descriptors | non-zero exit → `alerting.send()` from `run_rotate_logs.sh` |
 | Heartbeat freshness | < 26h old on weekdays | src/health.py (`MAX_HEARTBEAT_AGE_HOURS`) | health.py nonzero exit; Docker HEALTHCHECK → container unhealthy |
 | Degradations (fail-open guard skips) | < `ops.max_degradations_per_day` (3) per day | ledgered `degradation` events, counted in main.py | `slo_breach` event + macOS alert |
 | Data freshness | no cycle trades on stale bars, ever | risk.bars_fresh gate (aborts/drops) | cycle log + ledger record |

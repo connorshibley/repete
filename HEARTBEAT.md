@@ -95,7 +95,15 @@ so a stale heartbeat is expected) — except HALT, which alerts every day.
 
 ## Why 4:15 PM
 
-The cycle fires at 3:45 PM ET and finishes in well under a minute. The
+The cycle fires at 3:45 PM ET. This said it "finishes in well under a minute"
+until 2026-08-06, when the first measurements arrived and showed otherwise:
+across seven launchd cycles, **min 1.63 min, median ~2.6, max 7.72** — the
+slowest being 2026-08-05, which spent a 54 s stall and two ~90-100 s broker
+socket hangs and finished at 3:52 PM. Every one landed before the bell, but
+"well under a minute" was never true of any of them.
+
+`cycle_timing` now records duration and margin-to-close on every cycle, and
+`ops.min_close_margin_min` alerts once a day when the margin gets thin. The
 30-minute gap absorbs slow starts and clock drift while still alerting the
 same afternoon — early enough that a missed cycle can be run by hand
 (`.venv/bin/python src/main.py`) before the market moves far without its
@@ -116,10 +124,14 @@ along with the rest of `memory/`.
 
 ## If you get an alert
 
-1. `launchctl list | grep trading-agent` — all **eight** jobs should be listed
+1. `launchctl list | grep trading-agent` — all **12** jobs should be listed
    with status `0`: `cycle`, `catchup`, `watchdog`, `newsbrain`, `dailypost`,
-   `learn`, `backup`, `restoredrill`. Anything missing means
+   `learn`, `backup`, `restoredrill`, `secretcheck`, `decaycheck`,
+   `flattenretry`, `logrotate`. Anything missing means
    `sh scripts/install_launchd.sh --load` has not been run since it was added.
+   (This list said **eight** until 2026-08-06 and had been wrong for some time
+   — `tests/test_runbook_accuracy.py` now derives the count from the shipped
+   plists, so it cannot drift silently again.)
 2. `tail -50 logs/agent.log` and `logs/launchd.err.log` — did the cycle
    start and die, or never start?
 3. If the market is still open and the miss was mechanical (asleep laptop),
