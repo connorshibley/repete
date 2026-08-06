@@ -978,16 +978,19 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
                              scan_symbols: list, completed_bars_only: bool):
     """Fetch every symbol's bars, apply the data rails, and read the regime.
 
-    Returns `(all_bars, entries_blocked_reason, market_regime, regime_label)`,
-    or **None** when the cycle must abort because SPY itself is stale.
+    Returns `(all_bars, entries_blocked_reason, entries_blocked_rail,
+    market_regime, regime_label)`, or **None** when the cycle must abort
+    because SPY itself is stale.
 
-    Three distinct failure polarities live here, deliberately:
+    Five distinct failure polarities live here, deliberately:
       * a single symbol's fetch RAISES -> skip that symbol, log, carry on
       * a single symbol is STALE       -> drop that symbol
       * SPY is STALE                   -> abort the cycle (None)
+      * TOO MANY symbols were lost     -> block ENTRIES only; exits still run
       * the two vendors DISAGREE       -> block ENTRIES only; exits still run
 
-    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    Extracted from `_run_cycle` in W4-7 (2026-07-29). The universe floor and
+    the returned `entries_blocked_rail` were added 2026-08-06.
     """
     # Ensemble needs the full cross-section; lookback sized to the most
     # demanding strategy.
@@ -1022,6 +1025,52 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
             log.warning("%s: stale bars — symbol skipped this cycle", symbol)
             del all_bars[symbol]
 
+    # --- Universe floor (2026-08-06). Two tiers, because 1-of-38 and 12-of-38
+    # are not the same event. ---
+    #
+    # Tier 1 always fires and blocks nothing: a symbol silently leaving the
+    # universe used to be invisible. The ledger's ONLY data_error in its whole
+    # history is QQQ vanishing mid-cycle on 2026-08-05, after which the bot
+    # traded 37 of 38 names and nothing anywhere said the cross-section had
+    # shrunk. That is divergence #17 re-enacted inside live.
+    #
+    # Tier 2 blocks ENTRIES. It measures against what the cycle ASKED for, not
+    # a hard-coded 38: scan_symbols legitimately varies with open positions and
+    # news nominations, so a constant denominator would drift out of true and
+    # read as a floor while measuring something else.
+    #
+    # The total-outage case is NOT what this covers — the stale-SPY abort above
+    # already does. Measured 2026-07-31: DNS died, every symbol failed inside
+    # 40ms, SPY was missing, the cycle aborted. Claiming the floor covers that
+    # would be a check taking credit for someone else's work.
+    requested = len(scan_symbols)
+    missing = [s for s in scan_symbols if s not in all_bars]
+    universe_blocked_reason = None
+    if missing:
+        ledger.log_event(
+            "universe_truncated",
+            f"{len(all_bars)}/{requested} requested symbols have usable bars; "
+            f"missing: {', '.join(sorted(missing))}")
+        log.warning("Universe truncated: %d of %d requested symbols usable "
+                    "(missing %s)", len(all_bars), requested,
+                    ", ".join(sorted(missing)))
+    min_fraction = float(cfg["risk"].get("min_universe_fraction", 0.8) or 0)
+    if requested and min_fraction > 0:
+        kept_fraction = len(all_bars) / requested
+        if kept_fraction < min_fraction:
+            universe_blocked_reason = (
+                f"universe floor: only {len(all_bars)} of {requested} requested "
+                f"symbols have usable bars ({kept_fraction:.0%} < "
+                f"{min_fraction:.0%}) — entries blocked, exits still run")
+            # NOT a `degradation` event, and that is a deliberate departure
+            # from the datacheck block below. `degradation` is counted against
+            # ops.max_degradations_per_day, which is the budget for FAIL-OPEN
+            # events; this rail fails CLOSED. Spending the fail-open allowance
+            # on it would let a data outage quietly consume the budget meant
+            # for something else — the same reasoning cycle_margin_low used.
+            ledger.log_event("universe_floor_blocked", universe_blocked_reason)
+            log.critical("%s", universe_blocked_reason)
+
     # Second-vendor cross-check (2026-07-21): fresh-LOOKING bars can still be
     # wrong (the 07-16 class). If Alpaca and yfinance disagree on SPY's close,
     # one is lying and we can't know which — entries are blocked this cycle
@@ -1032,13 +1081,26 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
         ledger.log_event("degradation", entries_blocked_reason)
         log.critical("%s", entries_blocked_reason)
 
+    # Precedence when both fire: universe over datacheck, and the caller puts
+    # an operator HALT over both. The two block entries identically, so the
+    # choice is only about which fact appears against a refused trade — and a
+    # feed that lost a quarter of its symbols is the more actionable one. The
+    # datacheck verdict is separately recorded as a `degradation` event above,
+    # so nothing is lost by not being the label here. Same shape as the
+    # halt-over-datacheck override at the call site.
+    entries_blocked_rail = "datacheck"
+    if universe_blocked_reason:
+        entries_blocked_reason = universe_blocked_reason
+        entries_blocked_rail = "universe"
+
     # Market regime (deterministic, from SPY bars already fetched): tagged onto
     # every decision/judgment so the learning loop can discount off-regime evidence.
     market_regime = regime_mod.compute_regime(all_bars.get("SPY", []),
                                               cfg["learning"]["regime"])
     regime_label = market_regime["label"] if market_regime else None
     log.info("Regime: %s", regime_mod.describe(market_regime))
-    return all_bars, entries_blocked_reason, market_regime, regime_label
+    return (all_bars, entries_blocked_reason, entries_blocked_rail,
+            market_regime, regime_label)
 
 
 def _precompute(cfg: dict, all_bars: dict, open_trades: dict,
@@ -1279,10 +1341,11 @@ def _run_cycle(completed_bars_only: bool = False):
                 symbol, sig.action, sig.reason, sig.indicators, None,
                 executed=False,
                 detail=f"risk rejection: {entries_blocked_reason[:180]}",
-                # Which of the two entry blocks this was: "datacheck" for the
+                # Which of the three entry blocks this was: "datacheck" for the
                 # vendor divergence this guard was built for (named for its
                 # runbook entry, "Vendor divergence (datacheck blocking
-                # entries)"), or "halt" for an operator halt in exits mode.
+                # entries)"), "universe" for the 2026-08-06 truncation floor,
+                # or "halt" for an operator halt in exits mode.
                 # Neither is a RiskRejection — this guard is inline — but both
                 # ARE rails from the ledger's point of view, and a `rail` field
                 # that covered only the rails that happen to raise would read as
@@ -1676,18 +1739,18 @@ def _run_cycle(completed_bars_only: bool = False):
         broker, cfg, ledger, scan_symbols, completed_bars_only)
     if fetched_ctx is None:
         return                      # SPY stale — the whole feed is suspect
-    all_bars, entries_blocked_reason, market_regime, regime_label = fetched_ctx
-    entries_blocked_rail = "datacheck"
+    (all_bars, entries_blocked_reason, entries_blocked_rail,
+     market_regime, regime_label) = fetched_ctx
     if halted:
         # Reuses the vendor-divergence mechanism rather than adding a second
         # entry-blocking path, because it already means precisely this: entries
         # refused, exits untouched. A parallel implementation would be a second
         # place for the exit exemption to be got wrong.
         #
-        # Overrides any datacheck reason rather than appending to it. Both block
-        # entries identically, the datacheck verdict is separately recorded as a
-        # `degradation` event, and the operator's own halt is the fact that
-        # should appear against a refused trade.
+        # Overrides any datacheck OR universe-floor reason rather than appending
+        # to it. All three block entries identically, each is separately
+        # recorded as its own ledger event, and the operator's own halt is the
+        # fact that should appear against a refused trade.
         entries_blocked_reason = ("HALT engaged (exits mode) — entries blocked, "
                                   "exits still run")
         entries_blocked_rail = "halt"

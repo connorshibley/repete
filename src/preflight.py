@@ -125,6 +125,38 @@ def run(cfg: dict) -> list[str]:
                 f"this rail would otherwise size orders off a number the "
                 f"account cannot back")
 
+    # The universe floor is a FRACTION, not a percentage, and the two are one
+    # keystroke apart. `0.8` blocks entries below 80% of the requested
+    # cross-section; `80` blocks every cycle ever, and `-1` can never fire.
+    # Both mistakes read as a configured rail while being the opposite of one,
+    # which is the failure mode this file exists for.
+    v = r.get("min_universe_fraction")
+    if v is not None and (not isinstance(v, (int, float))
+                          or isinstance(v, bool) or v < 0 or v > 1):
+        fails.append(
+            f"risk.min_universe_fraction must be a fraction between 0 and 1 "
+            f"({v!r}) — it is the share of REQUESTED symbols that must have "
+            f"usable bars before entries are allowed, not a percentage. Above "
+            f"1 blocks every cycle; below 0 can never fire. Use 0 to disable.")
+
+    # Broker resilience. Not in `risk` because these bound how long the bot
+    # waits and retries, not what it is allowed to trade.
+    o = cfg.get("ops") or {}
+    if isinstance(o, dict):
+        for key, why in (
+            ("broker_timeout_sec",
+             "it is the socket timeout; 0 restores the 2026-08-05 hang"),
+            ("broker_retry_attempts",
+             "it is how many EXTRA attempts a failed read gets"),
+            ("broker_retry_budget_sec",
+             "it bounds total retry time per cycle against the 16:00 close"),
+        ):
+            v = o.get(key)
+            if v is not None and (not isinstance(v, (int, float))
+                                  or isinstance(v, bool) or v < 0):
+                fails.append(
+                    f"ops.{key} must be a non-negative number ({v!r}) — {why}")
+
     # The kill switch's recovery budget. A typo here does not stop the bot, but
     # it decides how long an AUTOMATIC LIQUIDATION keeps retrying after the
     # daily-loss rail fired. Worth failing loudly on rather than falling back

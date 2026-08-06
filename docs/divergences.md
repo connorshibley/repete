@@ -553,6 +553,41 @@ are specific to this filter rather than to any change in the loop.
 unchanged at 1-in-15 and frozen; `knowledge/backtest_candidates.md` owns that
 count.
 
+### Note, 2026-08-06 — the same gap re-enacted itself INSIDE live, and is now floored
+
+The entry above is about the simulator trading a wider universe than the bot.
+The mirror image also existed and nobody had looked for it: **the bot silently
+trading a NARROWER universe than the one every gate scored.**
+
+`_fetch_and_validate_bars` caught a per-symbol bar failure, logged `data_error`,
+and carried on with whatever was left. There was no floor and no record that the
+cross-section had shrunk. It has fired once — the ledger's only `data_error` in
+its entire history:
+
+```json
+{"event": "data_error",
+ "detail": "QQQ: ('Connection aborted.', RemoteDisconnected(...))",
+ "ts": "2026-08-05T19:47:25.555162+00:00"}
+```
+
+QQQ is one of the core 38. That cycle then ran on 37 with nothing anywhere
+saying so.
+
+**This does NOT reopen #17**, and it is deliberately a note rather than #19: it
+is the same gap between the scored universe and the traded one, measured from
+the other side, and no new sim/live divergence was created by finding it. What
+changed is that the gap is now bounded and visible — `risk.min_universe_fraction`
+blocks entries below 80% of the requested cross-section (exits always run), and
+a `universe_truncated` event records every loss down to a single symbol.
+Pinned by `tests/test_universe_floor.py`.
+
+**The floor takes no credit for the total-outage case.** On 2026-07-31 the
+laptop lost DNS and every symbol failed inside 40ms; SPY was therefore missing
+and the stale-SPY rail aborted the cycle, as it was always going to.
+`test_a_total_outage_still_aborts_on_spy_rather_than_the_floor` holds that
+boundary, with the freshness rail deliberately left armed so the test cannot
+pass for the wrong reason.
+
 ---
 
 ## #18 — an overrunning cycle fills at the next open, and nothing checks the clock
