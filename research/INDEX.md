@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **46 sections, 5,674 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **47 sections, 5,821 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -62,3 +62,4 @@ second source of truth.
 | §52 | CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and th… | EDGE | blocked | — |
 | §53 | DOES THE 130/30 CONFIGURATION BEHAVE? | — | rejected | 2026-08-05 |
 | §54 | WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? | DIAGNOSTIC | pre-registered | 2026-08-05 |
+| §55 | THE REFEREE GETS A SHARPER INSTRUMENT | — | — | 2026-08-07 |

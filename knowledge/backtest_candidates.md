@@ -5672,3 +5672,150 @@ file. Full reasoning in `research/s54_run_2026-08-05.txt`.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 1 pass in 15; K stays 15.**
+
+## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-07, tooling — not a claim)
+
+Same status as §36: this changes how a verdict is *measured*, so it is recorded
+here and registers nothing. No spec, no `bonferroni_k`, no row in
+`verdicts.jsonl`. **EDGE stands at 1 pass in 15; K stays 15.**
+
+### The defect, and it was written down in this module from the start
+
+`src/significance.py` has always named it, at lines 27-33:
+
+> Baseline and candidate run on the SAME bars, so their trades are dependent. We
+> resample them independently, which overstates the variance of the difference…
+> That bias is in the safe direction for a gate.
+
+"Safe direction" was the right call and an incomplete one, because nobody had
+measured what it cost. §23 is where the price shows up. Its candidate trades are
+a strict **subset** of the baseline's — 128 of 179 — so every shared trade sits
+in both arms and its idiosyncratic P&L ought to cancel out of the difference.
+Under independent resampling it does not cancel. It is counted twice.
+
+What §23 was actually asking, in arithmetic the independent test cannot see:
+
+    179 x $14.91  −  128 x $31.78   ⇒   the filter REMOVED 51 trades
+                                        averaging **−$27.43**
+                                        and KEPT 128 averaging **+$31.78**
+
+That is a question about two **disjoint** samples. It was scored as a question
+about two overlapping ones, and came back INCONCLUSIVE at P(better) = 85.8%.
+
+### What is now in the box
+
+| | |
+|---|---|
+| `significance.compare_paired` | common random numbers — ONE moving-block index draw per replicate, applied to both arms, so shared variance cancels where it is genuinely shared |
+| `significance.disjoint_report` | the nested form: when the candidate really is a pure filter, KEPT vs REMOVED, which is the sharpest available reading |
+| `significance.trade_keys` | `(entry_ts, symbol)` — **time first**, because the union is sorted on it and a moving block over ticker-major order would cluster by AAPL instead of by market |
+| `gatespec` / `run_gate` | clause rules `significantly_better_paired`, `not_worse_paired`, and `no_interior_optimum` |
+
+`compare()` is **not modified**. Every §1-§54 number still reproduces, pinned by
+`tests/data/significance_golden.json`, which was generated from the unmodified
+function *before* any of this was written and committed in the same PR.
+
+### The measurement that changed the design — the first version was broken
+
+Coverage was run against a **true null** (removal by coin flip, so the effect is
+exactly zero), 600 seeds, before the estimator was believed:
+
+| interval | block | two-sided rejection | nominal |
+|---|---|---|---|
+| percentile | sqrt(n) | **0.0750** | 0.0500 — OVER-REJECTS |
+| **basic (reverse-percentile)** | **sqrt(n)** | **0.0500** | **nominal** |
+| percentile | 1 | 0.0600 | |
+| basic | 1 | 0.0350 | over-conservative |
+
+The first implementation used the percentile interval, which is what `compare()`
+uses, and it over-rejected by ~1.5x. **A more powerful test that does not cover
+is not sharper, it is broken** — it would launder noise into verdicts, which is
+the one failure this whole programme exists to prevent. The basic interval
+reflects the bootstrap distribution about the observed statistic and fixes it.
+
+Why `compare()` does not need the same correction and is not getting it: its
+independent resampling is so conservative that it rejected **0 of 120** true
+nulls. That bias swamps the percentile bias, in the safe direction. Removing the
+independence bias is exactly what *exposes* the percentile one.
+
+### What the pairing buys — power, measured on the same seeds and the same alpha
+
+| removed-trade shift | `compare` | `compare_paired` |
+|---|---|---|
+| 0 (true null) | 0.000 | 0.035 |
+| 40 | 0.000 | 0.275 |
+| 80 | 0.025 | **0.645** |
+| 120 | 0.160 | **0.905** |
+
+At a shift of 80 the incumbent finds 1 real effect in 40 and the paired test
+finds two in three. That gap is the whole of §55.
+
+**The honest limit, and it is not small.** The pairing buys power in proportion
+to how much variance the two arms actually SHARE. Measured: with a realistic
+filter it narrows the interval ~2.1x; with an *oracle* filter — one that removes
+the worst trades by looking at their outcome — it buys **nothing at all**,
+because there is no shared variance left to cancel. No real filter is in the
+oracle case, and testing against one would have flattered the method.
+
+### `no_interior_optimum` — §23's own conclusion, finally executed
+
+§23 wrote this down and it then stayed prose for thirty-one sections:
+
+> Where a grid is available, **check monotonicity**: a lone interior optimum is
+> weak evidence regardless of how good the winning cell looks.
+
+Its profit factor across the threshold grid ran **1.955 → 2.898 → 2.240 →
+1.705** — peaking at the second of four arms and ending *below* baseline. If
+"more volume confirmation means better trades" were a mechanism, asking for more
+confirmation should not reverse it.
+
+The rule fails only a **strictly interior** optimum. Flat responses, monotone
+ones and optima at either END all pass: an end optimum says the grid failed to
+bracket the effect, which is a reason to widen the grid, not evidence of
+fitting. Making it a monotonicity requirement — the obvious name — would have
+been the wrong rule. `better: high|low` is validated rather than defaulted,
+because an interior *peak* is the tell for profit factor and an interior
+*trough* is the tell for drawdown, and a silent default reads half the metrics
+backwards.
+
+Acceptance test: §23's four real arms are replayed through it and it must FAIL.
+A rule that cannot catch the case it was written for is decoration.
+
+### What this does NOT do, stated so it cannot be spun later
+
+- **It does not reopen §23.** Re-scoring it under a sharper instrument would be
+  a fresh EDGE claim, and §52 froze those on every snapshot in `data/snapshots/`.
+  §55 buys the instrument. It does not buy the right to use it.
+- **It withdraws no verdict.** The fifteen rejections stand, exactly as §41 set
+  the precedent when its own simulator finding could have reopened ten.
+- **It is not a lower bar.** Coverage is nominal, measured, and the clause that
+  proves it is in the suite.
+- **It cannot help the biggest problem.** Survivorship (+130.06pp at §48,
+  +200.28pp at §51) is a bias in the DATA. A better estimator measures a
+  poisoned quantity more precisely.
+
+### A harness finding, recorded because it produced a false result first
+
+The first mutation run reported the **control as CAUGHT**, which should be
+impossible — C1 edits a docstring nothing reads. The cause was not the control.
+M10 changes `len(order) >= 3` to `>= 2`: **the same number of bytes**. Python
+invalidates a `.pyc` on (source mtime, source size), and restoring the file
+inside the same one-second tick with an unchanged size left both fields matching
+the mutant. Every run after M10 executed **mutated bytecode** while the md5
+check — which reads the `.py` — reported "restored".
+
+So the harness now purges `__pycache__` on both sides of every mutation. Same
+family as Phase 4's finding that a test which HANGS is worse than one that
+fails: **the md5 proof is on the source, and the interpreter does not have to
+agree with it.** A harness whose own residue fails the control is reporting on
+itself.
+
+Final run: **M1-M11 CAUGHT, C1 SURVIVED.** M1 is the one that matters — it
+reverts the interval to the percentile form and the coverage test catches it,
+which is what makes the 0.0500 above a measurement rather than a claim.
+
+### State
+
+2,077 tests. `min_rvol` still unset; `base.rvol()` and `risk.rvol_blocked()`
+remain dormant tested capability. Nothing enabled, no threshold moved,
+`mode: paper` unchanged.
