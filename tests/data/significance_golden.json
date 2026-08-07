@@ -1,0 +1,242 @@
+{
+  "clearly_better": {
+    "alpha": "0.05",
+    "baseline": [
+      61,
+      300,
+      5.0,
+      8.0,
+      0.0
+    ],
+    "baseline_mean": "5.9621393466666674",
+    "candidate": [
+      62,
+      300,
+      45.0,
+      8.0,
+      0.0
+    ],
+    "candidate_mean": "46.249144369999996",
+    "ci_high": "41.74903788333335",
+    "ci_low": "38.79065426666664",
+    "describe": "SIGNIFICANT: candidate $+46.25/trade (n=300) vs baseline $+5.96/trade (n=300); diff $+40.29, 95.00% CI [$+38.79, $+41.75] (Bonferroni K=1)",
+    "diff": "40.28700502333333",
+    "k": 1,
+    "n_baseline": 300,
+    "n_candidate": 300,
+    "resamples": 5000,
+    "verdict": "SIGNIFICANT"
+  },
+  "clearly_better_k15": {
+    "alpha": "0.0033333333333333335",
+    "baseline": [
+      61,
+      300,
+      5.0,
+      8.0,
+      0.0
+    ],
+    "baseline_mean": "5.9621393466666674",
+    "candidate": [
+      62,
+      300,
+      45.0,
+      8.0,
+      0.0
+    ],
+    "candidate_mean": "46.249144369999996",
+    "ci_high": "42.51615032",
+    "ci_low": "38.087817899999976",
+    "describe": "SIGNIFICANT: candidate $+46.25/trade (n=300) vs baseline $+5.96/trade (n=300); diff $+40.29, 99.67% CI [$+38.09, $+42.52] (Bonferroni K=15)",
+    "diff": "40.28700502333333",
+    "k": 15,
+    "n_baseline": 300,
+    "n_candidate": 300,
+    "resamples": 5000,
+    "verdict": "SIGNIFICANT"
+  },
+  "clearly_worse": {
+    "alpha": "0.005555555555555556",
+    "baseline": [
+      71,
+      250,
+      30.0,
+      10.0,
+      0.0
+    ],
+    "baseline_mean": "30.599781076000017",
+    "candidate": [
+      72,
+      250,
+      -20.0,
+      10.0,
+      0.0
+    ],
+    "candidate_mean": "-20.013694651999987",
+    "ci_high": "-47.85930906399999",
+    "ci_low": "-53.23507584000001",
+    "describe": "SIGNIFICANTLY WORSE: candidate $-20.01/trade (n=250) vs baseline $+30.60/trade (n=250); diff $-50.61, 99.44% CI [$-53.24, $-47.86] (Bonferroni K=9)",
+    "diff": "-50.613475728000004",
+    "k": 9,
+    "n_baseline": 250,
+    "n_candidate": 250,
+    "resamples": 5000,
+    "verdict": "SIGNIFICANTLY WORSE"
+  },
+  "flat_k8": {
+    "alpha": "0.00625",
+    "baseline": [
+      11,
+      60,
+      10.0,
+      40.0
+    ],
+    "baseline_mean": "2.8102381833333343",
+    "candidate": [
+      12,
+      45,
+      10.0,
+      40.0
+    ],
+    "candidate_mean": "11.358689022222224",
+    "ci_high": "51.83058631666666",
+    "ci_low": "-26.749201472222225",
+    "describe": "INCONCLUSIVE: candidate $+11.36/trade (n=45) vs baseline $+2.81/trade (n=60); diff $+8.55, 99.38% CI [$-26.75, $+51.83] (Bonferroni K=8)",
+    "diff": "8.54845083888889",
+    "k": 8,
+    "n_baseline": 60,
+    "n_candidate": 45,
+    "resamples": 5000,
+    "verdict": "INCONCLUSIVE"
+  },
+  "flat_small": {
+    "alpha": "0.05",
+    "baseline": [
+      11,
+      60,
+      10.0,
+      40.0
+    ],
+    "baseline_mean": "2.8102381833333343",
+    "candidate": [
+      12,
+      45,
+      10.0,
+      40.0
+    ],
+    "candidate_mean": "11.358689022222224",
+    "ci_high": "38.39478978333332",
+    "ci_low": "-18.288289972222223",
+    "describe": "INCONCLUSIVE: candidate $+11.36/trade (n=45) vs baseline $+2.81/trade (n=60); diff $+8.55, 95.00% CI [$-18.29, $+38.39] (Bonferroni K=1)",
+    "diff": "8.54845083888889",
+    "k": 1,
+    "n_baseline": 60,
+    "n_candidate": 45,
+    "resamples": 5000,
+    "verdict": "INCONCLUSIVE"
+  },
+  "lopsided": {
+    "alpha": "0.016666666666666666",
+    "baseline": [
+      51,
+      400,
+      2.0,
+      15.0
+    ],
+    "baseline_mean": "1.6466253025000013",
+    "candidate": [
+      52,
+      20,
+      2.0,
+      15.0
+    ],
+    "candidate_mean": "6.03697085",
+    "ci_high": "12.405129272499998",
+    "ci_low": "-1.8941107050000006",
+    "describe": "INCONCLUSIVE: candidate $+6.04/trade (n=20) vs baseline $+1.65/trade (n=400); diff $+4.39, 98.33% CI [$-1.89, $+12.41] (Bonferroni K=3)",
+    "diff": "4.390345547499999",
+    "k": 3,
+    "n_baseline": 400,
+    "n_candidate": 20,
+    "resamples": 5000,
+    "verdict": "INCONCLUSIVE"
+  },
+  "s23_shaped": {
+    "alpha": "0.0125",
+    "baseline": [
+      21,
+      179,
+      14.91,
+      120.0
+    ],
+    "baseline_mean": "-7.089260653631278",
+    "candidate": [
+      22,
+      128,
+      31.78,
+      120.0
+    ],
+    "candidate_mean": "35.1947263984375",
+    "ci_high": "117.90340543156427",
+    "ci_low": "-30.21880819666551",
+    "describe": "INCONCLUSIVE: candidate $+35.19/trade (n=128) vs baseline $-7.09/trade (n=179); diff $+42.28, 98.75% CI [$-30.22, $+117.90] (Bonferroni K=4)",
+    "diff": "42.28398705206878",
+    "k": 4,
+    "n_baseline": 179,
+    "n_candidate": 128,
+    "resamples": 5000,
+    "verdict": "INCONCLUSIVE"
+  },
+  "s23_shaped_k1": {
+    "alpha": "0.05",
+    "baseline": [
+      21,
+      179,
+      14.91,
+      120.0
+    ],
+    "baseline_mean": "-7.089260653631278",
+    "candidate": [
+      22,
+      128,
+      31.78,
+      120.0
+    ],
+    "candidate_mean": "35.1947263984375",
+    "ci_high": "103.398438419911",
+    "ci_low": "-13.482714574546087",
+    "describe": "INCONCLUSIVE: candidate $+35.19/trade (n=128) vs baseline $-7.09/trade (n=179); diff $+42.28, 95.00% CI [$-13.48, $+103.40] (Bonferroni K=1)",
+    "diff": "42.28398705206878",
+    "k": 1,
+    "n_baseline": 179,
+    "n_candidate": 128,
+    "resamples": 5000,
+    "verdict": "INCONCLUSIVE"
+  },
+  "tiny": {
+    "alpha": "0.0033333333333333335",
+    "baseline": [
+      41,
+      12,
+      5.0,
+      25.0
+    ],
+    "baseline_mean": "1.7048105833333331",
+    "candidate": [
+      42,
+      9,
+      8.0,
+      25.0
+    ],
+    "candidate_mean": "12.136282888888891",
+    "ci_high": "52.36612652777778",
+    "ci_low": "-23.842112333333333",
+    "describe": "INCONCLUSIVE: candidate $+12.14/trade (n=9) vs baseline $+1.70/trade (n=12); diff $+10.43, 99.67% CI [$-23.84, $+52.37] (Bonferroni K=15)",
+    "diff": "10.431472305555557",
+    "k": 15,
+    "n_baseline": 12,
+    "n_candidate": 9,
+    "resamples": 2000,
+    "verdict": "INCONCLUSIVE"
+  }
+}
