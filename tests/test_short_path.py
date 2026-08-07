@@ -574,6 +574,7 @@ from ledger import Ledger
 from strategies.base import Signal
 
 from conftest import make_bars
+from fakes.broker import ConformantBroker
 from test_main_cycle import FakeCycleBroker
 
 # SMA3 crosses above SMA5 on the last bar; last close is $20. Reused from
@@ -585,8 +586,19 @@ CYCLE_PRICE = 20.0
 CYCLE_ATR = 11 / 3
 
 
-class _ScriptedCycleBroker:
+class _ScriptedCycleBroker(ConformantBroker):
     """Cycle-driving fake, scripted per test.
+
+    Subclasses `ConformantBroker` to inherit `open_stop_orders` and
+    `replace_stop` and NOTHING ELSE — every other method below is an explicit
+    override, so behaviour is unchanged by the base class. Those two were the
+    only ones missing, and their absence was a live instance of the same bug
+    `tests/fakes/broker.py` documents: `main.update_trailing_stops` calls
+    `open_stop_orders` inside a `try/except Exception` that logs and returns.
+    The only reason this fake never hit it is the `trailing_atr_mult: 0` early
+    return above that call — so the moment a test here enabled the trail, the
+    whole chandelier ratchet would have been silently skipped and the test
+    would still have passed.
 
     Two things it does that tests/test_main_cycle.py's fake does not:
 

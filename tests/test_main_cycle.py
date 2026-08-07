@@ -15,59 +15,21 @@ import sitepaths
 from ledger import Ledger
 
 from conftest import make_bars
+from fakes.broker import ConformantBroker
 
 BUY_CLOSES = [10] * 6 + [9, 9, 9, 20]  # SMA3 crosses above SMA5 on the last bar
 
 
-class FakeCycleBroker:
-    """Duck-typed stand-in for broker.Broker, scripted per test."""
-
-    def __init__(self, bars, positions=None, orders=None, closed=None):
-        self._bars = bars
-        self._positions = positions or {}
-        self._orders = orders or {}
-        self.submitted = []
-
-    def account(self):
-        return {"equity": 100_000.0, "cash": 100_000.0,
-                "last_equity": 100_000.0, "buying_power": 100_000.0}
-
-    def positions(self):
-        return self._positions
-
-    def bars(self, symbol, timeframe, limit):
-        return self._bars
-
-    def market_order(self, symbol, qty, side, client_order_id=None):
-        order = {"id": "plain-1", "symbol": symbol, "qty": qty, "side": side,
-                 "status": "accepted", "client_order_id": client_order_id}
-        self.submitted.append(order)
-        return order
-
-    def bracket_market_order(self, symbol, qty, stop_price,
-                             take_profit_price=None, client_order_id=None):
-        order = {"id": "entry-1", "symbol": symbol, "qty": qty, "side": "buy",
-                 "status": "accepted", "order_class": "bracket",
-                 "stop_price": stop_price, "take_profit_price": take_profit_price,
-                 "leg_ids": ["leg-stop", "leg-tp"],
-                 "client_order_id": client_order_id}
-        self.submitted.append(order)
-        return order
-
-    def get_order(self, order_id):
-        return self._orders[order_id]
-
-    def closed_orders(self, symbol, limit=20):
-        return []
-
-    def last_price(self, symbol):
-        return self._bars[-1]["close"]
-
-    def cancel_open_orders(self, symbol):
-        return 0
-
-    def flatten_all(self):
-        raise AssertionError("kill switch must not fire in these tests")
+# `FakeCycleBroker` is now an ALIAS, not a class. Nine test files import this
+# name; making the shared fake conformant here fixes all of them at once rather
+# than repointing nine import lines and leaving the tenth behind.
+#
+# The old inline class omitted `latest_price`, `open_stop_orders` and
+# `replace_stop`. The first of those mattered: src/main.py's entry drift guard
+# calls `latest_price`, so every run_cycle() here silently took the guard's
+# fail-OPEN branch and wrote a `degradation` event that had nothing to do with
+# the code under test. See tests/fakes/broker.py for the full account.
+FakeCycleBroker = ConformantBroker
 
 
 @pytest.fixture
