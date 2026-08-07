@@ -275,6 +275,66 @@ changed.
 
 ---
 
+## Universe truncated (fewer symbols than the cycle asked for)
+
+**Symptoms:** ledger `universe_truncated` naming the missing symbols; if enough
+were lost, `universe_floor_blocked` and "entries blocked, exits still run".
+Decisions from that cycle carry `rail: "universe"`.
+
+**Diagnose:**
+
+```bash
+grep -c universe_truncated memory/ledger.jsonl
+grep data_error memory/ledger.jsonl | tail -5
+```
+
+`data_error` details carry the exception per symbol. Three shapes, and they
+mean different things:
+
+| detail contains | what it is | what to do |
+|---|---|---|
+| `NameResolutionError` | the laptop lost DNS | check wifi/VPN; usually self-heals |
+| `RemoteDisconnected` / `Connection aborted` | Alpaca closed the socket | nothing; the read retries now |
+| `subscription` / `403` | the data plan does not cover that symbol | remove it from `symbols:` or upgrade |
+
+**Fix:** a truncation of one or two symbols needs no action — that tier exists
+to be visible, not to be fixed. A blocked cycle means the feed lost a fifth of
+the cross-section; the bot has already refused entries and kept exits running,
+which is the correct posture. Do not widen `risk.min_universe_fraction` to make
+the alert stop.
+
+**Verify:** the next cycle logs no `universe_floor_blocked` and entries flow.
+
+**Why entries and not the whole cycle:** every gate scored the full universe. A
+book entered from a quarter of it is a different bot than the one that was
+gated — that is divergence #17 seen from the live side. Exits are never blocked
+by a data rail; a stranded position is worse than a missed entry.
+
+---
+
+## Broker call hangs / cycle runs long
+
+**Symptoms:** minutes-long gaps in `logs/agent.log` between broker calls; a
+`cycle_margin_low` alarm; `broker retry budget ... is spent` in the log.
+
+**Diagnose:** the 2026-08-05 signature is a `RemoteDisconnected` at the END of
+a 90-second gap — connection-level, so `alpaca-py`'s own 429/504 retry never
+looked at it, and there was no socket timeout at all. Since 2026-08-06 every
+SDK call carries `ops.broker_timeout_sec` (5s connect / 10s read) and reads
+retry twice inside `ops.broker_retry_budget_sec` (60s per cycle).
+
+**Fix:** if the budget message appears, the outage is broad rather than a
+single flaky socket — check https://status.alpaca.markets. Do NOT raise the
+budget to push through it: the budget is what keeps the cycle inside its
+15-minute window, and overrunning it is divergence #18 (a late DAY order is
+queued for the next open, not rejected).
+
+**Verify:** `python -c "import broker" ` is not the check. The real one is
+`pytest tests/test_broker_resilience.py`, whose black-hole-socket test points a
+real client at a server that never answers and asserts it gives up.
+
+---
+
 ## Missed cycle (nothing ran at 15:45 ET)
 
 **Symptoms:** watchdog alert at 16:15; no `cycle_complete` event today;

@@ -2,6 +2,8 @@
 import copy
 import os
 
+import pytest
+
 import main
 import preflight
 
@@ -128,3 +130,37 @@ def test_ledger_tail_check_still_catches_jsonl_corruption(cfg, tmp_path,
     c = copy.deepcopy(cfg)
     c["memory"]["ledger_path"] = "memory/ledger.jsonl"
     assert any("ledger tail" in f for f in preflight.run(c))
+
+
+# ---- Phase 4 (2026-08-06): resilience knobs -------------------------------
+
+@pytest.mark.parametrize("value", [80, 1.5, -0.1, "0.8", True])
+def test_a_universe_floor_that_is_not_a_fraction_fails(cfg, value):
+    """`0.8` and `80` are one keystroke apart and mean opposite things: the
+    first blocks entries below 80% of the requested cross-section, the second
+    blocks every cycle forever while LOOKING like a configured rail."""
+    cfg["risk"]["min_universe_fraction"] = value
+    assert any("min_universe_fraction" in f for f in preflight.run(cfg))
+
+
+@pytest.mark.parametrize("value", [0, 0.8, 1])
+def test_valid_universe_floors_pass(cfg, value):
+    cfg["risk"]["min_universe_fraction"] = value
+    assert not any("min_universe_fraction" in f for f in preflight.run(cfg))
+
+
+@pytest.mark.parametrize("key", ["broker_timeout_sec", "broker_retry_attempts",
+                                 "broker_retry_budget_sec"])
+@pytest.mark.parametrize("value", [-1, "10", None or False])
+def test_negative_or_non_numeric_broker_knobs_fail(cfg, key, value):
+    cfg.setdefault("ops", {})[key] = value
+    assert any(f"ops.{key}" in f for f in preflight.run(cfg))
+
+
+@pytest.mark.parametrize("key", ["broker_timeout_sec", "broker_retry_attempts",
+                                 "broker_retry_budget_sec"])
+def test_zero_is_a_legal_broker_knob(cfg, key):
+    """0 is the documented off position for each of these, so it must not be
+    confused with the negative values above."""
+    cfg.setdefault("ops", {})[key] = 0
+    assert not any(f"ops.{key}" in f for f in preflight.run(cfg))

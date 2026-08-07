@@ -11,7 +11,10 @@ closed trades, and posts trade recaps to X. Built from an evidence-based design
 ```
 src/broker.py    Alpaca wrapper. Paper-mode double interlock lives here. Orders carry a
                  deterministic client_order_id (ta-SYM-side-YYYYMMDD, 2026-07-21) so a
-                 crashed cycle rerun cannot double-submit.
+                 crashed cycle rerun cannot double-submit. Socket timeout installed on
+                 both alpaca-py clients (2026-08-06 — the SDK sets NONE anywhere, which
+                 cost 246s on three dead sockets on 2026-08-05). READS retry on
+                 connection-class errors inside a per-cycle budget; WRITES never do.
 src/preflight.py Fail-SAFE startup validation (2026-07-21): risk params, interlock, env
                  keys, ledger-tail integrity, timeframe. Any failure = no trading this
                  cycle + ledger preflight_failure + macOS alert. Opposite polarity from

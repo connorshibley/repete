@@ -550,6 +550,26 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # 2.398 -> 1.977 -> 1.730 — while return rises.
                                  # More positions has a known cost in trade
                                  # quality. That is what §29 gates.
+  min_universe_fraction: 0.8     # UNIVERSE FLOOR (2026-08-06): if fewer than this
+                                 # fraction of the symbols the cycle ASKED for end up
+                                 # with usable bars, block ENTRIES; exits always run.
+                                 # 0 disables.
+                                 #
+                                 # The total-outage case is already covered and this is
+                                 # NOT it: on 2026-07-31 the laptop lost DNS, every
+                                 # symbol failed inside 40ms, SPY was therefore missing
+                                 # and the cycle aborted on the stale-SPY rail. What was
+                                 # open is the PARTIAL band, and it has fired: the
+                                 # ledger's only data_error in its whole history is QQQ
+                                 # dropping out mid-cycle on 2026-08-05, after which the
+                                 # bot traded 37 of 38 names with nothing recorded as
+                                 # blocked. That is divergence #17 (500 in sim vs 38
+                                 # live) re-enacted inside live.
+                                 #
+                                 # 0.8 would NOT have blocked that cycle, deliberately —
+                                 # 1-of-38 is a symbol, 12-of-38 is a broken feed. The
+                                 # 1-symbol case is made visible instead, by a
+                                 # universe_truncated event that blocks nothing.
   max_bar_age_days: 4            # FRESHNESS GUARD: refuse to trade if the newest bar is
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
@@ -1159,6 +1179,37 @@ ops:
                                  # Deliberately NOT a 'degradation' event: those are
                                  # counted against max_degradations_per_day above, and a
                                  # timing signal must not spend the fail-open budget.
+
+  # ---- broker resilience (2026-08-06) ----
+  # MEASURED FIRST, and it changed the fix. alpaca-py 0.43.5 already retries
+  # 429/504 three times by default (RESTClient sets _retry=3, _retry_wait=3),
+  # and neither client class lets you turn that off. What it has NEVER had is a
+  # timeout: RESTClient._request builds its request options with no `timeout`
+  # key at all, and requests' default is None — wait forever.
+  #
+  # On 2026-08-05 that cost 52.5s (account+positions), 89.7s (one symbol's
+  # bars) and 103.7s (an open-order lookup) in a single cycle: 246 seconds,
+  # four minutes of a fifteen-minute window, on three dead sockets. All three
+  # ended in RemoteDisconnected, which is connection-level and therefore not
+  # something the SDK's 429/504 retry ever looked at.
+  broker_timeout_sec: 10         # READ timeout (connect is 5). Healthy calls measured
+                                 # 0.22-1.3s per symbol across 2026-07-29..08-04, so
+                                 # this is ~8x the worst healthy call and ~9x faster
+                                 # than the observed hang. 0 disables the timeout
+                                 # entirely and restores the hang — it exists so the
+                                 # knob has an off position, not as a suggestion.
+  broker_retry_attempts: 2       # EXTRA attempts on connection-class failures, READS
+                                 # ONLY. Order submission is never auto-retried: on a
+                                 # retry Alpaca rejects the duplicate client_order_id
+                                 # and the caller would have to tell "already placed"
+                                 # from "really failed" — a classifier whose bug
+                                 # doubles a position.
+  broker_retry_budget_sec: 60    # TOTAL seconds of retrying per cycle, across every
+                                 # call. Without this, ~40 symbols x 2 retries x a 10s
+                                 # timeout is twenty minutes against a fifteen-minute
+                                 # window — a resilience fix that causes divergence
+                                 # #18. Once spent, calls still get their timeout but
+                                 # stop retrying. 0 disables retrying outright.
 
 reporting:
   starting_equity: 100000        # Alpaca paper account starting capital; the
