@@ -67,11 +67,19 @@ def _arms(base=None, cand=None, base_pnls=None, cand_pnls=None):
     # exercise, and `cand_pnls or [...]` would silently substitute 60 trades
     # for it. The first version of this helper did exactly that and the test
     # passed for the wrong reason.
+    bp = [1.0] * 60 if base_pnls is None else base_pnls
+    cp = [1.0] * 60 if cand_pnls is None else cand_pnls
+    # Index 4 is the §55 trade-key list. The two arms are given DISJOINT keys:
+    # these fixtures exist to exercise the original clauses, and inventing an
+    # overlap would quietly turn any paired rule scored here into a comparison
+    # of coincidences.
     return {
-        "baseline": (_summary(**(base or {})),
-                     [1.0] * 60 if base_pnls is None else base_pnls, 1.0),
-        "cand": (_summary(**(cand or {})),
-                 [1.0] * 60 if cand_pnls is None else cand_pnls, 1.0),
+        "baseline": (_summary(**(base or {})), bp, 1.0, _NO_JUDGE.copy(),
+                     [(f"2024-01-{1 + i % 28:02d}T21:00:00Z", f"B{i}")
+                      for i in range(len(bp))]),
+        "cand": (_summary(**(cand or {})), cp, 1.0, _NO_JUDGE.copy(),
+                 [(f"2024-02-{1 + i % 28:02d}T21:00:00Z", f"C{i}")
+                  for i in range(len(cp))]),
     }
 
 
@@ -82,7 +90,9 @@ def _fake_run_arm(job):
     _, arm, *_ = job
     seed = sum(ord(c) for c in arm["name"])
     return (arm["name"], _summary(profit_factor=1.0 + seed / 1000),
-            [float(seed % 7)] * 50, 0.0, _NO_JUDGE.copy())
+            [float(seed % 7)] * 50, 0.0, _NO_JUDGE.copy(),
+            [(f"2024-01-{1 + i % 28:02d}T21:00:00Z", f"S{i}")
+             for i in range(50)])
 
 
 # What judge_model.stats() returns on a run where the model never fired.
@@ -179,9 +189,10 @@ def test_results_are_rekeyed_into_spec_order():
     left all ten tests green.
     """
     arms = [{"name": "baseline"}, {"name": "a"}, {"name": "b"}]
-    done = [("b", _summary(profit_factor=3.0), [3.0], 0.0, _NO_JUDGE),
-            ("baseline", _summary(profit_factor=1.0), [1.0], 0.0, _NO_JUDGE),
-            ("a", _summary(profit_factor=2.0), [2.0], 0.0, _NO_JUDGE)]
+    k = [("2024-01-02T21:00:00Z", "A")]      # §55 trade keys, index 5
+    done = [("b", _summary(profit_factor=3.0), [3.0], 0.0, _NO_JUDGE, k),
+            ("baseline", _summary(profit_factor=1.0), [1.0], 0.0, _NO_JUDGE, k),
+            ("a", _summary(profit_factor=2.0), [2.0], 0.0, _NO_JUDGE, k)]
     out = run_gate.in_spec_order(done, arms)
     assert list(out) == ["baseline", "a", "b"]
     assert out["baseline"][0]["profit_factor"] == 1.0
@@ -192,7 +203,7 @@ def test_a_missing_arm_is_an_error_not_a_silent_gap():
     `baseline` key is absent and letting `evaluate` raise a KeyError three
     frames later."""
     with pytest.raises(SystemExit, match="produced no result"):
-        run_gate.in_spec_order([("a", _summary(), [1.0], 0.0, _NO_JUDGE)],
+        run_gate.in_spec_order([("a", _summary(), [1.0], 0.0, _NO_JUDGE, [("2024-01-02T21:00:00Z", "A")])],
                                [{"name": "baseline"}, {"name": "a"}])
 
 
@@ -381,3 +392,91 @@ def test_an_explicit_candidate_wins_over_both_defaults():
     spec = _spec(candidate="cand", arms=[{"name": "baseline"},
                                          {"name": "other"}, {"name": "cand"}])
     assert run_gate.default_candidate(spec) == "cand"
+
+
+# ---- §55: the paired clause rules ------------------------------------------
+
+def _nested_arms(n=140, keep=100, shift=0.0, seed=99):
+    """A baseline and a candidate that is a strict SUBSET of it — the §23 shape.
+
+    Unlike `_arms` above, these two DO share trades, which is the whole point:
+    the paired rules exist to cancel the variance that sharing creates.
+    """
+    import random
+    rng = random.Random(seed)
+    keys = [(f"2024-{1 + i // 20:02d}-{1 + i % 20:02d}T21:00:00Z", f"S{i % 30}")
+            for i in range(n)]
+    removed = set(rng.sample(range(n), n - keep))
+    pnls = [rng.gauss(20.0 - (shift if i in removed else 0.0), 60.0)
+            for i in range(n)]
+    kept = [i for i in range(n) if i not in removed]
+    return {
+        "baseline": (_summary(), pnls, 1.0, _NO_JUDGE.copy(), keys),
+        "cand": (_summary(), [pnls[i] for i in kept], 1.0, _NO_JUDGE.copy(),
+                 [keys[i] for i in kept]),
+    }
+
+
+def test_the_paired_rule_reports_the_overlap_it_actually_found():
+    spec = _spec(clauses=[{"id": "e", "rule": "significantly_better_paired"}])
+    out = run_gate.evaluate(spec, _nested_arms(), "cand", resamples=400)
+    detail = out["clauses"][0]["detail"]
+    assert "PAIRED, nested" in detail
+    assert "100 shared" in detail and "40 baseline-only" in detail
+
+
+def test_the_paired_rule_reports_the_kept_vs_removed_reading_but_does_not_gate_on_it():
+    """The nested form is sharper and is REPORTED. Gating on whichever of two
+    instruments looks better is selection; the registered clause decides."""
+    spec = _spec(clauses=[{"id": "e", "rule": "significantly_better_paired"}])
+    out = run_gate.evaluate(spec, _nested_arms(shift=200.0), "cand",
+                            resamples=400)
+    detail = out["clauses"][0]["detail"]
+    assert "KEPT vs REMOVED (reported, not gated)" in detail
+
+
+def test_the_paired_rule_finds_a_real_effect_the_independent_one_misses():
+    """The §55 argument, executed through the runner rather than the library."""
+    arms = _nested_arms(shift=55.0)
+    ind = run_gate.evaluate(_spec(clauses=[{"id": "e",
+                                            "rule": "significantly_better"}]),
+                            arms, "cand", resamples=800)
+    par = run_gate.evaluate(_spec(clauses=[{"id": "e",
+                                            "rule": "significantly_better_paired"}]),
+                            arms, "cand", resamples=800)
+    assert ind["clauses"][0]["pass"] is False
+    assert par["clauses"][0]["pass"] is True
+
+
+def test_the_paired_rule_fails_rather_than_falling_back_when_keys_are_absent():
+    """A spec that registered the paired rule and got scored by the independent
+    one would be a different claim than the one frozen."""
+    arms = _nested_arms()
+    arms["cand"] = arms["cand"][:4] + ([],)
+    spec = _spec(clauses=[{"id": "e", "rule": "significantly_better_paired"}])
+    out = run_gate.evaluate(spec, arms, "cand", resamples=200)
+    assert out["clauses"][0]["pass"] is False
+    assert "cannot pair" in out["clauses"][0]["detail"]
+
+
+def test_the_paired_rule_fails_on_an_arm_with_no_closed_trades():
+    arms = _nested_arms()
+    arms["cand"] = (arms["cand"][0], [], 1.0, _NO_JUDGE.copy(), [])
+    spec = _spec(clauses=[{"id": "e", "rule": "significantly_better_paired"}])
+    out = run_gate.evaluate(spec, arms, "cand", resamples=200)
+    assert out["clauses"][0]["pass"] is False
+    assert "no closed trades" in out["clauses"][0]["detail"]
+
+
+def test_paired_capacity_is_strictly_weaker_than_paired_edge():
+    """Same relationship `not_worse` has to `significantly_better`. If it ever
+    inverts, one of the two rules is reading the interval backwards."""
+    arms = _nested_arms(shift=-40.0)          # candidate genuinely worse
+    edge = run_gate.evaluate(_spec(clauses=[{"id": "e",
+                                             "rule": "significantly_better_paired"}]),
+                             arms, "cand", resamples=600)
+    cap = run_gate.evaluate(_spec(claim="CAPACITY",
+                                  clauses=[{"id": "e", "rule": "not_worse_paired"}]),
+                            arms, "cand", resamples=600)
+    assert edge["clauses"][0]["pass"] is False
+    assert cap["clauses"][0]["pass"] is False   # significantly WORSE fails both
