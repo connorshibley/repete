@@ -44,8 +44,23 @@ code" is not closed; the repo has been wrong about that before.
 | 10 | **The simulator's equity peak advanced only on buy bars** | **closed 2026-07-28** | `tests/test_sim_peak_tracks_every_bar.py` |
 | 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
 | 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
+| 13 | **Live is trading in a state the backtest says is rare** (the drawdown latch) | **open** | open by construction — a sampling fact about the live record, not a defect |
+| 14 | **The live judge reads news memory; the backtest's judge model cannot** | **open** | open by construction — the simulator has no mechanism to represent it |
+| 15 | **The live judge reads curated principles; the backtest's judge model cannot** | **open** | open by construction — same; open since the initial commit, found 2026-08-04 |
+| 16 | **Paper shorting is free; real shorting is not** | **open** | open by construction — the paper broker charges no borrow, and the bias flatters |
 | 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
 | 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
+
+> **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
+> second time this file has been wrong in the direction that matters. The prose
+> above said eighteen and named five open; the table listed fourteen and showed
+> exactly one open. A reader who trusted the table — the fastest thing in the
+> file to read, and therefore the thing most likely to be read alone — would
+> have undercounted the open divergences **five to one**.
+>
+> Found while writing `tests/test_doc_counts.py`, which now asserts the prose
+> total, the table rows and the `Open as of` line all agree. The three could
+> drift apart before because nothing compared them.
 
 ---
 
