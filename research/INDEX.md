@@ -62,4 +62,4 @@ second source of truth.
 | §52 | CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and th… | EDGE | blocked | — |
 | §53 | DOES THE 130/30 CONFIGURATION BEHAVE? | — | rejected | 2026-08-05 |
 | §54 | WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? | DIAGNOSTIC | pre-registered | 2026-08-05 |
-| §55 | THE REFEREE GETS A SHARPER INSTRUMENT | — | — | 2026-08-07 |
+| §55 | THE REFEREE GETS A SHARPER INSTRUMENT | — | — | 2026-08-06 |

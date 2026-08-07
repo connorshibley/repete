@@ -5673,7 +5673,7 @@ file. Full reasoning in `research/s54_run_2026-08-05.txt`.
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 1 pass in 15; K stays 15.**
 
-## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-07, tooling — not a claim)
+## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-06, tooling — not a claim)
 
 Same status as §36: this changes how a verdict is *measured*, so it is recorded
 here and registers nothing. No spec, no `bonferroni_k`, no row in
