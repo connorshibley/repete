@@ -160,6 +160,11 @@ def run_arms(spec, base_cfg, sym_bars, aux, cash, workers: int) -> dict:
     return in_spec_order(done, spec["arms"])
 
 
+# Field positions inside an arm record, as `in_spec_order` builds it. Named
+# because positional unpacking of these tuples has now broken the runner once.
+SUMMARY, PNLS, SECS, JUDGE_STATS, KEYS = range(5)
+
+
 def in_spec_order(done: list, arms: list) -> dict:
     """Re-key results by arm name in SPEC order, never completion order.
 
@@ -203,10 +208,22 @@ def default_candidate(spec: dict) -> str:
     return arms[1]["name"] if len(arms) > 1 else arms[0]["name"]
 
 
+def judge_stats_by_arm(arms: dict) -> dict:
+    """{arm name: judge counters}.
+
+    Extracted so it can be TESTED. The inline version destructured the arm
+    record positionally, §55 added a sixth element to `run_arm`'s return, and
+    the mismatch blew up after every arm had finished computing — the §39
+    failure mode exactly. Nothing in the suite touched it because the tests
+    drive `evaluate()`, which never sees these records.
+    """
+    return {name: rec[JUDGE_STATS] for name, rec in arms.items()}
+
+
 def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
-    base_summary = arms["baseline"][0]
-    cand_summary, cand_pnls = arms[candidate][0], arms[candidate][1]
-    base_pnls = arms["baseline"][1]
+    base_summary = arms["baseline"][SUMMARY]
+    cand_summary, cand_pnls = arms[candidate][SUMMARY], arms[candidate][PNLS]
+    base_pnls = arms["baseline"][PNLS]
 
     comp = None
     paired = None          # §55, computed at most once like `comp`
@@ -339,8 +356,8 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
             # of being counted twice. Measured against a known-zero effect:
             # nominal 0.0500 coverage, and 0.645 power where the independent
             # estimator reaches 0.025.
-            base_keys = arms["baseline"][4]
-            cand_keys = arms[candidate][4]
+            base_keys = arms["baseline"][KEYS]
+            cand_keys = arms[candidate][KEYS]
             if not base_pnls or not cand_pnls:
                 ok, detail = False, "an arm produced no closed trades"
             elif not base_keys or not cand_keys:
@@ -378,14 +395,14 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
             metric, order = clause["metric"], clause["order"]
             better = clause.get("better", "high")
             absent = [n for n in order
-                      if n not in arms or arms[n][0].get(metric) is None]
+                      if n not in arms or arms[n][SUMMARY].get(metric) is None]
             if absent:
                 # FAIL, never skip — §33 RUN 1 manufactured a VALIDATED verdict
                 # out of checks that quietly did not run.
                 ok = False
                 detail = f"cannot score {metric}: arms {absent} produced no value"
             else:
-                vals = [float(arms[n][0][metric]) for n in order]
+                vals = [float(arms[n][SUMMARY][metric]) for n in order]
                 best = max(vals) if better == "high" else min(vals)
                 idx = vals.index(best)
                 interior = 0 < idx < len(vals) - 1
@@ -526,13 +543,20 @@ def main() -> int:
     arms = run_arms(spec, base_cfg, sym_bars, aux,
                     spec.get("cash", 100_000.0), args.workers)
     wall = time.monotonic() - t0
-    for name, (summary, _, secs, _js, _keys) in arms.items():
+    for name, rec in arms.items():
+        summary, secs = rec[SUMMARY], rec[SECS]
         print(fmt(name, summary, secs), flush=True)
         for extra in (fmt_exposure(name, summary), fmt_rails(name, summary)):
             if extra:
                 print(extra, flush=True)
 
-    judged = {name: js for name, (_, _, _, js) in arms.items()}
+    # Index, not positional unpack. §55 added a sixth element to `run_arm`'s
+    # return — the trade keys `compare_paired` needs — and updated three of the
+    # four places that read it. This one still destructured four, and it blew
+    # up AFTER every arm had finished computing: exactly the §39 failure that
+    # took a 388-second run to surface. Indexing does not silently depend on
+    # the arity, so the next field to be added cannot reopen this.
+    judged = judge_stats_by_arm(arms)
     if judge:
         print()
         for name, js in judged.items():
@@ -565,7 +589,7 @@ def main() -> int:
                 f"knowledge/judge_calibration.json has a non-degenerate "
                 f"histogram.")
 
-    bh = arms["baseline"][0].get("buy_hold_return_pct")
+    bh = arms["baseline"][SUMMARY].get("buy_hold_return_pct")
     if bh is not None:
         print(f"\n  buy-and-hold on this universe: {bh:+.2f}%")
 
@@ -639,7 +663,7 @@ def main() -> int:
         # predates the field — §35-§41 — and is NOT the same as `false`.
         "judge_model": judge,
         "judge_stats": judged if judge else None,
-        "arms": {name: summary for name, (summary, _, _, _) in arms.items()},
+        "arms": {name: rec[SUMMARY] for name, rec in arms.items()},
     }
     os.makedirs(os.path.dirname(args.verdicts) or ".", exist_ok=True)
     with open(args.verdicts, "a") as f:
