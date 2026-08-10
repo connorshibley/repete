@@ -374,6 +374,68 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     max_open_positions: 0     # 0 = ceiling disabled (§29 convention). The
                               # binding limits are risk.sector_concentration
                               # below, the correlation cap, and heat.
+  lowvol:              # §32 candidate: low realized volatility, ranked
+    enabled: false     # NOT a change of state — it has been disabled since §32.
+                       # What changed on 2026-08-10 is that it became REACHABLE.
+                       #
+                       # It was in REGISTRY with no block here, so
+                       # `strategy_params` returned None and every call answered
+                       # `hold "no config for strategy lowvol"`. It could not
+                       # have traded had somebody set enabled: true, and
+                       # `test_lowvol.py` asserted only that it was not enabled —
+                       # which passed whether the strategy worked or did not
+                       # exist. A check that cannot fail (`ci.yml:55-69`).
+                       #
+                       # These params are the module's own defaults written down,
+                       # not new choices: they reproduce what §32 scored.
+    priority: 7        # below reclaim — nothing gated should ever be pre-empted
+                       # by a strategy that has not passed anything.
+    vol_period: 60
+    buy_bottom_fraction: 0.25   # buy the calmest quarter
+    exit_above_fraction: 0.50   # exit once a holding leaves the calmer half
+  hi52:                # §59 candidate: 52-week-high proximity (George & Hwang 2004)
+    enabled: false     # DISABLED, and registered DIAGNOSTIC only — which by
+                       # `gatespec.py` decides nothing and licenses nothing.
+                       # §52 freezes EDGE on data/snapshots/ and §57's own
+                       # pre-committed reading rule closes data/pit/, so there is
+                       # no venue in which this could currently earn one.
+                       #
+                       # Params are the PRE-REGISTERED starting point, not a
+                       # fitted result: 252 bars is the paper's own window, and
+                       # 0.25/0.50 mirror xsmom's fractions so the two rankings
+                       # differ in the STATISTIC and in nothing else. That is the
+                       # whole point — §35/§37 rejected the momentum ranking, and
+                       # George & Hwang's claim is that this ranking subsumes it.
+    priority: 8
+    exclude_etfs: true        # same category error as xsmom's, same fix: a
+                              # basket is not a peer of its own constituents.
+                              #
+                              # NOTE FOR ANY ETF-UNIVERSE RUN: this must be set
+                              # FALSE in the arm. `etfs:` names eight of the
+                              # fifteen certified funds, so `universe_for`
+                              # returns base - excluded_etfs and the ranking
+                              # silently shrinks to 7 of 15 (and 5 of 13 in the
+                              # earliest period) — losing SPY, which is the
+                              # benchmark, and every sector fund with the
+                              # deepest history.
+                              #
+                              # It does NOT empty and it does NOT error, which
+                              # is what makes it dangerous: n stays above the
+                              # `< 4` guard, so the strategy runs and reports
+                              # trades. `buy_top_fraction: 0.25` would mean
+                              # "the best 1 of 7" instead of "the best 3 of 15"
+                              # — a different strategy under the same name,
+                              # with nothing in the output saying so.
+                              # §59a-d carry the override explicitly.
+    high_lookback_bars: 252   # the 52-week window the paper is named for
+    buy_top_fraction: 0.25    # buy the quarter nearest their own highs
+    exit_below_fraction: 0.50 # exit when a holding leaves the top half
+    min_proximity: 0.90       # ABSOLUTE floor beneath the relative rank: a name
+                              # must be within 10% of its own high, not merely
+                              # the least-broken thing in a broken universe.
+                              # Without it the rule buys leaders of a bear
+                              # market, which is a relative-strength bet and not
+                              # the anchoring mechanism the paper describes.
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
@@ -652,6 +714,29 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     lookback: 60                 # when >= max_correlated open positions have >= threshold
     threshold: 0.85              # Pearson correlation of daily returns with it over the
     max_correlated: 2            # lookback window. Entries only; fail-open without bars.
+  max_contraction_pctile: 0      # §58 VOLATILITY-CONTRACTION PRECONDITION — OFF.
+                                 # Blocks an entry unless the last 20 bars' high-to-low
+                                 # range, as a fraction of price, sits at or below this
+                                 # percentile of its own trailing year. 10 would mean
+                                 # "only names quieter than 90% of their own last year".
+                                 #
+                                 # 0 = disabled, the same convention as min_rvol, and it
+                                 # ships disabled for that key's exact reason: the idea has
+                                 # not passed a gate, and config.yaml IS the live artifact.
+                                 # §58 registers it DIAGNOSTIC, which licenses nothing.
+                                 #
+                                 # No bespoke code path exists — the shared rail
+                                 # risk.contraction_blocked() already runs for every
+                                 # strategy in main.py's entry loop and in both simulators
+                                 # and reads this key, so enabling it is one value.
+                                 #
+                                 # IT COSTS HISTORY. Any non-zero value moves
+                                 # strategies.max_lookback_bars from 253 to 272, because a
+                                 # rail starved of bars fails OPEN and silently blocks
+                                 # nothing. Per-strategy override:
+                                 # strategies.<name>.max_contraction_pctile.
+  contraction_period: 20         # bars in the range window — the "coil" itself
+  contraction_lookback: 252      # trailing windows it is ranked against (~one year)
   max_entry_drift_bps: 100       # ENTRY DRIFT GUARD (2026-07-21): skip a buy when the
                                  # live quote is >1% away from the price the signal saw.
                                  # Order-level backstop behind the freshness guard — every

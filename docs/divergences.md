@@ -4,20 +4,23 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Nineteen such differences have been found. Until 2026-07-28 they existed **only as
+Twenty such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-09: #13, #14, #15, #16, #18 and #19.** Five of the six are
+**Open as of 2026-08-10: #13, #14, #15, #16, #18 and #19.** Five of the six are
 open *by construction* rather than by defect — a sampling fact about the live
 record, two judge inputs the simulator has no mechanism to represent, a cost the
 paper broker does not charge, and a fill-session hazard that only materialises
 when the cycle runs long. **#19 is not: it is a plain omission**, found
 2026-08-09, in which a live entry filter has been silently switched off in every
-gate ever run because no spec supplies the data it needs. **#17 is a DEFECT, found and closed the same day**, and
-it is the largest correction here: the simulator let every strategy enter every
-symbol in the snapshot.
+gate ever run because no spec supplies the data it needs. **#17 and #20 are
+DEFECTS, each found and closed the same day.** #17 is the largest correction
+here: the simulator let every strategy enter every symbol in the snapshot. #20
+is the subtler shape — live and the simulator keyed the re-entry cooldown
+differently, which is harmless under the shipped config and would have gone
+live silently on the day a second strategy was scoped.
 
 That count has been wrong before, in the direction that matters. This file said
 **"Open as of 2026-07-29: none"** while #15 had been open since the initial
@@ -53,6 +56,7 @@ code" is not closed; the repo has been wrong about that before.
 | 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
 | 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
 | 19 | **The earnings blackout is unmodelled in EVERY gate** | **open** | found 2026-08-09 (§57); no registered spec has ever passed `earnings=` |
+| 20 | The re-entry cooldown was keyed by symbol in live, by (strategy, symbol) in the simulator | closed | `tests/test_cooldown_key_matches_sim.py` |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -710,3 +714,55 @@ file, plus a test asserting that a spec whose config sets
 than silently scored. Today the absence is invisible; the fix is to make it
 loud. Not done here — it belongs with the universe it affects, which is the
 38-name book and not this one.
+
+---
+
+## #20 — the re-entry cooldown was keyed by symbol in live and by (strategy, symbol) in the simulator
+
+**Found and closed 2026-08-10** (§58), while reading the entry loop for an
+unrelated rail. Not a sampling fact, not a modelling limit — a plain defect, and
+the second of that kind in this register after #17.
+
+`risk.cooldown_days_for(cfg, name)` is per-strategy by design:
+`risk.reentry_cooldown.strategies` names which strategies the rule applies to,
+because §9 measured it and **adopted it for meanrev while rejecting it for
+tsmom** (PF 2.16 → 2.25 for one; maxDD worsened for the other).
+
+`backtest.simulate_ensemble` keyed its `last_exit` map by `(strategy, symbol)`
+to match. `main.py` built and read the same map keyed by **symbol alone**.
+
+### The mechanism
+
+In live, meanrev exiting AAPL set `last_exit["AAPL"]`. tsmom's entry check then
+read that same slot, found a recent exit, and refused the entry — applying to
+tsmom a rule §9 had explicitly measured and rejected *for tsmom*. The simulator,
+keying by pair, let tsmom in.
+
+### Why it stayed invisible
+
+`strategies: [meanrev]` is the shipped scope, and with exactly one scoped
+strategy the two keyings cannot disagree — every lookup that reaches
+`cooldown_blocked` is meanrev's own. It was a defect waiting on a config change.
+
+That is the dangerous shape, not a harmless one. The config change would have
+been made on the strength of a gate, and the gate would have been scored under
+the simulator's rule. The evidence licensing the change would have described a
+bot that was not the one running, and nothing in the output would have said so.
+
+### What this invalidates
+
+**Nothing.** With one scoped strategy the behaviours are identical, so no gate
+verdict and no live decision rests on the difference. It is recorded because the
+register's standard is that a divergence is listed when it is found, not when it
+first costs something.
+
+### CLOSED by `tests/test_cooldown_key_matches_sim.py`
+
+Live now keys by `(strategy, symbol)`, with `strategies.DEFAULT_OWNER` for
+legacy ledger rows that predate the strategy tag — dropping those would silently
+shorten the cooldown on the oldest positions, which are the ones most likely to
+be re-entered.
+
+The test asserts the behaviour (one strategy's exit does not block another's
+entry, and the same strategy's still does), and reads both sources so it fails
+if either side drifts back. "Fixed in code" is not closed.

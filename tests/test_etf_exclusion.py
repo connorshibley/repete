@@ -260,14 +260,26 @@ def test_the_shipped_config_names_eight_etfs_all_of_them_real(shipped):
     assert set(ETFS) <= core
 
 
-def test_the_shipped_config_opts_xsmom_in_and_nobody_else(shipped):
+def test_only_CROSS_SECTIONAL_never_gated_strategies_opt_in(shipped):
     """Pins WHICH strategies subtract. If ma_crossover, tsmom or meanrev ever
     picked this up, eight names would leave a universe those three were gated
     on — a live behaviour change to the evidence record, arriving through a
-    config key rather than through a gate."""
-    opted = [n for n, p in shipped["strategies"].items()
-             if (p or {}).get("exclude_etfs")]
-    assert opted == ["xsmom"]
+    config key rather than through a gate.
+
+    `hi52` joined on 2026-08-10 for the same reason xsmom is here and under the
+    same conditions: it ranks a cross-section, so a basket sharing a scale with
+    its own constituents is a category error, and it has never passed a gate, so
+    opting it in cannot invalidate evidence that does not exist. The assertion
+    is written as a PROPERTY rather than a literal list, so the next strategy
+    added has to satisfy the reason rather than just extend the line."""
+    opted = {n for n, p in shipped["strategies"].items()
+             if (p or {}).get("exclude_etfs")}
+    assert opted == {"xsmom", "hi52"}
+    for name in opted:
+        assert strategies.REGISTRY[name].NEEDS_CROSS_SECTION, \
+            f"{name} is not cross-sectional — exclude_etfs is not its fix"
+        assert shipped["strategies"][name]["enabled"] is False, \
+            f"{name} is ENABLED and subtracts eight names from a live universe"
 
 
 def test_the_shipped_config_leaves_thirty_rankable_names_for_xsmom(shipped):

@@ -702,6 +702,77 @@ def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
     return value < float(threshold)
 
 
+def extra_lookback_bars(cfg: dict) -> int:
+    """Bars the RAILS need beyond what the strategies ask for, or 0.
+
+    `strategies.max_lookback_bars` sums up `required_lookback` across strategy
+    modules and nothing else, which was complete right up until a rail needed
+    more history than any strategy. `contraction_blocked` needs
+    `period + lookback` bars and fails OPEN below that — so under-fetching does
+    not error, it silently disarms the filter on every bar.
+
+    Returns 0 unless the contraction rail is switched on somewhere: globally,
+    or by any single strategy's own override. Checking BOTH matters — a spec
+    arm that sets only `strategies.tsmom.max_contraction_pctile` would
+    otherwise arm a rail and starve it.
+    """
+    risk_cfg = cfg.get("risk") or {}
+    thresholds = [risk_cfg.get("max_contraction_pctile", 0)]
+    thresholds += [(params or {}).get("max_contraction_pctile", 0)
+                   for params in (cfg.get("strategies") or {}).values()]
+    if not any(thresholds):
+        return 0
+    return (int(risk_cfg.get("contraction_period", 20))
+            + int(risk_cfg.get("contraction_lookback", 252)))
+
+
+def contraction_blocked(bars: list, cfg: dict,
+                        strategy: str | None = None) -> bool:
+    """§58: block an ENTRY whose recent range is NOT contracted — the "coil".
+
+    A PRECONDITION on entries the ensemble already takes, not a trigger. §17
+    tried the trigger form (a Donchian breakout) and it was rejected with a
+    profit factor of 0.874 excluding its three best trades. §21 then measured
+    the trade-count levers exhausted, and §23 concluded that what remains is
+    quality rather than count. This is the shape that conclusion points at, and
+    it ships the way §23's own filter ships: wired, tested, and OFF.
+
+    Structured exactly like `rvol_blocked` above, for the identical reason —
+    ONE implementation called by live and by both simulators. Five sim/live
+    divergences have already cost real rework; a filter re-implemented per call
+    site would be the sixth.
+
+    FAILS OPEN. A `None` percentile (short history) permits the entry. That is
+    the safe polarity for a data gap, but it carries a trap of its own: a rail
+    never handed enough bars blocks NOTHING while reporting as installed.
+    `strategies.max_lookback_bars` is what stops that, and it is tested.
+
+    Threshold is the percentile at or below which an entry is still allowed:
+        strategies.<name>.max_contraction_pctile -> risk.max_contraction_pctile
+        -> 0 (disabled)
+    0 means OFF rather than "only the single quietest window in a year",
+    matching `min_rvol`'s convention. The degenerate reading is not worth a
+    second key. Never applied to exits: a position must always be able to leave.
+    """
+    threshold = None
+    if strategy:
+        threshold = ((cfg.get("strategies") or {}).get(strategy) or {}
+                     ).get("max_contraction_pctile")
+    if threshold is None:
+        threshold = (cfg.get("risk") or {}).get("max_contraction_pctile", 0)
+    if not threshold:
+        return False
+    risk_cfg = cfg.get("risk") or {}
+    period = int(risk_cfg.get("contraction_period", 20))
+    lookback = int(risk_cfg.get("contraction_lookback", 252))
+    # Local import for the same reason as rvol above.
+    from strategies.base import contraction_pctile as _pctile
+    value = _pctile(bars, period, lookback)
+    if value is None:
+        return False                      # fail open — see docstring
+    return value > float(threshold)
+
+
 def unprotectable_entry(entry_price: float, atr_value: float | None,
                         cfg: dict) -> bool:
     """True when brackets are ON but this entry's stop would be non-positive.

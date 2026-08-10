@@ -658,6 +658,9 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 # §23 relative-volume confirmation (entries only; fails open)
                 if risk.rvol_blocked(hist, cfg, strategy_name):
                     continue
+                # §58 contraction precondition (entries only; fails open)
+                if risk.contraction_blocked(hist, cfg, strategy_name):
+                    continue
                 # Unprotectable entry (2026-07-27): an ATR-derived stop at or
                 # below zero means brackets() returns None and the position runs
                 # with NO stop. Same helper as live and the ensemble.
@@ -1235,6 +1238,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # claim it — only an accepted buy consumes the symbol.
                 if risk.rvol_blocked(hist, cfg, name):
                     _blocked("rvol")
+                    continue
+                # §58 contraction precondition (entries only; fails open).
+                # `continue` not `break`, for rvol's reason exactly: the
+                # threshold is per-strategy, so a lower-priority strategy with
+                # a different setting may still claim this symbol today.
+                if risk.contraction_blocked(hist, cfg, name):
+                    _blocked("contraction")
                     continue
                 # §31 cross-asset credit gate (entries only; fails open).
                 # `break`, not `continue`: unlike rvol this is a MARKET-WIDE

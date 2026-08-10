@@ -6009,3 +6009,185 @@ output that fail if the arity and the constants drift apart.
 Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 **1 pass in 15; K stays 15.** The live forward record — ten closed trades,
 realized −$339.16 — is untouched by anything here.
+
+---
+
+## §58 — THE COIL: A VOLATILITY-CONTRACTION PRECONDITION (DIAGNOSTIC, K=15, pre-registered 2026-08-10)
+
+s58a-h and s59a-h — **sixteen specs written and frozen together, before any was
+run**, then run once each. Eight periods across two universes per section.
+**DIAGNOSTIC — these decide nothing and spend no EDGE budget. K stays 15.**
+
+### Why a DIAGNOSTIC, when Phase 10 was built to make an EDGE claim possible
+
+Both venues are closed, and the second one closed itself:
+
+| venue | status |
+|---|---|
+| `data/snapshots/` — 38-name book | EDGE frozen by §52 (survivorship, up to +130pp) |
+| `data/pit/` — 15 certified ETFs | EDGE closed by **§57's own pre-committed reading rule** |
+
+§57 registered, before running, that failing `beats_benchmark_symbol` in three
+or more of four periods "licenses no further EDGE registration on this
+universe." It then failed in four of four. Honouring that only when its outcome
+is convenient is the selection this apparatus exists to prevent — so the rule is
+now **executed** by `register_gate.freeze_violation` rather than remembered, with
+the same audited `--override-freeze` escape §52 has. Prose in a markdown file is
+what §23's monotonicity lesson was for thirty-one sections.
+
+### What was tested
+
+A **precondition**, not a trigger: block an entry unless the last 20 bars'
+high-to-low range, as a fraction of price, sits at or below a given percentile
+of its own trailing year. Four arms — baseline, 40, 25, 10 — and `family:`
+rather than `candidate:`, so **every** coil arm must clear. That is §23's
+failure made unpassable.
+
+### The result — REJECTED in eight of eight
+
+Certified ETF universe:
+
+| period | baseline PF | coil40 | coil25 | coil10 | why rejected |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.657 | 0.567 | 0.575 | **0.991** | (b) and (c) |
+| 2007-2013 | 0.583 | 0.544 | 1.286 | **1.358** | (b) on coil40, (c) |
+| 2014-2019 | 1.645 | **1.737** | 1.684 | 1.265 | **(e) INTERIOR** |
+| 2022-2026 | **1.816** | 1.393 | 1.416 | 1.094 | (b) and (c) |
+
+38-name book:
+
+| period | baseline PF | coil40 | coil25 | coil10 | why rejected |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.231 | 0.231 | 0.231 | 0.231 | (b) — nothing moved at all |
+| 2007-2013 | 1.132 | **1.185** | 1.185 | 1.185 | **(e) INTERIOR** |
+| 2014-2019 | 1.732 | 1.835 | **2.070** | 1.909 | **(e) INTERIOR**, (c) |
+| 2022-2026 | **1.698** | 1.560 | 1.670 | 1.825 | (b) on two arms, (c) |
+
+### §55's monotonicity rule earned its keep on its first production run
+
+`no_interior_optimum` was built in §55 out of §23's own written conclusion and
+had never been exercised on a real registration. It **failed three of the eight
+specs**, and s58g is the case it was written for:
+
+    profit factor  1.732 -> 1.835 -> 2.070 -> 1.909      peak at coil25, INTERIOR
+
+All three coil arms cleared `min_trades`, cleared `pf_gt_baseline`, and cleared
+`maxdd_within` — coil25 at **PF 2.070 against 1.732, with maxDD 6.32% against
+12.64%**. Read without clause (e) that is "the filter raises profit factor by a
+third and halves drawdown," which is §23's table almost line for line. The only
+two things that refused it were the paired interval and the monotonicity rule.
+
+A lesson that cannot fail a gate is a lesson that gets forgotten. This one can
+now fail one, and did.
+
+### The mechanism is NOT the one the registration assumed, and this is the finding
+
+A filter should remove trades. In the two certified periods where the drawdown
+latch dominated, it **added** them:
+
+| spec / arm | drawdown blocks | trades | deployment | return |
+|---|---|---|---|---|
+| s58a baseline | 8,890 | 251 | 10.76% | −8.20% |
+| s58a coil10 | **0** | **406** | 19.20% | −0.28% |
+| s58b baseline | 11,208 | 124 | 7.91% | −6.44% |
+| s58b coil25 | **78** | **464** | 23.48% | +9.81% |
+
+The filter's dominant effect is not selecting better trades. It is **declining
+the early losses that arm the drawdown latch**, after which the latch never
+engages and the book is free to trade far more than the baseline ever was.
+§40's finding — the latch dominates the census — governs here too, one layer up:
+*any* entry filter measured on this ensemble is really being measured through
+the latch.
+
+**This invalidates a premise the registration stated in its own clause (c)
+comment.** That comment argued for the paired estimator because "a filter's
+trade set is a strict SUBSET of the baseline's, so the shared variance cancels."
+It is not a subset. Common-trade overlap ran **13% to 58%**, and in s58b coil25
+there were 387 candidate-only trades against 47 baseline-only. The estimator is
+valid whether or not the sets are nested — `significance.py` says so explicitly —
+so no verdict is affected and no number is wrong. What was wrong is the reason
+given for choosing it, written before the mechanism was understood.
+
+### And on the 38-name book in 2000-2006, nothing moved at all
+
+s58e returns identical figures for all four arms — ret −7.91%, PF 0.231, 37
+trades — while the contraction rail blocked between 9,411 and 16,879 signals.
+Every entry it refused was one the drawdown latch (19,411 blocks) would have
+refused anyway. A rail can be fully armed, visibly firing thousands of times,
+and change nothing.
+
+### State
+
+Nothing enabled. `risk.max_contraction_pctile` stays **0**. No threshold moved.
+`mode: paper` unchanged. Reading rule outcome for the certified family: the
+family clause failed in four of four, which is outcome (1) — **the rail stays at
+0 permanently unless a later section argues otherwise on new evidence.**
+
+---
+
+## §59 — 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) (DIAGNOSTIC, K=15, pre-registered 2026-08-10)
+
+Registered and frozen together with §58. `close / max(high, 252 bars)`, buy the
+quarter nearest their own highs, exit below the top half, with an absolute floor
+at 90% of the high so the rule cannot buy the least-broken name in a broken
+universe.
+
+**Not a momentum variant — the paper that says momentum's ranking is the wrong
+one.** §35/§37 rejected cross-sectional momentum hard (−23% to −26% on
+2007-2013, −$169.18 per trade). George & Hwang found nearness to the 52-week
+high subsumes much of momentum's profit *without* the long-run reversal.
+`buy_top_fraction` and `exit_below_fraction` are copied from xsmom rather than
+chosen, so the two differ in the statistic and in nothing else.
+
+### The result — REJECTED in eight of eight
+
+| period | universe | baseline | hi52on | (b) PF | (c) vs SPY | (d) paired |
+|---|---|---|---|---|---|---|
+| 2000-2006 | certified | −8.20% | −8.33% | FAIL | **FAIL** −8.33 vs +10.01 | INCONCLUSIVE |
+| 2007-2013 | certified | −6.44% | −5.54% | PASS | **FAIL** −5.54 vs +51.30 | INCONCLUSIVE |
+| 2014-2019 | certified | +30.61% | +35.56% | PASS | **FAIL** +35.56 vs +97.39 | INCONCLUSIVE |
+| 2022-2026 | certified | +34.77% | +33.76% | FAIL | **FAIL** +33.76 vs +67.06 | INCONCLUSIVE |
+| 2000-2006 | 38-name | −7.91% | −7.91% | FAIL | FAIL | INCONCLUSIVE |
+| 2007-2013 | 38-name | +2.85% | +2.96% | PASS | FAIL | INCONCLUSIVE |
+| 2014-2019 | 38-name | +95.89% | **+105.12%** | PASS | **PASS** vs +97.39 | INCONCLUSIVE |
+| 2022-2026 | 38-name | +105.84% | **+107.94%** | PASS | **PASS** vs +63.52 | INCONCLUSIVE |
+
+**On the certified universe clause (c) fails four of four.** That is the reading
+rule's outcome (1), committed before the run: `hi52` stays disabled.
+
+### The two that passed their benchmark, and why they change nothing
+
+s59g and s59h clear `min_trades`, `pf_gt_baseline` and `beats_benchmark_symbol`
+— +105.12% against SPY's +97.39%, and +107.94% against +63.52%. Both are on
+`data/snapshots/`, and §50's asymmetry was restated in the registration
+precisely so this could not be read as a win afterwards: **the strategy trades a
+survivor-only universe, so the comparison runs in its favour. A FAIL there is
+decisive; a PASS is not.**
+
+The paired interval refused both anyway — +$9.01/trade with a 99.67% CI of
+[−$25.18, +$35.51], and +$4.43 with [−$19.94, +$28.12]. The point estimates are
+positive and small; the intervals contain zero comfortably. §18's generalisation
+holds: at these sample sizes this method cannot certify an edge, and Phase 9's
+sharper instrument is a better measurement rather than a lower bar.
+
+### A candidate that changed literally nothing
+
+s59e returns byte-identical figures with `hi52` enabled and disabled — −7.91%,
+PF 0.231, 37 trades. The drawdown latch blocked 19,411 signals for the baseline
+and 19,950 with hi52 on: every additional signal the new strategy produced was
+absorbed. Clause (b) correctly fails on equality, because "not worse" is not
+"better".
+
+### The pipeline reproduced §57 exactly
+
+Every §59 baseline arm on `data/pit/` is the identical configuration §57 scored,
+and it returned the identical numbers in all four periods — −8.20%/0.657,
+−6.44%/0.583, +30.61%/1.645, +34.77%/1.816, matching trade counts and deployment
+to the digit. §35's rule: *a referee that cannot reproduce a verdict it has
+already seen is not a referee, it is a new source of error.* It can.
+
+### State
+
+Nothing enabled. `hi52` ships `enabled: false`. EDGE stands at **1 pass in 15;
+K stays 15.** The live forward record — ten closed trades, realized −$339.16 —
+is untouched by anything here.

@@ -1759,13 +1759,30 @@ def _run_cycle(completed_bars_only: bool = False):
     update_trailing_stops(broker, ledger, cfg, open_trades, all_bars)
 
     # Same-ticker re-entry cooldown (§9 — adopted for meanrev only):
-    # symbol -> most recent exit ts, checked per strategy in the entry loop.
+    # (strategy, symbol) -> most recent exit ts, checked in the entry loop.
+    #
+    # DIVERGENCE #20, fixed 2026-08-10. This was keyed by SYMBOL ALONE while
+    # `backtest.simulate_ensemble` has always keyed it by `(strategy, symbol)`,
+    # matching `risk.cooldown_days_for`, which is per-strategy. So live let one
+    # strategy's exit block a DIFFERENT strategy's entry and the simulator did
+    # not — the two disagreed about what "the cooldown" means.
+    #
+    # Latent only because `risk.reentry_cooldown.strategies` lists meanrev and
+    # nothing else: with one scoped strategy the two keyings cannot differ. It
+    # would have gone live silently on the day a second strategy was scoped,
+    # and the gate that scoped it would have been run under the simulator's
+    # rule — so the evidence would have described a bot that was not running.
+    #
+    # DEFAULT_OWNER for untagged rows: legacy ledger records predate the
+    # strategy tag. Dropping them instead would silently shorten the cooldown
+    # on exactly the oldest positions.
     last_exit: dict = {}
     if (cfg["risk"].get("reentry_cooldown") or {}).get("days"):
         for t in ledger.closed_trades():
             ets = t.get("exit_ts")
-            if ets and ets > last_exit.get(t["symbol"], ""):
-                last_exit[t["symbol"]] = ets
+            key = (t.get("strategy") or strategies.DEFAULT_OWNER, t["symbol"])
+            if ets and ets > last_exit.get(key, ""):
+                last_exit[key] = ets
 
     # --- Phase 2: cross-sectional precompute + the earnings blackout ---
     xs_ctx, earnings_blackouts, ebd = _precompute(
@@ -1859,11 +1876,14 @@ def _run_cycle(completed_bars_only: bool = False):
                                                 f"universe"}
                 continue
             cd = risk.cooldown_days_for(cfg, name)
+            # (name, symbol) — divergence #20. `cooldown_days_for` is already
+            # per-strategy, so the key it is looked up by has to be too.
             if cd and risk.cooldown_blocked(
-                    last_exit.get(symbol),
+                    last_exit.get((name, symbol)),
                     datetime.now(timezone.utc).isoformat(), cd):
                 hold_reasons[name] = {"reason": f"re-entry cooldown ({cd}d) — "
-                                                f"exited {last_exit[symbol][:10]}"}
+                                                f"exited "
+                                                f"{last_exit[(name, symbol)][:10]}"}
                 continue
             if symbol in earnings_blackouts.get(name, ()):
                 hold_reasons[name] = {"reason": "earnings within "
@@ -1887,6 +1907,15 @@ def _run_cycle(completed_bars_only: bool = False):
             if risk.rvol_blocked(bars, cfg, name):
                 hold_reasons[name] = {"reason": "volume below the relative-"
                                                 "volume entry threshold",
+                                      **sig.indicators}
+                continue
+            # §58 volatility-contraction precondition. Same rail, same helper,
+            # same fail-open semantics and the same entries-only placement as
+            # rvol directly above — deliberately adjacent so the pair is read
+            # and moved together.
+            if risk.contraction_blocked(bars, cfg, name):
+                hold_reasons[name] = {"reason": "recent range is wider than "
+                                                "the contraction threshold",
                                       **sig.indicators}
                 continue
             # A name whose ATR-derived stop would land at or below zero cannot

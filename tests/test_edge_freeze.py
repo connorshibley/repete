@@ -98,6 +98,64 @@ def test_the_check_does_not_need_the_file_to_exist():
         _spec("EDGE", "data/snapshots/does_not_exist.json.gz")) is not None
 
 
+# --------------------------------------------- §57: the certified venue closed too
+
+PIT = "data/pit/bars_etf_2000-01-01_2006-12-31.json.gz"
+
+
+def test_an_EDGE_claim_on_the_CERTIFIED_data_is_refused_too():
+    """The whole point of Phase 10 was to build a venue where an EDGE claim
+    would be honest, and §57 then spent it: the incumbent lost to SPY in four
+    periods of four, against a reading rule committed before the run.
+
+    This is the test that makes that rule mechanical. Without it the rule is
+    prose in a markdown file, which is what §23's monotonicity lesson was for
+    thirty-one sections."""
+    msg = rgate.freeze_violation(_spec("EDGE", PIT))
+    assert msg is not None
+    assert "FROZEN" in msg and "§57" in msg
+
+
+def test_the_pit_refusal_does_not_blame_the_data():
+    """A reader who is told `data/pit/` is frozen will assume the data is bad
+    and go looking for a better source — which is exactly wrong, and would
+    throw away the one clean universe this project owns. The refusal has to say
+    so in its own text, and name its own exit."""
+    msg = rgate.freeze_violation(_spec("EDGE", PIT))
+    assert "NOT survivor-selected" in msg
+    assert "--override-freeze" in msg
+    assert "DIAGNOSTIC" in msg
+
+
+def test_the_two_freezes_give_DIFFERENT_reasons():
+    """Not cosmetic. `data/snapshots/` is frozen because the data is biased and
+    `data/pit/` because the licence is spent; conflating them would tell a
+    future reader that §56's probe failed, which it did not. A single shared
+    message would pass a `"FROZEN" in msg` assertion while destroying the
+    distinction the two sections paid for."""
+    survivorship = rgate.freeze_violation(_spec("EDGE", FROZEN))
+    spent = rgate.freeze_violation(_spec("EDGE", PIT))
+    assert survivorship != spent
+    assert "probe_delisted_coverage.py" in survivorship
+    assert "probe_delisted_coverage.py" not in spent
+
+
+@pytest.mark.parametrize("claim", ["DIAGNOSTIC", "METHOD", "CAPACITY"])
+def test_the_pit_freeze_stops_EDGE_and_nothing_else(claim):
+    """§58 and §59 are DIAGNOSTIC and must register against this data without
+    an override. A freeze that also blocked measurement would end research on
+    the only certified universe in the repository."""
+    assert rgate.freeze_violation(_spec(claim, PIT)) is None
+
+
+def test_a_pit_LOOKALIKE_directory_is_not_frozen():
+    """Prefix matching, not substring. `data/pit_v2/` is a different directory
+    and a future certified source must not be frozen by accident — the polarity
+    that matters is that a NEW venue is open until a section closes it."""
+    assert rgate.freeze_violation(
+        _spec("EDGE", "data/pit_v2/bars.json.gz")) is None
+
+
 # ------------------------------------------ end-to-end through the CLI
 
 def _run(*args, cwd=None):
