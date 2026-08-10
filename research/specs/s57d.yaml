@@ -1,0 +1,153 @@
+# §57d — THE INCUMBENT ON DATA THAT IS NOT SURVIVORSHIP-POISONED (2022-2026)
+#
+# ONE DIAGNOSTIC IN FOUR FILES — s57a, s57b, s57c and s57d are written and
+# frozen TOGETHER, before any of them is run. Running one period and reporting
+# it would be period selection, which is what §34 retired and what §41, §44 and
+# §48 have each been shaped to avoid.
+#
+# WHY THIS EXISTS. Every one of the fifteen EDGE rejections in this repository
+# was scored against a benchmark built from CURRENT index membership. §48 sized
+# that inflation at +130.06pp; §51 showed it was large enough to explain this
+# project's only EDGE pass, at +200.28pp. §52 froze the budget on the finding
+# that the fix was unbuildable from yfinance for STOCKS.
+#
+# §56 found a universe where the question does not arise. The Select Sector
+# SPDR suite is a GICS partition chosen by construction rather than by
+# performance, and `scripts/probe_etf_universe_survivorship.py` measured that
+# every one of the fifteen funds returns history beginning on its declared
+# inception date and running unbroken to the present — while correctly refusing
+# to call four known-dead symbols healthy. Current membership and point-in-time
+# membership are the same set. There is nothing that left.
+#
+# So this is the first time the incumbent has been asked what it does on data
+# that is not flattering it. The question is only that. It is not a proposal.
+#
+# WHY DIAGNOSTIC. This decides nothing and can enable nothing. K is stated as
+# 15 so any figure printed is comparable with the existing family, and THE
+# COUNT DOES NOT RISE — a DIAGNOSTIC spends no multiple-comparisons budget
+# because it cannot produce a PASS that licenses anything. Same treatment §38,
+# §40, §42, §45, §47, §48, §53 and §54 received.
+#
+# THE UNIVERSE IS NOT THE LIVE BOOK, and that is the largest limitation here.
+# Fifteen sector and index funds are a different asset class from 38 individual
+# large caps. A result here is an honest result about sector rotation. It does
+# not transfer to the bot that is running, and no part of this licenses a
+# change to it.
+#
+# THE ARM CARRIES `replace: symbols`. Without it, seven of the fifteen funds
+# would be loaded, priced, and NEVER TRADED: `strategies.universe_for` defaults
+# to `cfg["symbols"]`, which lists only eight of them, and the omission is
+# silent — no error, no log line, visible only as a smaller signal denominator.
+# Everything else is the shipped configuration, unmodified.
+id: s57d
+claim: DIAGNOSTIC
+title: "The incumbent on survivorship-free data (2022-2026) — the 2022 bear market and after"
+
+# Judge ON, matching live and matching §43/§48. The judge cuts a large share of
+# live buys; scoring without it measures a bot that does not ship.
+judge_model: true
+
+snapshot:
+  path: data/pit/bars_etf_2022-01-01_2026-07-10.json.gz
+  sha256: d84f9ce13ee5818745d1a25ce4fbc32d558cc7cb29b268ab27c37e1841113a6d
+
+cash: 100000.0
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - XLRE
+        - XLC
+        - SPY
+        - DIA
+        - QQQ
+        - IWM
+
+clauses:
+  # Without this, a handful of trades could clear the rest on noise.
+  - {id: a, rule: min_trades, n: 30}
+
+  # THE READING. §50 introduced this rule precisely because every other
+  # benchmark in the runner derives from the snapshot's own universe and is
+  # therefore inflated. Here the benchmark is inside the certified universe, so
+  # for the first time the bar and the strategy are on the same honest footing.
+  # An absent benchmark FAILS loudly rather than skipping (run_gate.py:253).
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+
+  # Return against what the deployment actually carried. Read alongside (b),
+  # not instead of it: a bot sitting mostly in cash clears this trivially.
+  - {id: c, rule: beats_exposure_matched}
+
+prior: >-
+  The honest expectation is that it fails, and the base rate is not close. EDGE
+  stands at 1 pass in 15 and that one pass was explained away by the very bias
+  this universe removes. Nothing about removing an inflated benchmark creates
+  predictive power that was not there; if anything a clean benchmark is HARDER
+  to beat than the survivor-selected one every previous section raced.
+
+  What is new is not the probability of passing. It is that a FAIL here is
+  finally interpretable. Every prior rejection carried the ambiguity that the
+  bot might have been beaten by a benchmark that never existed. That excuse is
+  gone, in both directions.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN. Across s57a-d taken together:
+  (1) fails clause (b) in three or more periods — the ensemble does not beat a
+  clean index on this universe, and the ambiguity resolves against it;
+  (2) clears (b) in three or more — worth ONE further registration, an EDGE
+  claim on this universe spending K=16, and nothing else. It would still say
+  nothing about the 38-name live book;
+  (3) any other split is INDETERMINATE and licenses nothing. Saying so now is
+  the point.
+
+failure_modes:
+  - >-
+    THE UNIVERSE IS FIFTEEN FUNDS, NOT THE LIVE BOOK. Sector ETFs are a
+    different instrument from individual companies: no single-name risk, no
+    earnings, far higher pairwise correlation. Whatever this measures, it is
+    not the bot that trades 38 large caps every afternoon.
+  - >-
+    TWO RISK RAILS ARE MEASURED INERT ON THIS UNIVERSE, so the book is far more
+    concentrated in substance than the census will suggest. `sector_concentration`
+    never fires because no ETF appears in the frozen `sectors:` map, so
+    `sector_of` returns None and the rail skips. And `correlation_cap` at
+    threshold 0.85 was measured admitting a median 7 of 8 candidates across 76
+    rolling windows — it is above almost every cross-sector pair. A census
+    reporting `blocked: {correlation: 0}` is a true statement about the rail
+    and a false comfort about the book, which can be one leveraged bet on SPY
+    while every rail reports clear. The threshold is deliberately NOT re-picked
+    here: choosing it after seeing that table would be fitting to the sample.
+  - >-
+    THE EARNINGS BLACKOUT IS UNMODELLED. No registered spec has ever passed
+    `earnings=` to the simulator, so tsmom's live `earnings_blackout_days: 3`
+    has never been represented in any gate. Harmless on ETFs, which have no
+    earnings — but it means these numbers are not comparable to live on that
+    axis, and it is recorded as a divergence rather than discovered later.
+  - >-
+    THE MANDATES WERE REMAPPED. The original nine funds were defined on the
+    older S&P sector scheme and moved onto GICS in the early 2000s — XLV was
+    "Consumer Services" before it was "Health Care". The FUND is continuous and
+    no survivorship is introduced, but the thing each ticker represents in
+    s57a is not exactly what it represents in s57d. This is a composition
+    change, and it is a reason to read the earliest period most cautiously.
+  - >-
+    EACH PERIOD STARTS COLD. The enabled ensemble needs 201 bars of history
+    before tsmom or meanrev can signal at all, so roughly the first ten months
+    of every window are untradeable. Every existing wide-snapshot section
+    carries the identical handicap, which is why the periods were chosen to
+    match §43/§48/§50 rather than to be generous.
+  - >-
+    A PASS WOULD NOT BE AN EDGE. It would say the ensemble beat one index on
+    fifteen funds over one period family, on a simulator with five open
+    divergences against live. The live forward record — ten closed trades,
+    realized -$339.16 — is untouched by anything here.

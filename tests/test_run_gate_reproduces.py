@@ -480,3 +480,41 @@ def test_paired_capacity_is_strictly_weaker_than_paired_edge():
                             arms, "cand", resamples=600)
     assert edge["clauses"][0]["pass"] is False
     assert cap["clauses"][0]["pass"] is False   # significantly WORSE fails both
+
+
+# ---- the arm record's shape, which broke the runner once --------------------
+
+def test_judge_stats_are_read_by_NAME_not_by_position():
+    """§57 found this the expensive way.
+
+    §55 added a sixth element to `run_arm`'s return — the trade keys
+    `compare_paired` needs — and updated three of the four places that consume
+    the record. The fourth still destructured four fields, so every §57 run
+    computed all four periods and THEN crashed on the write. That is the §39
+    failure mode, which the repo had already paid for once.
+
+    Nothing caught it because every test here drives `evaluate()`, which never
+    sees these records. This one does.
+    """
+    arms = run_gate.in_spec_order(
+        [("baseline", _summary(), [1.0], 0.5, {"sized": 7, "cut": 3,
+                                               "vetoed": 1, "zeroed": 0},
+          [("2024-01-02T21:00:00Z", "A")])],
+        [{"name": "baseline"}])
+    assert run_gate.judge_stats_by_arm(arms) == {
+        "baseline": {"sized": 7, "cut": 3, "vetoed": 1, "zeroed": 0}}
+
+
+def test_the_named_field_positions_match_what_in_spec_order_builds():
+    """The constants and the builder must not drift apart — that drift IS the
+    bug above, and naming the positions only helps if the names are right."""
+    rec = run_gate.in_spec_order(
+        [("baseline", _summary(profit_factor=2.0), [1.0, 2.0], 9.0,
+          _NO_JUDGE.copy(), [("2024-01-02T21:00:00Z", "A")])],
+        [{"name": "baseline"}])["baseline"]
+    assert len(rec) == 5, "arm record arity changed — update the constants"
+    assert rec[run_gate.SUMMARY]["profit_factor"] == 2.0
+    assert rec[run_gate.PNLS] == [1.0, 2.0]
+    assert rec[run_gate.SECS] == 9.0
+    assert rec[run_gate.JUDGE_STATS] == _NO_JUDGE
+    assert rec[run_gate.KEYS] == [("2024-01-02T21:00:00Z", "A")]

@@ -5819,3 +5819,193 @@ which is what makes the 0.0500 above a measurement rather than a claim.
 2,077 tests. `min_rvol` still unset; `base.rvol()` and `risk.rvol_blocked()`
 remain dormant tested capability. Nothing enabled, no threshold moved,
 `mode: paper` unchanged.
+
+## §56 — A UNIVERSE WITH NOTHING THAT LEFT (2026-08-09, tooling — not a claim)
+
+Same status as §36 and §55: this changes what a verdict can be measured ON, so
+it is recorded here and registers nothing. **EDGE stands at 1 pass in 15; K
+stays 15.**
+
+### The question §52 left open
+
+§52 froze the EDGE budget because every snapshot in `data/snapshots/` is built
+by `index_constituents()` from **current** Wikipedia membership, so the
+companies that failed are absent by construction. §48 sized the inflation at
++130.06pp and §51 showed it was large enough to explain this project's only
+EDGE pass, at +200.28pp. `probe_delisted_coverage.py` then asked whether the
+losers could be bought back and REFUSED: yfinance serves no pre-delisting
+history for SIVB, FRC, TWTR or ATVI, and returns SBNY bars that all postdate
+the bank's seizure by seventeen months.
+
+That closed one route. It did not close the other: **instead of adding back the
+losers, find a universe that never had any.**
+
+### The candidate, and what the probe can and cannot say
+
+The Select Sector SPDR suite is a GICS partition — chosen by *construction*,
+not by performance. `scripts/probe_etf_universe_survivorship.py` measures
+whether that story holds in the data, and is explicit that one part of it
+cannot be measured at all:
+
+| | |
+|---|---|
+| **CHECKED** | each fund's history begins at its declared inception, runs unbroken to the present, and contains no hole longer than any legitimate market closure |
+| **NOT CHECKED** | that the enumeration is COMPLETE. "No Select Sector SPDR was ever launched and closed" is an external sourced fact; prices cannot prove a negative. The list is a DECLARED ASSUMPTION and `report()` prints it as one |
+
+**The negative control is what makes the probe a probe.** One predicate,
+`assess()`, is applied to the fifteen candidates AND to four symbols the sibling
+probe already measured dead. Every candidate must pass it and every dead symbol
+must fail it. A predicate too weak to see death cannot certify anything, and the
+probe refuses on that alone no matter how clean the fifteen look.
+
+### The result: PASS, and one number worth pausing on
+
+    control AAPL: 8436 rows
+    check 1  continuous from inception : PASS
+    check 2  detects the known dead    : PASS
+
+**Every one of the fifteen funds returned history beginning EXACTLY on its
+declared inception date** — the nine originals all on 1998-12-22, XLRE on
+2015-10-08, XLC on 2018-06-19, SPY 1993-01-29, DIA 1998-01-20, QQQ 1999-03-10,
+IWM 2000-05-26. Those dates were written into the probe from fund documentation
+*before* the fetch. Fifteen independent dates matching to the day is not proof
+of completeness, but it is real corroboration that the declared list describes
+the funds that actually exist.
+
+And the control fired exactly as designed: **SBNY returns 475 recent,
+continuous, plausible-looking bars and was caught as 7,450 days late.** A
+predicate that called SBNY healthy would have certified a seized bank.
+
+### `data/pit/`, and why the path alone would be dishonest
+
+`register_gate.freeze_violation` blocks `claim: EDGE` by matching the prefix
+`data/snapshots/`. That is a **proxy** for "survivor-selected", good only
+because everything under that directory is built from current membership — and
+it means a snapshot written anywhere else clears the freeze with no override
+and no argument.
+
+Moving a file to dodge a control would be gaming it. So the certified snapshots
+go to `data/pit/`, and `tests/test_pit_snapshot_requires_probe.py` fails if any
+file there is not covered by a committed probe record reporting PASS, or
+contains a symbol no passing probe examined. **Verified by removing the record:
+five tests go red.** Without that test this whole section is a path trick.
+
+Four snapshots on the §43/§48/§50 period boundaries, so the numbers are
+comparable with the existing four-period family. The universe legitimately
+**grows 9 → 11**: XLRE and XLC did not exist earlier, and `simulate_ensemble`
+handles a symbol appearing mid-history natively. That growth *is* the
+point-in-time property, not a defect in the data.
+
+### Three things measured on the way, one of them a correction to myself
+
+**1. Seven of the fifteen would never have traded.** `strategies.universe_for`
+defaults to `cfg["symbols"]`, which lists only eight of them. XLI, XLY, XLP,
+XLU, XLB, XLRE and XLC would be loaded, priced and marked to market, and never
+entered — no error, no log line, visible only as a smaller signal denominator.
+Every §57 arm therefore carries `replace: {symbols: [...]}`.
+
+**2. `sector_concentration` is completely inert here.** No ETF appears in the
+frozen `sectors:` map, so `sector_of` returns `None` and the rail skips. Zero
+sector-concentration control on a universe organised *by sector*. Not fixed:
+mapping ETFs into `sectors:` would re-arm the ETF-vs-constituent category error
+that map was built to avoid, and would silently change `reclaim`'s universe.
+
+**3. I predicted the correlation cap wrong, and the run said so.** Before
+building, the pairwise correlation matrix over the repo's existing EIGHT ETFs
+was measured across 76 rolling 60-bar windows: the 0.85 threshold sits above
+almost every cross-sector pair (XLK–XLE 0.183, SPY–XLF 0.735), and greedy
+admission let through a **median 7 of 8**. I wrote down that the cap would bind
+*less* on fifteen names.
+
+The actual runs say the opposite. On the full universe `correlation` is the
+**dominant** block: 2,074 of 2,392 blocks in 2014-2019 and 1,042 of 1,304 in
+2022-2026. Eight names give 28 pairs; fifteen give 105, and the rail needs only
+two correlated holdings to refuse. Extrapolating a per-pair statistic to a
+whole-book admission rule was the error, and the census is the measurement that
+corrects it. **The threshold is not being re-picked** — choosing it after seeing
+this would be fitting to the sample.
+
+### A caveat that belongs on the front of any §57 reading
+
+The original nine funds were mandated on the older S&P sector scheme and were
+remapped onto GICS in the early 2000s — XLV was "Consumer Services" before it
+was "Health Care". The FUND is continuous and no survivorship enters, but what
+a ticker *represents* in 2000-2006 is not exactly what it represents in
+2022-2026. A composition change, not a survivorship one, and a reason to read
+the earliest period most cautiously.
+
+### State
+
+`data/pit/` holds four certified snapshots, 13/13/15/15 symbols. Nothing
+enabled, no threshold moved, `mode: paper` unchanged.
+
+## §57 — THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT (DIAGNOSTIC, K=15, pre-registered 2026-08-09)
+
+s57a-d written and frozen **together, before any was run**, then run once each.
+**DIAGNOSTIC — this decides nothing and spends no EDGE budget.**
+
+### The result
+
+| period | return | PF | maxDD | trades | deploy | (a) trades | (b) vs SPY | (c) exposure-matched |
+|---|---|---|---|---|---|---|---|---|
+| 2000-2006 | **−8.20%** | 0.657 | 10.69% | 251 | 10.76% | PASS | **FAIL** −8.20 vs +10.01 | FAIL |
+| 2007-2013 | **−6.44%** | 0.583 | 11.25% | 124 | 7.91% | PASS | **FAIL** −6.44 vs +51.30 | FAIL |
+| 2014-2019 | +30.61% | 1.645 | 6.09% | 774 | 48.14% | PASS | **FAIL** +30.61 vs +97.39 | FAIL |
+| 2022-2026 | +34.77% | 1.816 | 4.61% | 637 | 49.70% | PASS | **FAIL** +34.77 vs +67.06 | PASS |
+
+**Clause (b) fails in four periods of four.**
+
+The reading rule was committed in the registration before the run: *"fails
+clause (b) in three or more periods — the ensemble does not beat a clean index
+on this universe, and the ambiguity resolves against it."* Four of four is
+outcome (1). It licenses **no further EDGE registration on this universe.**
+
+### Why this one is different from the other fifteen
+
+Every previous rejection was scored against a benchmark built from survivor-
+selected membership, and therefore carried an excuse: the bot might have been
+losing to an index that never existed. Here the benchmark is SPY, priced inside
+a universe the probe certified has nothing missing. **That excuse is gone, in
+both directions** — and the answer did not change.
+
+### The counterweight, stated because it cuts the other way
+
+The bot draws down **far** less than the index in every period: 10.69% against
+SPY's 47.52%, 11.25% against 55.19%, 6.09% against 19.35%, 4.61% against
+24.50%. On a risk-adjusted footing this table would read very differently.
+
+**That clause was not registered, and it is not being added now.** §51 defines
+`beats_benchmark_risk_adjusted` and it was available; it was not chosen, and
+reaching for it after seeing that the absolute-return clause failed is exactly
+the selection this apparatus exists to prevent. The drawdown numbers are
+reported here because a reader deserves them, not because they change the
+verdict. If risk-adjusted performance on this universe is worth testing, it is
+worth testing as its own pre-registration, spending its own budget.
+
+### What the census says the bot was actually doing
+
+2000-2006 and 2007-2013: the drawdown latch dominates — 8,890 of 9,234 blocks
+and 11,208 of 11,627 — with deployment at 10.76% and 7.91%. §40's finding,
+reproduced on new data. 2014-2019 and 2022-2026: deployment is ~49% and
+**correlation** becomes the dominant rail (see §56's correction).
+
+### A runner defect found by this section, reported before the numbers
+
+The first four runs computed every arm and then **crashed on the write**.
+§55 added a sixth element to `run_arm`'s return — the trade keys
+`compare_paired` needs — and updated three of the four places that consume the
+record. Two sites still destructured positionally, and both were in the write
+path, so the failure landed after all the compute. That is the §39 failure mode
+the repo had already paid for once, at 388 seconds.
+
+Nothing caught it because every test in `test_run_gate_reproduces.py` drives
+`evaluate()`, which never sees those records. Fixed by giving the tuple named
+field positions (`SUMMARY, PNLS, SECS, JUDGE_STATS, KEYS`) and replacing every
+positional unpack with an index, plus two tests over `in_spec_order`'s real
+output that fail if the arity and the constants drift apart.
+
+### State
+
+Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** The live forward record — ten closed trades,
+realized −$339.16 — is untouched by anything here.

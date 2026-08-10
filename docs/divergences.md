@@ -4,16 +4,18 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Eighteen such differences have been found. Until 2026-07-28 they existed **only as
+Nineteen such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-06: #13, #14, #15, #16 and #18.** All five are open *by
-construction* rather than by defect — a sampling fact about the live record, two
-judge inputs the simulator has no mechanism to represent, a cost the paper
-broker does not charge, and a fill-session hazard that only materialises when
-the cycle runs long. **#17 is a DEFECT, found and closed the same day**, and
+**Open as of 2026-08-09: #13, #14, #15, #16, #18 and #19.** Five of the six are
+open *by construction* rather than by defect — a sampling fact about the live
+record, two judge inputs the simulator has no mechanism to represent, a cost the
+paper broker does not charge, and a fill-session hazard that only materialises
+when the cycle runs long. **#19 is not: it is a plain omission**, found
+2026-08-09, in which a live entry filter has been silently switched off in every
+gate ever run because no spec supplies the data it needs. **#17 is a DEFECT, found and closed the same day**, and
 it is the largest correction here: the simulator let every strategy enter every
 symbol in the snapshot.
 
@@ -50,6 +52,7 @@ code" is not closed; the repo has been wrong about that before.
 | 16 | **Paper shorting is free; real shorting is not** | **open** | open by construction — the paper broker charges no borrow, and the bias flatters |
 | 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
 | 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
+| 19 | **The earnings blackout is unmodelled in EVERY gate** | **open** | found 2026-08-09 (§57); no registered spec has ever passed `earnings=` |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -663,3 +666,47 @@ margin**. Nothing had ever recorded any of it.
 **No verdict is reopened.** No gate has been shown to be affected, because no
 cycle has yet been shown to cross the bell. This entry records a hazard that is
 now instrumented rather than a correction to a past number.
+
+
+---
+
+## #19 — The earnings blackout has never been modelled in a single gate
+
+**Found 2026-08-09, while writing §57.** `tsmom` ships with
+`earnings_blackout_days: 3` (`config.yaml`), so live refuses to open a momentum
+position within three days of an earnings date. The simulator supports it:
+`simulate_ensemble` blocks on `earnings_mod.next_within(earnings.get(sym, []),
+ts, blackout_days)`.
+
+But the guard is `if blackout_days and earnings and ...`, and **`earnings` is
+`None` in every gate ever run.** `run_gate.py` passes it only when a spec
+declares an `aux:` block, and grepping all 40 files in `research/specs/` plus
+every row of `research/registrations.jsonl` finds **not one** that does. The
+short-circuit has silently disabled a live entry filter in every section from
+§35 onward.
+
+### What this does and does not invalidate
+
+**Direction is nameable rather than unknown.** The filter only ever REMOVES
+entries, so every gate scored a bot that took *more* trades than live would —
+including trades live would have refused for sitting on an earnings date. It
+inflates trade count and it moves per-trade P&L by an unmeasured amount.
+
+**No verdict is reopened.** Fifteen EDGE claims were rejected; a filter that
+removes trades does not turn a rejection into a pass, and §41 set the precedent
+that a simulator finding does not retroactively re-score sections. What it does
+mean is that the trade COUNTS quoted from §35 onward describe a bot slightly
+different from the one running.
+
+**It does not affect §57 at all**, which is why it was safe to find here: ETFs
+have no earnings, `next_within([])` returns False, and the filter would be a
+no-op on that universe regardless.
+
+### What would close this
+
+A spec that declares an `aux: {earnings: ...}` block against a FROZEN earnings
+file, plus a test asserting that a spec whose config sets
+`earnings_blackout_days` and which supplies no earnings data is REFUSED rather
+than silently scored. Today the absence is invisible; the fix is to make it
+loud. Not done here — it belongs with the universe it affects, which is the
+38-name book and not this one.
