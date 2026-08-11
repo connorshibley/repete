@@ -141,7 +141,7 @@ def run(cfg: dict, live: bool = False) -> list[dict]:
             if rec["trade_id"] not in already_journaled:
                 journal.add_entry(recap, cfg)
                 journal.render(cfg)
-            link = (f"{base}#{rec['trade_id']}" if base else None)
+            link = (journal.permalink(base, rec["trade_id"]) if base else None)
             x_poster.post_recap(recap, cfg, backfill_text(rec), link=link)
             ledger.log_event("backfill_post",
                              f"{recap['symbol']} {recap['trade_id']}")

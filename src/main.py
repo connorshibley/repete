@@ -48,7 +48,7 @@ def journal_and_link(trade: dict, cfg: dict) -> str | None:
         journal.render(cfg)
         base = cfg.get("x_posting", {}).get("journal_url_base")
         if entry and base:
-            return f"{base}#{entry['trade_id']}"
+            return journal.permalink(base, entry["trade_id"])
     except Exception as e:  # noqa: BLE001
         log.warning("journal failed: %s", e)
     return None

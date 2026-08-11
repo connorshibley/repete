@@ -88,3 +88,54 @@ def test_render_empty_archive(cfg, tmp_path):
     cfg = _cfg_paths(cfg, tmp_path)
     out = blog.render(cfg, out_path=str(tmp_path / "blog.html"))
     assert "No posts yet" in open(out).read()
+
+
+# ---- F-09: a post link is a URL, not just a string (2026-08-11 QA sweep) ----
+#
+# render() escapes a post's TEXT and then built <a href="{url}"> from the same
+# record with no scheme check, so a post whose link was `javascript:alert(1)`
+# rendered as an ordinary clickable "full write-up →" on a public page.
+# Confirmed against a hostile fixture in a real browser: 14 such anchors, with
+# text escaping clean everywhere else.
+#
+# Nothing hostile can reach it today — every link is written by this bot from
+# its own config — which is exactly why the check is cheap now and expensive
+# after the first feature that lets an outside string become a post link.
+
+def _one_post(cfg, tmp_path, link):
+    cfg = _cfg_paths(cfg, tmp_path)
+    with open(cfg["x_posting"]["posts_log_path"], "w") as f:
+        f.write(json.dumps({"ts": "2026-08-11T13:00:00+00:00",
+                            "text": "a post", "link": link,
+                            "status": "posted"}) + "\n")
+    return open(blog.render(cfg, out_path=str(tmp_path / "blog.html"))).read()
+
+
+def test_a_dangerous_url_scheme_is_not_linked(cfg, tmp_path):
+    html = _one_post(cfg, tmp_path, "javascript:alert(document.domain)")
+    assert "javascript:" not in html
+    assert "full write-up" not in html          # refused, not silently rewritten
+    assert "a post" in html                     # the post itself still renders
+
+
+def test_data_and_vbscript_urls_are_refused_too(cfg, tmp_path):
+    """An allowlist, not a blocklist: javascript: is the one everybody
+    remembers and these are the ones they forget."""
+    for bad in ("data:text/html;base64,PHNjcmlwdD4=", "vbscript:msgbox(1)",
+                "//evil.example.invalid/x"):
+        html = _one_post(cfg, tmp_path, bad)
+        assert "full write-up" not in html, f"{bad} was linked"
+
+
+def test_ordinary_links_still_render(cfg, tmp_path):
+    """Negative control. If the allowlist refused everything, the tests above
+    would pass for the wrong reason and the blog would quietly lose every
+    permalink it has ever published."""
+    html = _one_post(cfg, tmp_path, "https://x.io/journal.html#abc12345")
+    assert 'href="https://x.io/journal.html#abc12345"' in html
+    assert "full write-up" in html
+
+
+def test_a_relative_link_is_still_allowed(cfg, tmp_path):
+    html = _one_post(cfg, tmp_path, "journal.html#abc12345")
+    assert 'href="journal.html#abc12345"' in html
