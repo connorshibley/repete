@@ -140,6 +140,29 @@ sectors:
   Basic Materials:        [LIN, FCX, NEM, SHW, APD, NUE, ECL, AA, DD, PPG, MLM, VMC]
   Communication Services: [DIS, CMCSA, T, VZ, EA, TTWO, MTCH, OMC, SIRI]
 
+# ============================================================
+# SECTOR FUNDS — the `sector_etfs` universe, used by `swing_sectors` ONLY.
+# ============================================================
+# The 11 SPDR sector funds, one per GICS sector. Same design as the sector
+# map above: a per-strategy universe that adds names WITHOUT widening
+# `symbols:` (the core universe three gated strategies were measured on).
+# Four of these (XLK, XLF, XLE, XLV) also sit in `symbols:` — that overlap is
+# fine and pre-existing; the ensemble holds at most one position per symbol,
+# whoever owns it.
+#
+# NOT merged into `etfs:`: that list answers "which core-universe names are
+# baskets" for cross-sectional exclusion, carries the broad-market funds
+# (SPY, QQQ, DIA, IWM), and every member must be in `symbols:`. This list
+# answers "what does swing_sectors rank", and a sector-value ranking that
+# contains the whole market as a member is measuring itself against itself.
+#
+# XLRE (2015) and XLC (2018) have the shortest histories — §57's survivorship
+# probe certified this family (the "15 certified funds", 13 in the earliest
+# period). With high_lookback_bars 252 they rank once they carry a year of
+# bars; before that `drawdown_pct` returns None and they are simply absent
+# from the cross-section, which `min_ranked` treats as an outage floor.
+sector_etfs: [XLK, XLF, XLE, XLV, XLI, XLP, XLY, XLU, XLB, XLRE, XLC]
+
 strategy:              # execution globals (per-strategy params live in strategies:)
   name: ma_crossover   # legacy field, kept for compatibility
   fast_period: 10      # legacy ma_crossover params (strategies: section wins)
@@ -436,6 +459,59 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                               # Without it the rule buys leaders of a bear
                               # market, which is a relative-strength bet and not
                               # the anchoring mechanism the paper describes.
+  swing_sectors:       # unloved-sector swing on the SPDR funds themselves
+                       # (owner direction 2026-08-11: "undervalued sectors and
+                       # bottlenecks", ETF-first, days-to-weeks holds).
+                       # `reclaim` owns the stock-level version of this thesis;
+                       # the two are separate strategies with separate gates.
+    enabled: false     # DISABLED until the pre-registered §62 gate is run and
+                       # the owner reads it. Every param below is the
+                       # PRE-REGISTERED starting point, not a fitted result —
+                       # re-picking any of them against the gate's own sample
+                       # is the in-sample selection this repo refuses.
+    priority: 9        # below hi52: it must never pre-empt a gated strategy
+    universe: sector_etfs     # the `sector_etfs:` list below — NOT `symbols:`
+                              # (that would be the core universe, and widening
+                              # it is a live change to three gated strategies),
+                              # and NOT `etfs:` (that list also carries the
+                              # broad-market funds, and a sector-value ranking
+                              # containing the whole market as a member is
+                              # measuring itself against itself).
+    high_lookback_bars: 252   # the 52-week window drawdown is measured from
+    min_drawdown_pct: 12.0    # a sector under 12% off its high is not unloved,
+                              # it is normal chop; the ranking alone would
+                              # otherwise always nominate SOMETHING (the hi52
+                              # min_proximity lesson, pointing the other way)
+    laggard_count: 4          # only the 4 deepest of the 11 rank as candidates
+                              # (mirrors reclaim.laggard_sector_count)
+    min_ranked: 6             # a cross-section under 6 rankable funds is a data
+                              # outage, not a market reading — no entries
+    stabilize_sma_period: 20  # the short base: close must be above it
+    base_slope_bars: 5        # ...and the base no lower than 5 bars ago —
+                              # the "stopped falling" evidence (reclaim's base
+                              # test, simplified for funds that cannot delist)
+    atr_period: 14
+    entry_zone_atr_mult: 0.75 # entry zone = [SMA20, SMA20 + 0.75·ATR]: a
+                              # pullback toward the rising base, not a chase.
+                              # Intraday (swing_scan) a dip INTO the zone
+                              # triggers; at the cycle a close inside it does.
+    recovered_drawdown_pct: 5.0  # thesis-complete exit: back within 5% of the
+                              # 52-week high means the repair happened
+    exit_buffer_pct: 3.0      # thesis-failed exit: 3% below the SMA20 base
+                              # (same buffer-not-touch reasoning as reclaim's)
+    max_hold_days: 45         # a repair that has not happened in ~9 weeks is
+                              # not happening; wide, because "accept
+                              # volatility" means giving the thesis room
+    stop_atr_mult: 3.5        # PER-STRATEGY bracket stop (risk.bracket_prices
+                              # reads this before risk.brackets.stop_atr_mult).
+                              # Wider than the global 2.0 on purpose — the
+                              # owner's "accept volatility" is expressed HERE,
+                              # per-trade, and not by moving any portfolio rail.
+    max_open_positions: 3     # of 11 sectors — NOT the §29 uncapped
+                              # convention: 4 candidates exist at any time by
+                              # laggard_count, and holding all of them plus
+                              # nothing else would be one correlated bet on
+                              # "beaten-down reverts", not four theses.
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
