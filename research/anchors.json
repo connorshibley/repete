@@ -998,6 +998,30 @@
       ],
       "specs": [],
       "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§62",
+      "heading": "## §62 — SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE (DIAGNOSTIC, K=15, pre-registered 2026-08-11)",
+      "start_line": 6448,
+      "body_sha256": "6b6744b3fc16ce52a863344190fdc1b6df1be662d612704f209afdab8750cf61",
+      "subheadings": [
+        "### The strategy alone (s62a–d): REJECTED, four of four",
+        "### The addition (s62e–h): three of four pass, and every pass is a shrug",
+        "### Why it is inert, stated plainly",
+        "### What this licenses, per the frozen rule",
+        "### Divergence noted alongside (see docs/divergences.md #21)"
+      ],
+      "specs": [
+        "s62a",
+        "s62b",
+        "s62c",
+        "s62d",
+        "s62e",
+        "s62f",
+        "s62g",
+        "s62h"
+      ],
+      "spec_source": "id+header+trailer"
     }
   ]
 }

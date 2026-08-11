@@ -822,3 +822,36 @@ be re-entered.
 The test asserts the behaviour (one strategy's exit does not block another's
 entry, and the same strategy's still does), and reads both sources so it fails
 if either side drifts back. "Fixed in code" is not closed.
+
+## #21 — the live swing scanner fills inside the entry zone intraday; the simulator fills at the next open
+
+**Status: open by construction** (2026-08-11, Phase 15).
+
+`swing_sectors` derives its entry conditions and zone entirely from completed
+daily bars — one implementation, `assess()` — and two callers ask it the same
+question with different prices. The 15:45 cycle and every §62 arm test the
+LAST COMPLETED CLOSE against the zone and fill at the next open, which is
+exactly the backtester's model. The live `swing_scan` job tests a LIVE QUOTE
+against the same zone every 30 minutes and fills at that quote.
+
+### Direction of bias: genuinely ambiguous
+
+An intraday trigger catches deeper pullbacks (fills lower inside the zone —
+better entries) and also catches knives the daily close would have dodged (a
+fund that touched the zone at 11:00 and closed 3% below it enters live and
+does not enter in the sim). Neither effect has been measured, which is why
+this is a register entry and not a footnote.
+
+### What would close it
+
+An hourly-resolution arm on §25's Alpaca hourly snapshot (one vendor, one
+price basis for signal and fill — the trap `src/intraday.py` documents),
+registered as its own spec family. Until then, every §62 number describes the
+CYCLE's swing behaviour, not the scanner's.
+
+### What bounds it meanwhile
+
+The scan re-runs the drift guard at order time; the coid is shared with the
+cycle so the two paths cannot double-enter; and while `swing_sectors` ships
+`enabled: false` the scanner places nothing at all — the divergence is
+currently between the simulator and a dry run.
