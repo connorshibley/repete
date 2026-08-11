@@ -164,11 +164,11 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 10 closed round-trips as of 2026-08-06**, first close 2026-07-21 —
-+16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%.
-Realized **−$339.16**, profit factor **0.54**.
+**Live record: 11 closed round-trips as of 2026-08-11**, first close 2026-07-21 —
++16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
+−1.63%. Realized **−$416.28**, profit factor **0.49**.
 
-**Six of the ten won, and it still lost money** — the losers were bigger. That
+**Six of the eleven won, and it still lost money** — the losers were bigger. That
 pair of facts is why a win rate is not reported here on its own, and it is the
 kind of number a hit-rate headline is built to hide.
 
