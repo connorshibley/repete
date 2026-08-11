@@ -703,14 +703,15 @@
       "key": "§47",
       "heading": "## §47 — RANDOM-ENTRY DECAY MONITOR (DIAGNOSTIC, pre-registered 2026-08-01, before first run)",
       "start_line": 4543,
-      "body_sha256": "a7b9ccc29744f4a946535ff35ee740ce44f7046db59e728f80cc25d876c7d22f",
+      "body_sha256": "5d0e6725bd4a9a1e74732758d6d1870b84332d22669a0c9d78b7e64c3944f0f3",
       "subheadings": [
         "### The gap it closes",
         "### The null, fixed before any run",
         "### Thresholds, frozen before the first result was seen",
         "### Known asymmetry, stated rather than hidden",
         "### Alert-only, by construction",
-        "### First run, and why its number is NOT a finding"
+        "### First run, and why its number is NOT a finding",
+        "### Note, 2026-08-11 — the instrument changed at n=11, and the sample is not homogeneous"
       ],
       "specs": [],
       "spec_source": "no registration"
@@ -718,7 +719,7 @@
     {
       "key": "§48",
       "heading": "## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)",
-      "start_line": 4630,
+      "start_line": 4655,
       "body_sha256": "10eea66f00e195b5e45cb73d269248a65c287708728b62427a6fad6a410d5443",
       "subheadings": [
         "### The question, and why nobody has asked it",
@@ -743,7 +744,7 @@
     {
       "key": "§49",
       "heading": "## §49 — HOW MANY INDEPENDENT BETS IS THE BOOK TAKING? (DIAGNOSTIC, 2026-08-03)",
-      "start_line": 4862,
+      "start_line": 4887,
       "body_sha256": "c6af4581eecf74902824b172ab3fc7e6441f18753311ccd15601802d7ed6a5f7",
       "subheadings": [
         "### Why this, and why it has never been asked",
@@ -759,7 +760,7 @@
     {
       "key": "§50",
       "heading": "## §50 — THE INCUMBENT AT FULL DEPLOYMENT, vs A SURVIVORSHIP-FREE BENCHMARK (EDGE, K=14, pre-registered 2026-08-03)",
-      "start_line": 4969,
+      "start_line": 4994,
       "body_sha256": "783b3ff5582e694c10c535c89392f3741577854d76152eda57f24cd79c397f46",
       "subheadings": [
         "### What licenses this",
@@ -784,7 +785,7 @@
     {
       "key": "§51",
       "heading": "## §51 — IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? (EDGE, K=15, pre-registered 2026-08-03)",
-      "start_line": 5162,
+      "start_line": 5187,
       "body_sha256": "4135830711a2d6a2ef16ffddd7d34d22f82625438ef7b77abe3d59db1a3a942a",
       "subheadings": [
         "### What licenses this",
@@ -809,7 +810,7 @@
     {
       "key": "§52",
       "heading": "## §52 CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and the EDGE budget is FROZEN",
-      "start_line": 5369,
+      "start_line": 5394,
       "body_sha256": "1cdcf4e84d6fb6506296998fdc9c0a1dabb79fc6123d24fef1a414379ccf7023",
       "subheadings": [
         "### The probe REFUSED, for two separate reasons",
@@ -822,7 +823,7 @@
     {
       "key": "§53",
       "heading": "## §53 — DOES THE 130/30 CONFIGURATION BEHAVE? — REJECTED ×3 of 4, 2026-08-05",
-      "start_line": 5451,
+      "start_line": 5476,
       "body_sha256": "29950dcb7814ffae158f8b2b58c734312fe5535c5b22063c991379f6c9f01ed8",
       "subheadings": [
         "### The finding is not the failure count — it is the middle column",
@@ -842,7 +843,7 @@
     {
       "key": "§54",
       "heading": "## §54 — WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? (DIAGNOSTIC, K=15, pre-registered 2026-08-05)",
-      "start_line": 5551,
+      "start_line": 5576,
       "body_sha256": "71c9b5917a984feffbc345852049348d6cb57e6ce04f92081c0ffe9f578d3c29",
       "subheadings": [
         "### The finding that arrived before the run, and changed it",
@@ -863,7 +864,7 @@
     {
       "key": "§55",
       "heading": "## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-06, tooling — not a claim)",
-      "start_line": 5676,
+      "start_line": 5701,
       "body_sha256": "bc3d2f2d99aa4525b4fdb914c31823e48ee4ff9bc558f959c763f5313b432902",
       "subheadings": [
         "### The defect, and it was written down in this module from the start",
@@ -881,7 +882,7 @@
     {
       "key": "§56",
       "heading": "## §56 — A UNIVERSE WITH NOTHING THAT LEFT (2026-08-09, tooling — not a claim)",
-      "start_line": 5823,
+      "start_line": 5848,
       "body_sha256": "037b7b76139d93f459528c2dcb55b0b9b263373a8c4e6ea0ec6a73179e6a23a4",
       "subheadings": [
         "### The question §52 left open",
@@ -898,7 +899,7 @@
     {
       "key": "§57",
       "heading": "## §57 — THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT (DIAGNOSTIC, K=15, pre-registered 2026-08-09)",
-      "start_line": 5942,
+      "start_line": 5967,
       "body_sha256": "2a47ad4c0f0322facd36b0cb8d5da42b62d73fbd66dd07c94cc758859f767c14",
       "subheadings": [
         "### The result",
@@ -919,7 +920,7 @@
     {
       "key": "§58",
       "heading": "## §58 — THE COIL: A VOLATILITY-CONTRACTION PRECONDITION (DIAGNOSTIC, K=15, pre-registered 2026-08-10)",
-      "start_line": 6015,
+      "start_line": 6040,
       "body_sha256": "8d633c14b3fca1c9e82cc125bce4e8ab970196535f04eef670028ef452f5dc41",
       "subheadings": [
         "### Why a DIAGNOSTIC, when Phase 10 was built to make an EDGE claim possible",
@@ -945,7 +946,7 @@
     {
       "key": "§59",
       "heading": "## §59 — 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) (DIAGNOSTIC, K=15, pre-registered 2026-08-10)",
-      "start_line": 6128,
+      "start_line": 6153,
       "body_sha256": "535202ad6f0390af218e806287d08070b5f5b3de76d31a9695cb411af76f6893",
       "subheadings": [
         "### The result — REJECTED in eight of eight",
@@ -969,7 +970,7 @@
     {
       "key": "§60",
       "heading": "## §60 — THE PROJECT SCORES ITS OWN PREDICTIONS (2026-08-11, tooling — not a claim)",
-      "start_line": 6195,
+      "start_line": 6220,
       "body_sha256": "e1f13198cd7bcf06a4e431679937b23c9ed3e8808495391997d47438a09bda1c",
       "subheadings": [
         "### What was built",
@@ -977,6 +978,22 @@
         "### Three defects the record had, found by building the tool",
         "### What the index says now",
         "### What it does not solve",
+        "### State"
+      ],
+      "specs": [],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§61",
+      "heading": "## §61 — THE JUDGE HAD NOT BEEN SEEING ITS OWN SCOREBOARD (2026-08-11, tooling — not a claim)",
+      "start_line": 6325,
+      "body_sha256": "4c720af638182d027d44b3c59f6254443a8b235b850b3abf9d38af6168f407df",
+      "subheadings": [
+        "### What was asked, and what was actually wrong",
+        "### The arithmetic nobody had summed",
+        "### What changed",
+        "### Two guards that could not have caught this",
+        "### The costs, both accepted",
         "### State"
       ],
       "specs": [],

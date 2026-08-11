@@ -4625,6 +4625,31 @@ that the code path executes, nothing more.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
 
+### Note, 2026-08-11 — the instrument changed at n=11, and the sample is not homogeneous
+
+§61 altered the judge's context mid-accumulation. Trades 1–11 were judged on a
+prompt from which NEWS MEMORY, YOUR LAST RESOLVED CALLS, YOUR RECENT
+CALIBRATION and CURRENT REGIME had been silently evicted; trades 12–20 will be
+judged on a prompt that carries all four. The judge may veto or downsize any
+entry, so this is upstream of which trades populate this monitor's sample.
+
+**Owner decision, taken with n=11 in front of them**, over the alternative of
+waiting for n=20. Recorded here because §47's own "Known asymmetry, stated
+rather than hidden" is the standard, and a monitor whose sample spans two
+different instruments is exactly the thing that should not be discovered later
+from a percentile.
+
+The threshold does not move and the null does not change. What changes is what
+the first reading at n=20 will be entitled to say: it will describe a bot that
+was two bots, and the honest read is that it bounds nothing tightly. If a
+cleaner answer is wanted, the counter restarts from trades judged under the
+current prompt — which is a decision for whoever reads the first result, not
+one to pre-empt here.
+
+The monitor still cannot halt anything (`src/decaycheck.py`,
+`test_monitor_cannot_halt_trading`), so this is a measurement-validity cost and
+not a safety one.
+
 ---
 
 ## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)
@@ -6296,3 +6321,126 @@ Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 `data/snapshots/`, §57's own reading rule on `data/pit/`.
 
 <!-- recall: section=§60 specs= -->
+
+## §61 — THE JUDGE HAD NOT BEEN SEEING ITS OWN SCOREBOARD (2026-08-11, tooling — not a claim)
+
+Registers nothing, spends no Bonferroni budget, enables no strategy. **K stays
+15.** Both EDGE venues remain frozen.
+
+**This one DID change the live path**, unlike §60. `config.yaml`,
+`src/memory.py`, `src/ledger.py`, `src/preflight.py` and `src/main.py` all
+moved. Stated here rather than buried, because every other recent section could
+claim an empty diff against the trading loop and this one cannot.
+
+### What was asked, and what was actually wrong
+
+The owner asked to "fix the principles.md budget so knowledge can actually
+grow." Measurement moved the target twice.
+
+**`principles.md` was not truncating.** It is 1001 bytes on disk, but
+`knowledge_block()` calls `.strip()` before slicing, so it was **1000 chars
+against a 1000-char budget** — at the boundary, nothing dropped, and the last
+principle did reach the judge. A prior session reported "1001 against 1000" and
+implied overflow. That was wrong, and the correction matters: the file had zero
+headroom, which is a different and quieter problem than being over.
+
+**The constraint that actually bound was one level up.** Measured against the
+live memory files:
+
+```
+assembled judge context   5,613 chars
+learning.max_context_chars 4,000
+                          ------
+dropped, every judge call  1,613   (29%)
+```
+
+| block | state in the judge prompt |
+|---|---|
+| VALIDATED LESSONS | present |
+| KNOWLEDGE | present — all 10 principles survived |
+| TODAY'S MARKET CONTEXT | **cut mid-word**, at `"Iran deal h"` |
+| NEWS MEMORY | **absent** |
+| YOUR LAST RESOLVED CALLS | **absent** |
+| YOUR RECENT CALIBRATION | **absent** |
+| CURRENT REGIME | **absent** |
+
+The judge had not been seeing its own scoreboard, its own calibration, or the
+regime label. `context_for_llm` ended in a bare `ctx[:4000]`: it returned
+happily, nothing marked the prompt, nothing logged, and no test could fail.
+
+### The arithmetic nobody had summed
+
+Three sub-budgets were DERIVED SHARES of the total:
+
+```
+lessons          max_context_chars // 2 = 2,000
+market context                    // 4 = 1,000
+scoreboard                        // 4 = 1,000
+                                        -------
+                                          4,000   = 100% of the cap
+```
+
+Exactly 100%, before knowledge (1,066), news memory (600), the book, the trade
+block, calibration and the regime label got anything. **The oversubscription
+was scale-invariant** — doubling the total leaves it at exactly 100% — so
+raising `max_context_chars` alone would have fixed nothing. That is why the fix
+had to be named budgets rather than a bigger number.
+
+The largest unbudgeted block was the book: `max_open_positions: 0` means
+UNCAPPED (§29), so it can list every name in the universe.
+
+### What changed
+
+Every block now has a **named** budget (`memory.context_budgets`), the pattern
+`news.memory.max_context_chars` and `llm.knowledge_max_context_chars` had
+already established twice. `learning.max_context_chars` 4,000 → 12,000 covers
+their sum (~10,966) with headroom. `llm.knowledge_max_context_chars` 1,000 →
+1,500, which is the growth the owner asked for.
+
+Three signals where there were none: `preflight.warnings()` reports an
+oversubscription at startup — **non-blocking, deliberately**, since this makes
+the bot worse rather than unsafe and a config edit must not be able to stop it
+trading at 09:25; a `context_evicted` ledger record fires on any cycle where
+the cap actually bites, naming the blocks lost; and
+`tests/test_context_budget.py` fails on a shipped config that oversubscribes.
+
+**The old config's advice was right and is kept, not deleted.** The comment at
+`config.yaml` said "DO NOT RAISE IT casually… widening this buys principles by
+losing the regime label." True at the time, and the regime label had already
+lost. It now records what changed and why the warning was correct.
+
+### Two guards that could not have caught this
+
+`test_principles_do_not_shrink_the_lesson_block` and
+`test_unset_knowledge_path_gives_byte_identical_context` both build a `Memory`
+on an **empty `tmp_path`** with news memory disabled. The assembled context is a
+few hundred chars against a 4,000 cap, so eviction is impossible in that fixture
+at any budget. They were green throughout. Every eviction case in the new file
+carries a vacuity guard, the shape `tests/test_news_memory.py:229` already used.
+
+And `test_the_shipped_principles_file_fits_its_budget`, which calls itself THE
+LOAD-BEARING ONE, read its budget from `tests/conftest.py`'s fixture — which has
+no `knowledge_max_context_chars` and so derived 1000 — and **never read
+`config.yaml` at all**. It now reads the shipped config, and a companion asserts
+300 chars of headroom so "the file is full" is a red build.
+
+### The costs, both accepted
+
+1. **§47's decay monitor is at n=11 of a pre-registered 20.** Trades 12–20 run
+   on a judge that sees four blocks trades 1–11 did not, so that sample is not
+   homogeneous. A measurement-validity cost, not a safety one —
+   `src/decaycheck.py` cannot halt trading and `test_monitor_cannot_halt_trading`
+   pins it. Owner decision, taken with the number in front of them.
+2. **The effect on trading is unmeasurable here.** Divergences #14 and #15 are
+   open by construction; `backtest.py` never imports `llm` and `judge_model` has
+   no prompt for text to attach to. No backtest can score this. The argument is
+   not that it trades better — it is that these blocks were designed to be seen,
+   budgets were set for them, and four were being dropped in silence.
+
+### State
+
+Nothing enabled. No risk rail moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** Rollback is removing `learning.context_budgets`
+and restoring the two numbers, byte-identical and asserted.
+
+<!-- recall: section=§61 specs= -->

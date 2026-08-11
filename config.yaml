@@ -907,27 +907,39 @@ llm:                   # optional judgment layer (Anthropic API)
                           # ENLARGE risk through the reviewer's absence.
   knowledge_path: knowledge/principles.md  # curated external principles fed to the
                           # review prompt, labeled unverified; comment out to disable
-  knowledge_max_context_chars: 1000
-                          # OWN budget (2026-08-04), same value the derived
-                          # `learning.max_context_chars // 4` produced — so this
-                          # changes nothing today and is here to make the
-                          # constraint VISIBLE. It was invisible and nearly
+  knowledge_max_context_chars: 1500
+                          # OWN budget (2026-08-04), RAISED 1000 -> 1500 on
+                          # 2026-08-11 (§61). It was invisible and nearly
                           # binding: principles.md had reached 906 of 1000 chars,
                           # and the next principle added would have been dropped
                           # off the end with no error. Same trap
-                          # news.memory.max_context_chars exists to avoid.
+                          # news.memory.max_context_chars exists to avoid. By
+                          # 2026-08-11 the file was at exactly 1000 of 1000 —
+                          # zero headroom, and knowledge could not grow at all.
                           #
-                          # DO NOT RAISE IT casually. context_for_llm caps the
-                          # WHOLE memory block at learning.max_context_chars and
-                          # the sub-budgets already oversubscribe that total;
-                          # knowledge is assembled BEFORE the scoreboard,
-                          # calibration and CURRENT REGIME, so every extra char
-                          # here comes off the tail. Widening this buys
-                          # principles by losing the regime label.
+                          # This comment used to read "DO NOT RAISE IT casually",
+                          # because context_for_llm capped the WHOLE block at
+                          # learning.max_context_chars and the sub-budgets
+                          # oversubscribed that total, so every extra char here
+                          # came off the tail. THAT WAS CORRECT AT THE TIME and
+                          # is kept here rather than deleted: lessons took // 2
+                          # and market context and the scoreboard // 4 each,
+                          # which is exactly 100% of the cap before knowledge,
+                          # news memory, the book, the trades, calibration or
+                          # the regime label got anything.
                           #
-                          # tests/test_principles_context.py fails if the file
-                          # outgrows this, so truncation is a red build rather
-                          # than a silently shorter prompt.
+                          # §61 fixed the constraint rather than working around
+                          # it. Every block now has a NAMED budget (see
+                          # learning.context_budgets) and learning.max_context_
+                          # chars covers their sum, so growth here no longer
+                          # costs the tail. Preflight warns if that stops being
+                          # true and a context_evicted ledger event fires if the
+                          # cap ever bites at runtime.
+                          #
+                          # tests/test_principles_context.py reads the SHIPPED
+                          # config and fails if the file outgrows this or drops
+                          # below 300 chars of headroom, so both truncation and
+                          # a silently-full budget are red builds.
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
 
 news:                  # market awareness (Alpaca News API + LLM distill),
@@ -1231,7 +1243,38 @@ learning:                # the learning loop: hypothesis book + judge calibratio
   evaluator_batch_size: 5         # closed trades evaluated per learn.py run
   max_llm_calls_per_cycle: 2      # hard cap on learning LLM calls inside a trading cycle
   top_k_lessons: 8                # lessons injected into the review prompt
-  max_context_chars: 4000         # hard cap on the whole memory block
+  max_context_chars: 12000        # hard cap on the whole memory block.
+                                  # 4000 -> 12000 on 2026-08-11 (§61). At 4000
+                                  # the assembled context measured 5,613 chars
+                                  # against the live memory files and the bare
+                                  # ctx[:4000] silently dropped NEWS MEMORY,
+                                  # YOUR LAST RESOLVED CALLS, YOUR RECENT
+                                  # CALIBRATION and CURRENT REGIME, cutting
+                                  # TODAY'S MARKET CONTEXT mid-word. Every judge
+                                  # call, for months, with nothing to see it by.
+  context_budgets:                # chars per block. NAMED, not derived: three
+                                  # of these used to be // 2 and // 4 shares of
+                                  # max_context_chars, which is exactly 100% of
+                                  # it between them — an oversubscription that
+                                  # stayed at 100% however large the total got.
+                                  # Unset keys fall back to the old behaviour,
+                                  # so removing this block is the rollback path
+                                  # and is byte-identical (§61).
+    book: 2800                    # max_open_positions: 0 = UNCAPPED (§29), so
+                                  # this can list all 38 names — the biggest
+                                  # block in the prompt was the unbudgeted one
+    trades: 1200                  # 10 rows x ~103 chars, measured
+    lessons: 2400                 # wants 2,184 today at top_k_lessons: 8
+    market_context: 1000          # uses 364
+    scoreboard: 1000              # uses 922
+    calibration: 200              # uses 105
+    regime: 200                   # uses 49
+                                  # + knowledge 1500 (+66 label) and news_memory
+                                  # 600, which keep their own keys beside the
+                                  # features they belong to. Sum ~10,966 against
+                                  # a 12,000 total; preflight warns if that ever
+                                  # inverts, and tests/test_context_budget.py
+                                  # fails on the shipped config if it does.
   regime:                         # deterministic market-regime tagging from SPY bars
     sma_period: 50                # trend: SPY close vs SMA50
     vol_period: 20                # 20-day realized vol, annualized

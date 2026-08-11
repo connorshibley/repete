@@ -374,11 +374,67 @@ backtest would flatter.
 
 ### The budget it shares
 
-`knowledge_block()` caps at `learning.max_context_chars // 4`. It has no budget
-of its own — it takes a quarter of learning's. Growing `principles.md` past that
-cap silently truncates the tail rather than failing, so length is a real
-constraint and not a style preference. (This is the same trap
-`news.memory.max_context_chars` was given its own budget to avoid.)
+~~`knowledge_block()` caps at `learning.max_context_chars // 4`. It has no
+budget of its own — it takes a quarter of learning's.~~ **Stale since
+2026-08-04**; struck rather than deleted, per this register's own rule that a
+superseded claim stays visible. The block was given its own
+`llm.knowledge_max_context_chars` on that date, with the derived `// 4` kept
+only as a fallback.
+
+The rest of this paragraph stood, and understated the problem: growing
+`principles.md` past its cap silently truncates the tail rather than failing, so
+length is a real constraint and not a style preference. (This is the same trap
+`news.memory.max_context_chars` was given its own budget to avoid.) See the note
+below — the truncation was not hypothetical, and it was not the knowledge block
+that paid for it.
+
+### Note, 2026-08-11 — the budget was raised, after four blocks were found missing
+
+**No status change. #15 stays OPEN**, and nothing here could close it: the
+simulator still has no prompt for a principle to attach to. This is the #17
+precedent — the same gap, measured from another side, recorded under the
+existing number rather than given a new one.
+
+`llm.knowledge_max_context_chars` went **1000 → 1500** and
+`learning.max_context_chars` **4000 → 12000** (§61). The owner asked for the
+principles file to be able to grow; it was sitting at exactly 1000 of 1000
+chars, fitting with zero headroom, so the next principle written would have been
+the one that disappeared.
+
+**What the paragraph above did not know.** The constraint that actually bound
+was not the knowledge budget — it was the total. Three sub-budgets were derived
+shares (`lessons // 2`, `market_context // 4`, `scoreboard // 4`), which is
+exactly 100% of the cap between them, before knowledge, news memory, the book,
+the trade block, calibration or the regime label got anything. Measured against
+the live memory files on 2026-08-11, `context_for_llm` assembled **5,613 chars
+against a 4,000 cap** and the closing `ctx[:4000]` dropped **NEWS MEMORY, YOUR
+LAST RESOLVED CALLS, YOUR RECENT CALIBRATION and CURRENT REGIME** entirely,
+cutting TODAY'S MARKET CONTEXT mid-word. Every judge call, for months.
+
+So the concern this entry recorded — that a block without its own budget eats
+the tail — had already happened, to four other blocks, while the knowledge block
+was the one being watched.
+
+**Direction of bias: UNCHANGED.** The sim judge still has strictly less context
+than the live one, so backtests remain optimistic relative to live, and
+invariant #2 still means a principle can only subtract live trades and never add
+one. A wider knowledge block makes the live judge see *more* of what the
+simulator cannot represent, which widens the gap without flipping its sign.
+
+**What is new is that the gap is now bounded and visible.** Every block has a
+named budget (`memory.context_budgets`), `preflight.warnings` reports at startup
+when they oversubscribe their total — non-blocking, deliberately, because this
+makes the bot worse rather than unsafe — and a `context_evicted` ledger event
+records any cycle where the cap actually bit, naming the blocks lost. Pinned by
+`tests/test_context_budget.py`, whose eviction cases carry vacuity guards
+because the two guards that should have caught this could not: both
+`test_principles_do_not_shrink_the_lesson_block` and
+`test_unset_knowledge_path_gives_byte_identical_context` run on an empty
+`tmp_path`, where the assembled context never approaches the cap at any budget.
+
+**Rollback:** removing `learning.context_budgets` and restoring the two
+numbers reproduces the old behaviour byte-for-byte, asserted by
+`test_an_unset_config_is_byte_identical`.
 
 ### What would close this
 
