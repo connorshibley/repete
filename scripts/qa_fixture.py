@@ -201,7 +201,12 @@ def build_ledger(rng: random.Random, days: int, start: datetime,
     # cycle_complete on the day BEFORE the anchor, which src/health.py reads
     # as "cycle ran today but never completed" and /healthz answers 503 — so
     # the publisher's healthy path was unreachable from any fixture.
-    for d in range(days + 1):
+    #
+    # days=0 means day one: nothing has run yet, not "one day of history".
+    # Making the loop unconditionally inclusive quietly gave the `empty`
+    # profile a market_context event and a completed cycle, and two of its
+    # empty-state criteria stopped being reachable.
+    for d in range(days + 1 if days > 0 else 0):
         day = start + timedelta(days=d)
         if day.weekday() >= 5:                      # weekdays only, like the bot
             continue

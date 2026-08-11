@@ -113,7 +113,14 @@ def test_an_empty_filter_explains_itself(cfg, tmp_path):
         "the no-match row must start hidden or it shows as a result")
     assert not re.search(r"<tr id=nomatch[^>]*class=", row.group(0)), (
         "the no-match row must carry no r-* class, or a filter could match it")
-    assert "if(nm)nm.style.display=any?'none':'';" in html
+    # Both halves. Asserting only the toggle let a mutation replacing the
+    # lookup with `var nm=null;` SURVIVE — the toggle line was still present,
+    # the test still passed, and the row would never have been shown again.
+    # Reported as a weakness of this test rather than quietly patched.
+    assert "var nm=document.getElementById('nomatch');" in html, (
+        "the handler no longer looks the no-match row up")
+    assert "if(nm)nm.style.display=any?'none':'';" in html, (
+        "the handler no longer toggles the no-match row")
 
 
 def test_the_failure_note_survives_a_repaint(cfg, tmp_path):
