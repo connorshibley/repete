@@ -204,6 +204,32 @@ def test_every_generated_address_is_undeliverable(fixture_dir):
                 f"{name} contains a routable-looking address: {addr}")
 
 
+# ---- the hostile profile actually produces its hostile inputs -------------
+
+def test_the_hostile_profile_emits_every_edge_case_it_claims():
+    """A criterion that passes because the fixture never generated the input
+    is worse than no criterion — it reads as coverage.
+
+    The fragment-hostile trade id was originally keyed to `d == 1`, and no
+    trade executed on day 1 of the hostile window, so the id never appeared,
+    the journal-anchor criterion had nothing to test, and it passed.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "h")
+        subprocess.run([sys.executable, GEN, "--out", out, "--profile",
+                        "hostile", "--anchor", ANCHOR],
+                       capture_output=True, text=True, check=True)
+        ledger = open(os.path.join(out, "ledger.jsonl")).read()
+        posts = open(os.path.join(out, "posts.jsonl")).read()
+        journal = open(os.path.join(out, "journal.jsonl")).read()
+        assert "t#0001 spaced" in ledger, "no fragment-hostile trade id"
+        assert "t#0001 spaced" in journal, "hostile id never reached the journal"
+        assert "javascript:" in posts, "no dangerous-scheme post link"
+        assert "<img src=x onerror=" in ledger, "no markup-shaped field"
+        assert "A" * 4000 in ledger, "no oversized field"
+
+
 # ---- the guard -----------------------------------------------------------
 
 def _roots():

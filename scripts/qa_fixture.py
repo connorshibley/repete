@@ -195,8 +195,13 @@ def build_ledger(rng: random.Random, days: int, start: datetime,
     open_trades: list[dict] = []
     equity = 100_000.0
     n_closed = 0
+    hostile_id_used = False
 
-    for d in range(days):
+    # Inclusive of the anchor day. Stopping one short left the newest
+    # cycle_complete on the day BEFORE the anchor, which src/health.py reads
+    # as "cycle ran today but never completed" and /healthz answers 503 — so
+    # the publisher's healthy path was unreachable from any fixture.
+    for d in range(days + 1):
         day = start + timedelta(days=d)
         if day.weekday() >= 5:                      # weekdays only, like the bot
             continue
@@ -297,9 +302,15 @@ def build_ledger(rng: random.Random, days: int, start: datetime,
                 continue
             qty = max(1, int(2000 / price)) if price > 0 else 0
             tid = f"t{d:04d}{i:03d}"
-            if hostile and not any(t["trade_id"] == HOSTILE_TRADE_ID
-                                   for t in open_trades) and d == 1:
+            # The FIRST executed trade, whichever day it lands on. Keying this
+            # to a fixed day meant the id was never generated at all — days 0,
+            # 2, 13, 15 and 19 had executions and day 1 did not — so the
+            # journal-anchor criterion passed without ever seeing a hostile
+            # id. A criterion that passes because the fixture never produced
+            # the input is worse than no criterion.
+            if hostile and not hostile_id_used:
                 tid = HOSTILE_TRADE_ID
+                hostile_id_used = True
             rec = {
                 "type": "decision", "trade_id": tid, "regime": regime,
                 "strategy": strat, "symbol": sym, "action": "buy",
@@ -334,7 +345,7 @@ def build_ledger(rng: random.Random, days: int, start: datetime,
         # exactly ONE mark, at the end of a window that ended weeks in the
         # past, so latest_position_mark() was always >24h old and the FRESH
         # branch of _mark_age_note (dashboard.py:876) could never render.
-        if open_trades and (day.weekday() == 4 or d == days - 1):
+        if open_trades and (day.weekday() == 4 or d == days):
             records.append(_mark_event(open_trades,
                                        day.replace(hour=20, minute=30)))
     return records
