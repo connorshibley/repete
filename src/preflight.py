@@ -499,3 +499,45 @@ def _last_nonempty_line(path: str) -> str | None:
         return lines[-1].decode("utf-8", "replace") if lines else None
     except OSError:
         return None  # no ledger yet — first run is fine
+
+
+def warnings(cfg: dict) -> list[str]:
+    """Config faults worth SAYING but not worth refusing to trade over.
+
+    Deliberately a separate channel from `run()`. Everything `run()` returns
+    blocks the cycle — it is fail-safe by design and `main.py` treats any
+    entry as fatal. A context budget that oversubscribes its total produces a
+    worse judge prompt, not an unsafe trade, and a config edit must not be able
+    to take the bot down at 09:25.
+
+    Pure, like `run()`: `memory.context_budgets` is a module function precisely
+    so this can do the arithmetic without opening the lesson and judgment
+    stores.
+    """
+    out: list[str] = []
+    try:
+        import memory as memory_mod
+        over = memory_mod.budget_overage(cfg)
+        total = (cfg.get("learning") or {}).get("max_context_chars", 4000)
+        if over:
+            budgets = memory_mod.context_budgets(cfg)
+            named = sum(v for v in budgets.values() if v is not None)
+            # Name the blocks that lose, not just the arithmetic. They are the
+            # ones assembled LAST, because `context_for_llm` slices the tail.
+            at_risk = [b for b in memory_mod.CONTEXT_BLOCKS[-4:]
+                       if budgets.get(b) is not None]
+            out.append(
+                f"learning context budgets oversubscribe their total by "
+                f"{over} chars ({named} budgeted vs max_context_chars "
+                f"{total}) — context_for_llm slices the TAIL, so "
+                f"{', '.join(at_risk)} are what the judge stops seeing. §61.")
+        unbounded = [k for k, v in memory_mod.context_budgets(cfg).items()
+                     if v is None]
+        if unbounded:
+            out.append(
+                f"context blocks with no budget: {', '.join(sorted(unbounded))}"
+                f" — their size is unbounded, so the {total}-char total can "
+                f"still be exceeded without the check above noticing")
+    except Exception as e:  # noqa: BLE001 — a warning must never break startup
+        out.append(f"context budget check failed to run: {e}")
+    return out

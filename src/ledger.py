@@ -116,6 +116,40 @@ class Ledger:
     def log_event(self, event: str, detail: str = ""):
         self._append({"type": "event", "event": event, "detail": detail})
 
+    def log_context_eviction(self, cap: int, assembled_chars: int,
+                             blocks_lost: list, budget_overage: int = 0,
+                             unbounded_blocks: list | None = None):
+        """The judge did not see everything `context_for_llm` built for it.
+
+        Structured rather than a `log_event` prose string, for §40's stated
+        reason — "a queryable key rather than prose" — because the questions
+        this answers are *which block* and *how often*, and neither survives a
+        sentence.
+
+        The record exists because its absence cost months. `context_for_llm`
+        ended in a bare `ctx[:cap]`: it returned happily, nothing marked the
+        prompt, and the only symptom was worse judgments. Measured 2026-08-11,
+        5,613 chars assembled against a 4,000 cap, with NEWS MEMORY, YOUR LAST
+        RESOLVED CALLS, YOUR RECENT CALIBRATION and CURRENT REGIME dropped
+        entirely on every call. §61.
+
+        DISPLAY AND DIAGNOSIS ONLY. Nothing reads this back to make a trading
+        decision and nothing should — it is a photograph of a prompt, the same
+        standing `log_positions_mark` has.
+        """
+        self._append({
+            "type": "event",
+            "event": "context_evicted",
+            "detail": (f"{assembled_chars - cap} chars dropped from the judge "
+                       f"prompt; lost: {', '.join(blocks_lost) or 'none named'}"),
+            "cap": cap,
+            "assembled_chars": assembled_chars,
+            "dropped_chars": assembled_chars - cap,
+            "blocks_lost": blocks_lost,
+            "budget_overage": budget_overage,
+            "unbounded_blocks": unbounded_blocks or [],
+        })
+
     def log_fill_quality(self, trade_id: str, symbol: str, side: str,
                          signal_price: float, filled_avg_price: float,
                          slippage_bps: float):

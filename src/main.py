@@ -773,6 +773,17 @@ def _bootstrap_cycle():
     ledger.set_model_version(modelver.current_version())
     memory = Memory(cfg, ledger)
 
+    # Non-blocking, unlike the preflight above: these are faults that make the
+    # bot WORSE, not unsafe, and must not be able to stop it trading. §61 — the
+    # judge silently lost four blocks of its prompt for months because nothing
+    # said so out loud.
+    for w_msg in preflight.warnings(cfg):
+        log.warning("PREFLIGHT: %s", w_msg)
+        try:
+            ledger.log_event("preflight_warning", w_msg[:500])
+        except Exception:  # noqa: BLE001 — observability never blocks a cycle
+            pass
+
     # Two halts, two behaviours. `freeze` is the original: nothing runs, which is
     # what you want when the bot or the broker is itself suspect. `exits` runs
     # the cycle with entries blocked so open positions are still managed —
