@@ -4,66 +4,90 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **51 sections, 6,193 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **65 sections, 6,298 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
 claim written before its result, in a file that only ever grows, cannot
-be quietly reworded afterwards. This index is navigation, not a summary,
-and the verdict column is read verbatim off each heading rather than
-inferred — an index that formed its own opinion of the record would be a
-second source of truth.
+be quietly reworded afterwards. This index is navigation, not a summary.
 
-| § | subject | claim | verdict | date |
-|---|---|---|---|---|
-| §5 | Vol-targeted sizing | — | split | 2026-07-18 |
-| §6 | Down-regime gross-exposure cap | — | rejected | 2026-07-18 |
-| §7 | Chandelier trailing stop | — | split | 2026-07-19 |
-| §8 | Risk-based (stop-distance) sizing | — | split | 2026-07-19 |
-| §9 | Same-ticker re-entry cooldown | — | split | 2026-07-19 |
-| §10 | Universe expansion 25 → 38 unique | — | adopted | 2026-07-21 |
-| §11 | risk_sizing.risk_pct 0.1 → 5.0 | — | adopted | 2026-07-23 |
-| §12 | position-slot cap `max_open_positions` — RULE PRE-REGISTERED | — | pre-registered | 2026-07-23 |
-| §13 | PER-STRATEGY slot allocation | — | not yet run | 2026-07-23 |
-| §14– | §17 | — | pre-registered | — |
-| §18 | Concentration + bootstrap edge report | EDGE | — | 2026-07-23 |
-| §19 | Faster entries — RULE PRE-REGISTERED, results in the next commit | — | pre-registered | 2026-07-23 |
-| §20 | RE-GATE UNDER THE ENSEMBLE SIMULATOR — RULES PRE-REGISTERED | — | pre-registered | 2026-07-23 |
-| §21 | EXIT SPEED UNDER THE ENSEMBLE — RULES PRE-REGISTERED | — | pre-registered | 2026-07-23 |
-| §22 | SYMBOL ORDER: §20a REVERTED | — | — | 2026-07-23 |
-| §23 | RELATIVE-VOLUME ENTRY FILTER — RULES PRE-REGISTERED | — | pre-registered | 2026-07-24 |
-| §24 | SCAN-ORDER ROTATION | — | adopted | 2026-07-24 |
-| §25 | INTRADAY FILL TIMING — RULES PRE-REGISTERED | — | pre-registered | 2026-07-24 |
-| §26 | TWO LIVE DIVERGENCES FOUND BY AUDITING PRODUCTION | — | — | 2026-07-25 |
-| §27 | POSITION BUDGET — RULES PRE-REGISTERED | — | pre-registered | 2026-07-25 |
-| §28 | ONE-SHARE FLOOR: NOT REGISTERED. The probe said the gate could not work. | — | — | — |
-| §29 | UNCAP THE BOOK AND RAISE SIZING | — | — | 2026-07-26 |
-| §31 | CROSS-ASSET RISK GATE | — | pre-registered | 2026-07-27 |
-| §32 | WIDE-UNIVERSE CROSS-SECTIONAL FACTORS | — | pre-registered | 2026-07-27 |
-| §33 | DOES WALK-FORWARD SELECTION PREDICT? | — | pre-registered | 2026-07-27 |
-| §34 | IS FOLD-MAJORITY SELECTION ANY BETTER? | — | pre-registered | 2026-07-27 |
-| §35 | ONE HYPOTHESIS, NO SELECTION | — | pre-registered | 2026-07-27 |
-| §36 | THE REFEREE BECOMES A PROGRAM | — | — | 2026-07-28 |
-| §37 | FAMILY COHERENCE ON THE FINANCIAL CRISIS | — | pre-registered | 2026-07-28 |
-| §38 | THE SAME FAMILY ON 2022-2026. **DIAGNOSTIC — decides nothing.** | DIAGNOSTIC | — | — |
-| §39 | THE INCUMBENT FACES ITS OWN GATE | — | pre-registered | 2026-07-29 |
-| §40 | WHERE DOES THE CAPITAL GO? — **DIAGNOSTIC. And it found the thing.** | DIAGNOSTIC | — | 2026-07-29 |
-| §41 | CAN THE DRAWDOWN CIRCUIT BREAKER RE-CLOSE? (CAPACITY, K=11) | CAPACITY | — | — |
-| §42 | DIAGNOSTIC: what the judge does to the census | DIAGNOSTIC | — | 2026-07-29 |
-| §43 | THE INCUMBENT FACES ITS OWN GATE ON A SIMULATOR THAT MATCHES LIVE | — | — | — |
-| §44 | DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? | EDGE | — | 2026-08-02 |
-| §45 | WHY DOESN'T THE BOOK TURN OVER? | DIAGNOSTIC | — | 2026-07-29 |
-| §46 | CANDIDATE (not registered) — fundamentals, blocked on a lookahead probe | — | blocked | — |
-| §47 | RANDOM-ENTRY DECAY MONITOR | DIAGNOSTIC | pre-registered | 2026-08-01 |
-| §48 | IS THERE SIGNAL AT FULL DEPLOYMENT? | DIAGNOSTIC | pre-registered | 2026-08-03 |
-| §49 | HOW MANY INDEPENDENT BETS IS THE BOOK TAKING? | DIAGNOSTIC | — | 2026-08-03 |
-| §50 | THE INCUMBENT AT FULL DEPLOYMENT, vs A SURVIVORSHIP-FREE BENCHMARK | EDGE | pre-registered | 2026-08-03 |
-| §51 | IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? | EDGE | pre-registered | 2026-08-03 |
-| §52 | CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and th… | EDGE | blocked | — |
-| §53 | DOES THE 130/30 CONFIGURATION BEHAVE? | — | rejected | 2026-08-05 |
-| §54 | WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? | DIAGNOSTIC | pre-registered | 2026-08-05 |
-| §55 | THE REFEREE GETS A SHARPER INSTRUMENT | — | — | 2026-08-06 |
-| §56 | A UNIVERSE WITH NOTHING THAT LEFT | — | — | 2026-08-09 |
-| §57 | THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT | DIAGNOSTIC | pre-registered | 2026-08-09 |
-| §58 | THE COIL: A VOLATILITY-CONTRACTION PRECONDITION | DIAGNOSTIC | pre-registered | 2026-08-10 |
-| §59 | 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) | DIAGNOSTIC | pre-registered | 2026-08-10 |
+**The last two columns are allowed to disagree, and the disagreement is
+the signal.** `heading says` is read verbatim off each heading — an
+index that formed its own opinion of the record would be a second
+source of truth. `gate result` counts verdict rows in
+[`verdicts.jsonl`](verdicts.jsonl) for the specs registered against
+that section. §57, §58 and §59 read `pre-registered` because that
+phrase is in their headings; they scored 0/4, 0/8 and 0/8. Neither
+column has been corrected — they are placed side by side.
+
+| section | subject | claim | heading says | gate result | date |
+|---|---|---|---|---|---|
+| METHOD NOTE | frozen snapshots required | — | frozen | — | 2026-07-17 |
+| METHOD NOTE | every WIDE-SNAPSHOT number here predates divergence #17 | — | — | — | 2026-08-05 |
+| 1. | Earnings-blackout entry filter | — | split | — | 2026-07-17 |
+| 2. | Time-varying stop width by vol regime | — | rejected | — | 2026-07-17 |
+| 3. | Regime gate on tsmom entries | — | adopted, reverted | — | 2026-07-16 |
+| 4. | Meanrev max-positions-per-cycle cap | — | rejected | — | 2026-07-16 |
+| §5 | Vol-targeted sizing | — | split | — | 2026-07-18 |
+| §6 | Down-regime gross-exposure cap | — | rejected | — | 2026-07-18 |
+| §7 | Chandelier trailing stop | — | split | — | 2026-07-19 |
+| §8 | Risk-based (stop-distance) sizing | — | split | — | 2026-07-19 |
+| §9 | Same-ticker re-entry cooldown | — | split | — | 2026-07-19 |
+| §10 | Universe expansion 25 → 38 unique | — | adopted | — | 2026-07-21 |
+| §11 | risk_sizing.risk_pct 0.1 → 5.0 | — | adopted | — | 2026-07-23 |
+| METHOD NOTE 2 | the OOS window is contaminated | — | — | — | 2026-07-23 |
+| §12 | position-slot cap `max_open_positions` — RULE PRE-REGISTERED | — | pre-registered | — | 2026-07-23 |
+| §13 | PER-STRATEGY slot allocation | — | not yet run | — | 2026-07-23 |
+| METHOD NOTE 3 | the §1–§13 snapshot is GONE; those numbers are unreproducible | — | — | — | 2026-07-23 |
+| METHOD NOTE 4 | multiple-testing correction is now arithmetic, not judgement | — | — | — | 2026-07-23 |
+| §14–§17 | PRE-REGISTERED RULES, WRITTEN BEFORE ANY CANDIDATE WAS RUN | — | pre-registered | — | — |
+| §18 | Concentration + bootstrap edge report | EDGE | — | — | 2026-07-23 |
+| §19 | Faster entries — RULE PRE-REGISTERED, results in the next commit | — | pre-registered | — | 2026-07-23 |
+| §20 | RE-GATE UNDER THE ENSEMBLE SIMULATOR — RULES PRE-REGISTERED | — | pre-registered | — | 2026-07-23 |
+| METHOD NOTE 5 | edge claims vs capacity claims | EDGE | — | — | 2026-07-23 |
+| §21 | EXIT SPEED UNDER THE ENSEMBLE — RULES PRE-REGISTERED | — | pre-registered | — | 2026-07-23 |
+| §22 | SYMBOL ORDER: §20a REVERTED | — | — | — | 2026-07-23 |
+| §23 | RELATIVE-VOLUME ENTRY FILTER — RULES PRE-REGISTERED | — | pre-registered | — | 2026-07-24 |
+| §24 | SCAN-ORDER ROTATION | — | adopted | — | 2026-07-24 |
+| PHASE 0 | INTRADAY FEASIBILITY — VERDICT: PROCEED, with one large caveat | — | — | — | 2026-07-24 |
+| §25 | INTRADAY FILL TIMING — RULES PRE-REGISTERED | — | pre-registered | — | 2026-07-24 |
+| §26 | TWO LIVE DIVERGENCES FOUND BY AUDITING PRODUCTION | — | — | — | 2026-07-25 |
+| §27 | POSITION BUDGET — RULES PRE-REGISTERED | — | pre-registered | — | 2026-07-25 |
+| §28 | ONE-SHARE FLOOR: NOT REGISTERED. The probe said the gate could not work. | — | not registered | — | — |
+| §29 | UNCAP THE BOOK AND RAISE SIZING | — | — | — | 2026-07-26 |
+| §30 | CANDIDATE — tighter down-regime gross cap. NOT ADOPTED. | — | not adopted | — | — |
+| §31 | CROSS-ASSET RISK GATE | — | pre-registered | — | 2026-07-27 |
+| §32 | WIDE-UNIVERSE CROSS-SECTIONAL FACTORS | — | pre-registered | — | 2026-07-27 |
+| §33 | DOES WALK-FORWARD SELECTION PREDICT? | — | pre-registered | — | 2026-07-27 |
+| §34 | IS FOLD-MAJORITY SELECTION ANY BETTER? | — | pre-registered | — | 2026-07-27 |
+| §35 | ONE HYPOTHESIS, NO SELECTION | — | pre-registered | 0/1 | 2026-07-27 |
+| §36 | THE REFEREE BECOMES A PROGRAM | — | — | — | 2026-07-28 |
+| §37 | FAMILY COHERENCE ON THE FINANCIAL CRISIS | — | pre-registered | 0/1 | 2026-07-28 |
+| §38 | THE SAME FAMILY ON 2022-2026. **DIAGNOSTIC — decides nothing.** | DIAGNOSTIC | — | 0/1 | — |
+| ALREADY-SEEN OBSERVATION | the incumbent against its own exposure | — | — | — | 2026-07-28 |
+| §39 | THE INCUMBENT FACES ITS OWN GATE | — | pre-registered | 0/1 | 2026-07-29 |
+| §40 | WHERE DOES THE CAPITAL GO? — **DIAGNOSTIC. And it found the thing.** | DIAGNOSTIC | — | — | 2026-07-29 |
+| §41 | CAN THE DRAWDOWN CIRCUIT BREAKER RE-CLOSE? (CAPACITY, K=11) | CAPACITY | — | 1/4 | — |
+| §42 | DIAGNOSTIC: what the judge does to the census | DIAGNOSTIC | — | — | 2026-07-29 |
+| §43 | THE INCUMBENT FACES ITS OWN GATE ON A SIMULATOR THAT MATCHES LIVE | — | — | 0/4 | — |
+| §44 | DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? | EDGE | — | 3/4 | 2026-08-02 |
+| §45 | WHY DOESN'T THE BOOK TURN OVER? | DIAGNOSTIC | — | — | 2026-07-29 |
+| §46 | CANDIDATE (not registered) — fundamentals, blocked on a lookahead probe | — | not registered | — | — |
+| §47 | RANDOM-ENTRY DECAY MONITOR | DIAGNOSTIC | pre-registered | — | 2026-08-01 |
+| §48 | IS THERE SIGNAL AT FULL DEPLOYMENT? | DIAGNOSTIC | pre-registered | 4/4 | 2026-08-03 |
+| §49 | HOW MANY INDEPENDENT BETS IS THE BOOK TAKING? | DIAGNOSTIC | — | — | 2026-08-03 |
+| §50 | THE INCUMBENT AT FULL DEPLOYMENT, vs A SURVIVORSHIP-FREE BENCHMARK | EDGE | pre-registered | 0/4 | 2026-08-03 |
+| §51 | IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? | EDGE | pre-registered | 3/3 | 2026-08-03 |
+| §52 | CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and th… | EDGE | not registered | — | — |
+| §53 | DOES THE 130/30 CONFIGURATION BEHAVE? | — | rejected | 1/4 | 2026-08-05 |
+| §54 | WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? | DIAGNOSTIC | pre-registered | 1/4 | 2026-08-05 |
+| §55 | THE REFEREE GETS A SHARPER INSTRUMENT | — | — | — | 2026-08-06 |
+| §56 | A UNIVERSE WITH NOTHING THAT LEFT | — | — | — | 2026-08-09 |
+| §57 | THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-09 |
+| §58 | THE COIL: A VOLATILITY-CONTRACTION PRECONDITION | DIAGNOSTIC | pre-registered | 0/8 | 2026-08-10 |
+| §59 | 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) | DIAGNOSTIC | pre-registered | 0/8 | 2026-08-10 |
+| §60 | THE PROJECT SCORES ITS OWN PREDICTIONS | — | — | — | 2026-08-11 |
+
+A `gate result` of `—` means no spec was registered against that
+section; the first registered section is §35. And a ratio is not a section
+verdict: several sections register a conjunction where one failure sinks the claim, so §44 reads `3/4` and the claim failed.
