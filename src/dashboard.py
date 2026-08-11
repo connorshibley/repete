@@ -4,9 +4,12 @@
 `dashboard.html`: a hero total-P/L banner, P/L-over-time and per-trade P/L
 charts, the equity curve (optional SPY overlay when bars are provided), open
 positions, recent decisions with the judge's reasoning, the lesson book,
-judge calibration, measured slippage, and exit reasons. Dark trading-terminal
-theme with vanilla inline JS (hover tooltips, count-up, decision filters) —
-pure file reads, no network, no external libraries; open it in any browser.
+judge calibration, measured slippage, and exit reasons. Light theme on a white
+surface since 2026-07-26 (the palette constants below are the source of truth;
+this line said "dark trading-terminal theme" for two weeks after the page went
+white). Vanilla inline JS — hover tooltips, count-up, decision filters, all
+delegated to `document` so they survive a region swap — pure file reads, no
+network, no external libraries; open it in any browser.
 """
 import base64
 import hashlib
@@ -304,43 +307,91 @@ details>summary{cursor:pointer;color:var(--ink2);font-size:13px;
      box-shadow:0 4px 14px rgba(20,26,34,.18);max-width:280px}
 """
 
+# Handlers are DELEGATED to `document`, never bound per element.
+#
+# The tooltip and chip handlers used to be attached with
+# querySelectorAll(...).forEach(el => el.addEventListener(...)) at load. Every
+# element they were attached to lives inside a volatile region — the chips in
+# `decisions`, the [data-tip] hover targets in the three chart regions, the
+# [data-count] figure in `hero` — and LIVE_JS's swap() replaces those regions'
+# innerHTML on the first poll that sees a new hash. Replacing innerHTML
+# destroys the element the listener was attached to, so 60 seconds after load
+# the filter chips and every chart tooltip were dead, on a page whose entire
+# premise is staying current without a reload.
+#
+# Nothing surfaced it: no error, no console message, the chips still changed
+# colour on hover because that is CSS, and the table just stopped responding.
+# Confirmed in a browser against a served fixture — click a chip at t=0 and 7
+# rows filter to 1; click the same chip after one poll and nothing happens,
+# not even the .on class.
+#
+# Delegation fixes it structurally rather than by remembering to rebind: the
+# listener sits on `document`, which swap() never touches, so it survives any
+# region being replaced and any future reorganisation of the markup.
+# mouseover/mouseout are used rather than mouseenter/mouseleave because only
+# the former bubble.
 JS = """
 (function(){
 var tip=document.createElement('div');tip.id='tip';
 document.body.appendChild(tip);
 function move(e){tip.style.left=(e.pageX+14)+'px';
                  tip.style.top=(e.pageY-12)+'px';}
-document.querySelectorAll('[data-tip]').forEach(function(el){
-  el.addEventListener('mouseenter',function(e){
-    tip.textContent=el.getAttribute('data-tip');
-    tip.style.display='block';move(e);});
-  el.addEventListener('mousemove',move);
-  el.addEventListener('mouseleave',function(){tip.style.display='none';});
-});
-document.querySelectorAll('[data-count]').forEach(function(el){
-  var end=parseFloat(el.getAttribute('data-count'))||0;
-  var pre=el.getAttribute('data-prefix')||'';
-  function fmt(v){
-    var s=Math.abs(v).toLocaleString('en-US',
-      {minimumFractionDigits:2,maximumFractionDigits:2});
-    return (v<0?'-':'+')+pre+s;}
-  var t0=null;
-  function step(ts){
-    if(!t0)t0=ts;
-    var p=Math.min((ts-t0)/900,1),e=1-Math.pow(1-p,3);
-    el.textContent=fmt(end*e);
-    if(p<1)requestAnimationFrame(step);}
-  requestAnimationFrame(step);
-});
-document.querySelectorAll('.chip').forEach(function(c){
-  c.addEventListener('click',function(){
-    document.querySelectorAll('.chip').forEach(function(x){
-      x.classList.remove('on');});
-    c.classList.add('on');
-    var f=c.getAttribute('data-f');
-    document.querySelectorAll('#dtable tbody tr').forEach(function(r){
-      r.style.display=(f==='all'||r.classList.contains(f))?'':'none';});
+function tipTarget(e){
+  return e.target&&e.target.closest?e.target.closest('[data-tip]'):null;}
+document.addEventListener('mouseover',function(e){
+  var el=tipTarget(e);
+  if(!el)return;
+  tip.textContent=el.getAttribute('data-tip');
+  tip.style.display='block';move(e);});
+document.addEventListener('mousemove',function(e){
+  if(tip.style.display==='block')move(e);});
+document.addEventListener('mouseout',function(e){
+  if(tipTarget(e))tip.style.display='none';});
+function countUp(){
+  document.querySelectorAll('[data-count]').forEach(function(el){
+    if(el.dataset.counted)return;      // never re-animate the same element
+    el.dataset.counted='1';
+    var end=parseFloat(el.getAttribute('data-count'))||0;
+    var pre=el.getAttribute('data-prefix')||'';
+    function fmt(v){
+      var s=Math.abs(v).toLocaleString('en-US',
+        {minimumFractionDigits:2,maximumFractionDigits:2});
+      return (v<0?'-':'+')+pre+s;}
+    var t0=null;
+    function step(ts){
+      if(!t0)t0=ts;
+      var p=Math.min((ts-t0)/900,1),e=1-Math.pow(1-p,3);
+      el.textContent=fmt(end*e);
+      if(p<1)requestAnimationFrame(step);}
+    requestAnimationFrame(step);
   });
+}
+countUp();
+// swap() replaces the hero wholesale, so a new figure needs animating. One
+// idempotent function, no shared state — the narrowest handle that works.
+window.__repete_after_swap=countUp;
+function applyFilter(f){
+  var any=false;
+  document.querySelectorAll('#dtable tbody tr').forEach(function(r){
+    if(r.id==='nomatch')return;
+    var show=(f==='all'||r.classList.contains(f));
+    r.style.display=show?'':'none';
+    if(show)any=true;});
+  // A filter matching nothing used to leave a header above an empty void,
+  // which reads as a page that failed to load rather than as a filter with
+  // no hits. The decisions table shows only the most recent N_DECISIONS, and
+  // executed trades are a few percent of decisions, so "Executed" matching
+  // nothing is an ordinary Tuesday, not an edge case.
+  var nm=document.getElementById('nomatch');
+  if(nm)nm.style.display=any?'none':'';
+}
+document.addEventListener('click',function(e){
+  var c=e.target&&e.target.closest?e.target.closest('.chip'):null;
+  if(!c)return;
+  document.querySelectorAll('.chip').forEach(function(x){
+    x.classList.remove('on');});
+  c.classList.add('on');
+  applyFilter(c.getAttribute('data-f'));
 });
 var boot=document.getElementById('boot');
 if(boot){
@@ -402,7 +453,21 @@ var genAt=new Date(badge.getAttribute('data-gen'));
 var hash=badge.getAttribute('data-hash');
 var AMBER=%(amber)d, RED=%(red)d, canPoll=location.protocol!=='file:';
 
-function paint(note){
+// The note is STICKY. paint() with no argument repaints the age and colour
+// without touching the note, because the 30s repaint used to overwrite it
+// with '' — so "update check failed" was erased 30 seconds after each failed
+// poll and repainted 30 seconds later, over and over. A page whose update
+// path had been broken for hours therefore looked perfectly healthy for
+// roughly half of every minute, which is worse than never showing the note at
+// all: the failure state is now sampled rather than displayed. Measured in a
+// browser against a 404 sidecar:
+//   4s..19s  "live · 16m old · update check failed"
+//   57s      "live · 17m old"            <- the repaint wiped it
+// The staleness COLOUR was always computed on every tick and that part was
+// right; this makes the explanation as durable as the colour.
+var note=canPoll?'':'auto-update unavailable — opened as a local file';
+function paint(n){
+  if(n!==undefined)note=n;
   var hrs=(Date.now()-genAt.getTime())/3600000;
   var cls=hrs>=RED?'red':hrs>=AMBER?'amber':'green';
   var age=hrs<1?Math.max(0,Math.round(hrs*60))+'m':Math.round(hrs)+'h';
@@ -410,9 +475,8 @@ function paint(note){
   badge.textContent=(cls==='green'?'live · ':'stale · ')+age+' old'+
                     (note?' · '+note:'');
 }
-paint(canPoll?'':'auto-update unavailable — opened as a local file');
-setInterval(function(){paint(canPoll?'':
-            'auto-update unavailable — opened as a local file');},30000);
+paint();
+setInterval(function(){paint();},30000);
 if(!canPoll)return;
 
 function swap(d){
@@ -422,6 +486,9 @@ function swap(d){
   });
   hash=d.hash; genAt=new Date(d.generated_at);
   badge.setAttribute('data-gen',d.generated_at);
+  // Interaction handlers are delegated to document and survive on their own;
+  // the count-up is the one thing that has to re-run for a replaced figure.
+  if(window.__repete_after_swap)window.__repete_after_swap();
   paint('updated just now');
 }
 function poll(){
@@ -1048,10 +1115,15 @@ def _decisions_rows(records: list[dict]) -> str:
                          ("r-approve", "Approved"),
                          ("r-downsize", "Downsized"), ("r-veto", "Vetoed"),
                          ("r-skip", "Skipped")])
+    # Rendered hidden; the chip handler shows it when a filter has no hits.
+    # It carries no r-* class, so no filter can ever match it.
+    nomatch = ('<tr id=nomatch style="display:none"><td colspan=7 class=small>'
+               'No decisions match this filter in the most recent '
+               f'{N_DECISIONS} — try “All”.</td></tr>')
     return (chips + '<div class=tblwrap><table id=dtable>'
             "<thead><tr><th>When (UTC)</th><th>Sym</th><th>Action</th>"
             "<th>Strategy</th><th>Judge</th><th>Status</th><th>Reasoning</th>"
-            "</tr></thead><tbody>" + "".join(rows) +
+            "</tr></thead><tbody>" + "".join(rows) + nomatch +
             "</tbody></table></div>")
 
 
