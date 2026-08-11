@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **51 sections, 6,193 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **52 sections, 6,273 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -67,3 +67,4 @@ second source of truth.
 | §57 | THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT | DIAGNOSTIC | pre-registered | 2026-08-09 |
 | §58 | THE COIL: A VOLATILITY-CONTRACTION PRECONDITION | DIAGNOSTIC | pre-registered | 2026-08-10 |
 | §59 | 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) | DIAGNOSTIC | pre-registered | 2026-08-10 |
+| §60 | TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS | — | — | — |
