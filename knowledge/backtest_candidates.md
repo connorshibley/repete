@@ -6191,3 +6191,108 @@ already seen is not a referee, it is a new source of error.* It can.
 Nothing enabled. `hi52` ships `enabled: false`. EDGE stands at **1 pass in 15;
 K stays 15.** The live forward record — ten closed trades, realized −$339.16 —
 is untouched by anything here.
+
+## §60 — THE PROJECT SCORES ITS OWN PREDICTIONS (2026-08-11, tooling — not a claim)
+
+Registers nothing, spends no Bonferroni budget, enables nothing. **K stays 15.**
+No file the trading loop reads was touched: `mode: paper` unchanged, no
+strategy, no rail, no threshold.
+
+`prior` has been a mandatory field on every spec since the runner existed, and
+`research/README.md` says why — it is *"the only thing that makes a surprise
+legible afterwards."* Fifty-five of them were written, hashed before their runs,
+and **never once read back**. Nothing in this repo had ever opened
+`registrations.jsonl` for anything but a membership test, or `verdicts.jsonl`
+for anything but an append.
+
+### What was built
+
+`src/recall.py` + `scripts/recall.py` join the three layers that hold this
+project's history — 64 sections of record, 55 registrations, 59 verdict rows —
+and quote them. The constraint is `gen_research_index.py`'s own: *"an index
+that formed its own opinion of the record would be a second source of truth."*
+So every string the tool emits is a byte-exact span of a named file, an
+identifier or number, or a member of a fixed `LABELS` set;
+`tests/test_recall_quotes.py` walks the output and fails on a fourth category.
+
+### The finding
+
+All 55 priors were read and scored. Each reading quotes its prior byte-exact
+and is refused if it does not.
+
+| | passed | failed |
+|---|---|---|
+| **expected_pass** | 0 | 0 |
+| **expected_fail** | 10 | 41 |
+
+mixed 3 · no expectation stated 1 · unread 0 · scored 51 of 55
+
+```
+hit rate    80.4%
+base rate   80.4%   (a constant "it fails", same 51 specs)
+```
+
+**The two numbers are identical, and that is the result.** Not one prior in
+this project's history predicted its own hypothesis would pass. The author's
+forecasts and a rubber stamp reading "it fails" are arithmetically the same
+strategy, so the 80.4% measures the base rate of failure in this record and
+nothing about anyone's judgement.
+
+The confounder is structural and is not corrected for: the author of a prior
+also sets the pass mark. Printing the base rate beside the hit rate is what
+makes a pessimist and a forecaster distinguishable, and here they are not.
+
+This does not say the priors were dishonest — they were unusually specific, and
+several (§43, §50) computed the failing number *before* the run from figures
+already published, which is a stronger act than a forecast. It says the
+aggregate carries no signal, and that a prior earns its place only when it says
+something a constant pessimist would not.
+
+### Three defects the record had, found by building the tool
+
+1. **`research/INDEX.md` was missing 13 of 64 sections** — §1–§4 (written
+   `## 1.`), the five METHOD NOTEs, PHASE 0, ALREADY-SEEN OBSERVATION, and §30
+   (an H3). `## §14–§17` produced `| §14– | §17 | ... |`, the range split across
+   two columns. Its guard re-implemented the generator's own regex, so it could
+   not fail for any of them — the standard `ci.yml:55-69` names.
+
+2. **§30's verdict was inverted.** `### §30 CANDIDATE — tighter down-regime
+   gross cap. NOT ADOPTED.` scored **`adopted`**, because the matcher tested
+   `"ADOPTED" in title` and dropped the negation. It had been wrong for as long
+   as the generator existed and nobody saw it, because §30 was never indexed.
+   Negations now come first in the match order.
+
+3. **Nothing enforced that this file is append-only.** Its whole evidentiary
+   value is that a claim written before its result cannot be quietly reworded
+   afterwards, and that was an honour system. `research/anchors.json` now pins a
+   sha256 per section. A retroactive edit turns the suite red; appending a new
+   section does not.
+
+### What the index says now
+
+`heading says` and `gate result` sit side by side and are allowed to disagree.
+§57, §58 and §59 read `pre-registered` in the first — that phrase is in their
+headings — and `0/4`, `0/8`, `0/8` in the second. Neither column was corrected.
+`tests/test_research_index.py` fails if `classify()` ever starts consulting
+verdicts, which is the helpful change that would collapse the two.
+
+A ratio is a count of rows and is **not** a section verdict: §48 reads `4/4`
+and is the survivorship finding, §51 reads `3/3` and sized the inflation at
++200.28pp, §44 reads `3/4` and the claim failed on a conjunction nothing
+machine-readable records.
+
+### What it does not solve
+
+Search is BM25 over literal tokens with no stemming and no synonyms, so a query
+for "volatility squeeze" will not surface §17's Donchian breakout. False
+negatives are the expensive direction and this tool cannot bound them; every
+search says so. And `divergences --as-of` reports what the register *said*,
+which this file has already documented being wrong about by nineteen days.
+
+### State
+
+Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** Both venues remain frozen — §52 on
+`data/snapshots/`, §57's own reading rule on `data/pit/`.
+
+<!-- recall: section=§60 specs= -->
