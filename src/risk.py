@@ -77,10 +77,23 @@ HALT_MODES = (HALT_MODE_EXITS, HALT_MODE_FREEZE)
 def check_halt() -> bool:
     """Is a HALT engaged at all? Deliberately still a BOOLEAN.
 
-    `health.py`, `watchdog.py` and `daily_posts.py` each define `HALT_FILE`
-    independently and ask only this question. Widening what this returns would
-    make one predicate mean different things in four modules — the §29
-    `max_order_value_usd: 0` trap. Callers that need the mode ask `halt_mode()`.
+    `health.py` and `watchdog.py` ask only this question, and `daily_posts.py`
+    asks it through here. Widening what this returns would make one predicate
+    mean different things in several modules — the §29 `max_order_value_usd: 0`
+    trap. Callers that need the mode ask `halt_mode()`.
+
+    (This docstring used to name `daily_posts.py` as a third module holding its
+    own `HALT_FILE`. It never did — it calls this function. Corrected 2026-08-11
+    while mapping the halt surface for F-14.)
+
+    THIS READS THE CWD-RELATIVE `HALT_FILE`, AND THAT IS DELIBERATE. The
+    monitors resolve their halt path from config (`statepaths.halt_path`) so a
+    health check can be pointed at a QA fixture; the trading rail must not,
+    because a config key able to move the kill switch is a way to disable it —
+    `scripts/halt.py:80`, "a HALT engaged into some other directory is a stop
+    button wired to nothing." The rail reads where halt.py writes, always, and
+    `preflight._state_path_fails` refuses to start a cycle if the monitors have
+    been pointed somewhere else.
     """
     return os.path.exists(HALT_FILE)
 

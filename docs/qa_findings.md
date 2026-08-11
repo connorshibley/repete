@@ -36,9 +36,9 @@ F-02 are retro-documented below because they set the closure bar.
 | F-11 | `dashboard.py` docstring described a theme removed 2026-07-26 | docs | S3 | CLOSED | n/a — prose, see note |
 | F-12 | `blog.html`/`journal.html` link to `index.html`, absent locally | dev | S3 | OPEN | — |
 | F-13 | `journal.html` renders every entry, unboundedly | journal | S3 | OPEN | — |
-| F-14 | `/healthz` measures the host's CWD, not the fixture | publisher | S2 | OPEN | — |
+| F-14 | `/healthz` measures the host's CWD, not the fixture | publisher | S2 | CLOSED | `test_state_paths_are_one_answer.py::test_the_writer_and_both_readers_use_the_same_file` |
 
-Open: **3** (F-12, F-13, F-14). All recorded rather than fixed — see
+Open: **2** (F-12, F-13). Both S3, both recorded rather than fixed — see
 "Deliberately not fixed".
 
 ## Root-cause clusters
@@ -127,6 +127,57 @@ and the naive link delivers the fragment `t`. Fixed with one
 `journal.permalink()` helper used by both call sites; percent-encoding works
 because browsers decode the fragment before matching it against the id.
 
+### Cluster F — a monitor answering about the wrong machine (F-14)
+
+`src/health.py` held `HEARTBEAT_FILE = "memory/heartbeat"` and
+`HALT_FILE = "HALT"` as module constants no config could redirect, five lines
+from a `cfg["memory"]["ledger_path"]` that *was* config-driven. So `/healthz`
+reported on whatever sat next to the process:
+
+```
+$ python scripts/qa_sweep.py --fixture /tmp/qa/full     # with ./memory/heartbeat
+58 passed, 0 FAILED
+$ rm -rf memory && python scripts/qa_sweep.py --fixture /tmp/qa/full
+57 passed, 1 FAILED          # PUB-04, HTTP 503, heartbeat_age_hours: null
+```
+
+`PUB-04` had never measured the fixture. It measured the host, and passed
+historically because the sweep ran from a live checkout. Same class as this
+project's "CI measures the laptop" note, and the same CWD-relative mistake
+`src/sitepaths.py` was created to fix for the published artifacts — state was
+never migrated.
+
+The deeper problem was duplication: **three** modules held their own copy of
+`"memory/heartbeat"` — the writer in `main.py`, readers in `health.py` and
+`watchdog.py` — with nothing making them agree.
+
+Fixed with `src/statepaths.py`: one definition, resolvers that are total (they
+run inside `run_cycle`'s `finally:` and inside `/healthz`, so anything they
+raised would replace a real crash with a path error) and that never touch the
+filesystem (health is read-only under invariant 9, which is why this is not two
+more functions in `sitepaths`, whose `resolve()` deliberately mkdirs).
+
+**HALT is deliberately half-migrated, and that is the interesting part.** The
+monitors resolve it from config; `risk.check_halt()` — the trading rail — does
+not, because a config key able to move the kill switch is a way to disable it,
+and `scripts/halt.py:80` had already settled the question: *"a HALT engaged into
+some other directory is a stop button wired to nothing."* The asymmetry is made
+safe by `preflight._state_path_fails`, which refuses to start a cycle when
+either key is non-default — so a process that trades cannot have its monitor and
+its kill switch reading different files. The keys are QA-only by enforcement,
+not by convention.
+
+Closure, with positive controls on both fields — the sweep is now sensitive to
+the fixture and insensitive to the host, which is a stronger claim than "it
+passes":
+
+| scenario | result |
+|---|---|
+| no `./memory`, no `./HALT` | 58/58 |
+| **host** HALT engaged | 58/58 — the host no longer leaks in |
+| fixture heartbeat removed | 57/58, `heartbeat_age_hours: null` |
+| HALT inside the **fixture** | 57/58, `"halted": true` |
+
 ### Cluster E — documentation that outlived the code (F-11)
 
 `src/dashboard.py`'s docstring described a "dark trading-terminal theme" for
@@ -145,35 +196,6 @@ both change publish behaviour — out of scope for a QA sweep, and the publish
 path is the one place in this repo where a mistake is public. Recorded, and
 `scripts/qa_render.py --layout {published,repo}` now makes the difference
 visible instead of accidental.
-
-**F-14 — `/healthz` reports on the process's working directory, not on the
-data it was pointed at.** `src/health.py:20` sets
-`HEARTBEAT_FILE = "memory/heartbeat"` as a module constant, and nothing in the
-config can redirect it. `scripts/qa_sweep.py` rewires every store to the
-fixture, but the health endpoint keeps reading whatever `memory/heartbeat`
-happens to sit next to the process.
-
-The same fixture and the same command give different answers:
-
-```
-$ python scripts/qa_sweep.py --fixture /tmp/qa/full     # with ./memory/heartbeat
-58 passed, 0 FAILED
-$ rm -rf memory && python scripts/qa_sweep.py --fixture /tmp/qa/full
-57 passed, 1 FAILED          # PUB-04, HTTP 503, heartbeat_age_hours: null
-```
-
-So `PUB-04` has never measured the fixture — it measures the host, and it
-passed historically because the sweep was run from a live checkout that had a
-real heartbeat. This is the failure class already recorded in this project as
-"CI measures the laptop", and it is the same CWD-relative-path mistake that
-`src/sitepaths.py` was created to fix for the published artifacts; health was
-never migrated.
-
-Not fixed here. `src/health.py` feeds the alerting path and `docs/runbooks.md`,
-so changing how it resolves paths is an operational change that needs its own
-divergence check — outside a QA sweep's remit. Until then, a clean publisher
-run means **58/58 from a checkout with a current `memory/heartbeat`**; without
-one the delta is exactly PUB-04 and nothing else.
 
 **F-13 — `journal.html` renders every entry ever written, with no paging.**
 At the fixture's production scale (918 entries over 18 months) the page is
@@ -198,6 +220,12 @@ to `d == 1` and no trade executed on day 1, so the id was never generated.
 `tests/test_qa_fixture_shapes.py::test_the_hostile_profile_emits_every_edge_case_it_claims`
 now asserts each hostile input is present in the fixture, so the criteria
 cannot pass by absence.
+
+**Testing an injectable seam says nothing about the entrypoint.** The F-14 guard
+first called `watchdog.check()` with explicit paths — so the mutation reverting
+`watchdog.main()` to a bare `check()`, which is exactly half the bug, SURVIVED.
+Proving the seam works is not proving production uses it. Two tests against
+`main()` itself (one positive, one with a decoy in the cwd) now catch it.
 
 **`git status` does not tell you whether you touched anything.** `memory/`,
 `.site/` and the rendered artifacts are all gitignored. Two mutation runs wrote

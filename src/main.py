@@ -33,6 +33,7 @@ import postexit
 import preflight
 import regime as regime_mod
 import risk
+import statepaths
 import store
 import strategies
 import strategy
@@ -424,18 +425,44 @@ def update_trailing_stops(broker, ledger, cfg: dict, open_trades: dict,
             log.warning("trailing pass failed for %s: %s", symbol, e)
 
 
-HEARTBEAT_FILE = "memory/heartbeat"
+HEARTBEAT_FILE = statepaths.DEFAULT_HEARTBEAT_PATH
 
 
-def write_heartbeat():
+def _cfg_or_empty() -> dict:
+    """config.yaml, or {} if it cannot be read for any reason at all.
+
+    Total on purpose: write_heartbeat() must not lose proof-of-life because the
+    config is the thing that broke.
+    """
+    try:
+        import yaml
+        with open("config.yaml") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:                       # noqa: BLE001 — see the docstring
+        return {}
+
+
+def write_heartbeat(cfg: dict | None = None):
     """Proof-of-life for the watchdog: written on EVERY cycle exit path
     (normal, halted, stale-data abort, crash) — it means 'the process ran',
-    not 'trading happened'."""
+    not 'trading happened'.
+
+    `cfg` is optional because the sole production call site is run_cycle's
+    `finally:`, which has no cfg in scope. A missing config degrades to the
+    documented default rather than skipping the write.
+
+    The except is deliberately broad, not OSError. This runs in a `finally:`
+    while an exception may already be in flight, so anything raised here
+    replaces a real crash with a path error — and a malformed `memory:` block
+    raises AttributeError, not OSError. statepaths' resolvers are total for the
+    same reason; this is the second line.
+    """
     try:
-        os.makedirs(os.path.dirname(HEARTBEAT_FILE), exist_ok=True)
-        with open(HEARTBEAT_FILE, "w") as f:
+        path = statepaths.heartbeat_path(_cfg_or_empty() if cfg is None else cfg)
+        statepaths.ensure_parent(path)
+        with open(path, "w") as f:
             f.write(datetime.now(timezone.utc).isoformat() + "\n")
-    except OSError as e:
+    except Exception as e:                  # noqa: BLE001 — see the docstring
         log.warning("heartbeat write failed: %s", e)
 
 

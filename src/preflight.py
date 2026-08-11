@@ -454,7 +454,41 @@ def run(cfg: dict) -> list[str]:
     if os.path.isdir(mem_dir) and not os.access(mem_dir, os.W_OK):
         fails.append(f"memory dir {mem_dir} not writable")
     fails.extend(_ledger_tail_fails(cfg, ledger_path))
+    fails.extend(_state_path_fails(cfg))
 
+    return fails
+
+
+def _state_path_fails(cfg: dict) -> list[str]:
+    """`memory.heartbeat_path` / `memory.halt_path` may only hold their
+    defaults in a process that trades.
+
+    These keys exist so a QA sweep can point `/healthz` at a fixture instead of
+    at whatever sits next to the process (F-14, docs/qa_findings.md). They
+    redirect the MONITORS — `health.status` and `watchdog.check` — and
+    deliberately NOT the trading rail: `risk.check_halt()` keeps its own
+    cwd-relative constant, because a config key able to move the kill switch is
+    a way to disable it, and `scripts/halt.py:80` already settled that question
+    ("a HALT engaged into some other directory is a stop button wired to
+    nothing").
+
+    That split is only safe if it cannot exist while trading. This is the
+    enforcement: refuse the cycle outright rather than run one in which the
+    health check and the kill switch are reading different files. Fail-safe
+    polarity, per this module's docstring.
+    """
+    import statepaths
+    mem = cfg.get("memory") or {}
+    fails = []
+    for key, default in (("heartbeat_path", statepaths.DEFAULT_HEARTBEAT_PATH),
+                         ("halt_path", statepaths.DEFAULT_HALT_PATH)):
+        value = mem.get(key)
+        if value is not None and value != default:
+            fails.append(
+                f"memory.{key} is {value!r}, not the default {default!r} — "
+                f"that key exists to point a health check at a QA fixture, and "
+                f"a cycle must never run with the monitors watching a "
+                f"different file than the kill switch")
     return fails
 
 

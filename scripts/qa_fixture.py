@@ -678,6 +678,19 @@ def main() -> int:
     with open(os.path.join(args.out, "spy_bars.json"), "w") as f:
         json.dump(spy, f)
 
+    # Proof-of-life, stamped with the fixture's LAST cycle_complete rather than
+    # the wall clock. Two reasons, both load-bearing: a heartbeat that
+    # disagreed with the ledger describes a state the bot cannot be in, and
+    # datetime.now() here would break the byte-identical rerun guarantee.
+    # `empty` has no completed cycle and gets no heartbeat — "the cycle has
+    # never run" is the honest answer on day one, and it is what
+    # health.status() should say.
+    last_cycle = next((r["ts"] for r in reversed(records)
+                       if r.get("event") == "cycle_complete"), None)
+    if last_cycle:
+        with open(os.path.join(args.out, "heartbeat"), "w") as f:
+            f.write(last_cycle + "\n")
+
     # learnings.md is GENERATED from the lesson store by the real renderer —
     # never hand-written (CLAUDE.md invariant 6). Rendering it through
     # lessons.render_markdown() is what keeps that true for the fixture too.
@@ -694,7 +707,8 @@ def main() -> int:
     roles = build_subscribers(os.path.join(pub_dir, "pub.db"), rng)
 
     print(f"  wrote {args.out}/ (ledger, judgments, lessons, journal, posts, "
-          f"learnings.md, spy_bars.json)")
+          f"learnings.md, spy_bars.json"
+          + (", heartbeat)" if last_cycle else ", no heartbeat — never ran)"))
     print("  subscribers: " + ", ".join(f"{k}={len(v)}" for k, v in roles.items()))
     print(f"  all emails @{DOMAIN} (RFC 2606 — undeliverable by construction)")
     return 0

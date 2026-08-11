@@ -23,7 +23,7 @@ Nothing noticed, for two days:
 `docs/slo.md` claimed cycle completion was measured by `cycle_complete`
 events. No code anywhere asserted on them. This file is that assertion.
 """
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -254,12 +254,19 @@ def test_health_flags_a_cycle_that_never_completed(tmp_path, monkeypatch, cfg):
     monkeypatch.chdir(tmp_path)
     cfg["memory"]["ledger_path"] = str(tmp_path / "ledger.jsonl")
     Ledger(cfg["memory"]["ledger_path"]).log_event("cycle_crashed", "boom")
+
+    # A real heartbeat, anchored to `now`. This used to stub
+    # heartbeat_age_hours with `lambda now=None: 0.1` while ALSO writing a real
+    # file stamped datetime.now() — which, against a `now` of 2026-07-27, made
+    # the real function return a NEGATIVE age. The stub hid that, and it was
+    # the reason health's heartbeat read went untested here at all: the stub
+    # took no `path`, so it broke the moment status() started resolving one
+    # (F-14). Deleted rather than widened.
+    now = datetime(2026, 7, 27, 20, tzinfo=timezone.utc)   # a Monday
     (tmp_path / "memory").mkdir(exist_ok=True)
     (tmp_path / "memory" / "heartbeat").write_text(
-        datetime.now(timezone.utc).isoformat() + "\n")
+        (now - timedelta(hours=0.1)).isoformat() + "\n")
 
-    now = datetime(2026, 7, 27, 20, tzinfo=timezone.utc)   # a Monday
-    monkeypatch.setattr(health, "heartbeat_age_hours", lambda now=None: 0.1)
     out = health.status(cfg, now=now)
     assert any("never completed" in p for p in out["problems"]), out["problems"]
     assert out["healthy"] is False

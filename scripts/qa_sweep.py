@@ -64,6 +64,14 @@ def build_client(fixture: str, *, gate_open: bool):
     # reading the operator's real journal instead of the fixture's.
     cfg.setdefault("x_posting", {})["journal_path"] = os.path.join(
         fixture, "journal.jsonl")
+    # The two state files health.status() reads (F-14). Until 2026-08-11 these
+    # were module constants no config could redirect, so /healthz reported on
+    # whatever sat next to the PROCESS: the same fixture and the same command
+    # gave 58/58 with a ./memory/heartbeat present and 57/58 without. PUB-04
+    # was measuring the host and passing only because the sweep happened to run
+    # from a live checkout.
+    cfg["memory"]["heartbeat_path"] = os.path.join(fixture, "heartbeat")
+    cfg["memory"]["halt_path"] = os.path.join(fixture, "HALT")
     cfg["publisher"]["data_dir"] = os.path.join(fixture, "publisher_data")
     cfg["publisher"]["attorney_signoff"] = gate_open
     cfg["publisher"]["legal_pages_final"] = gate_open
