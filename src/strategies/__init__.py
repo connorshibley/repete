@@ -7,7 +7,7 @@ section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
 from strategies import (ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol,
-                        reclaim, hi52)
+                        reclaim, hi52, swing_sectors)
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
 # Registered != enabled. `lowvol` (§32, 2026-07-27) and `hi52` (§59,
@@ -21,7 +21,8 @@ from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # n
 # passed the whole time by asserting only that it was not enabled.
 # `test_registry_is_reachable.py` is what stops that recurring.
 REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
-                                donchian, lowvol, reclaim, hi52)}
+                                donchian, lowvol, reclaim, hi52,
+                                swing_sectors)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
@@ -43,10 +44,22 @@ def strategy_params(cfg: dict, name: str) -> dict | None:
 #: Value of a strategy's `universe:` key meaning "the `sectors:` map".
 SECTORS_UNIVERSE = "sectors"
 
+#: Value of a strategy's `universe:` key meaning "the `sector_etfs:` list" —
+#: the SPDR sector funds themselves, one per sector. A separate key rather
+#: than a filter over `etfs:` because `etfs:` also carries the broad-market
+#: funds (SPY, QQQ, DIA, IWM), and a sector-value ranking that contains the
+#: whole market as a member is measuring itself against itself.
+SECTOR_ETFS_UNIVERSE = "sector_etfs"
+
 
 def sector_universe(cfg: dict) -> set:
     """Every symbol named anywhere in config's `sectors:` block."""
     return {s for syms in (cfg.get("sectors") or {}).values() for s in (syms or ())}
+
+
+def sector_etf_universe(cfg: dict) -> set:
+    """The symbols in config's `sector_etfs:` list."""
+    return set(cfg.get("sector_etfs") or ())
 
 
 def excluded_etfs(cfg: dict, name: str) -> set:
@@ -100,6 +113,8 @@ def universe_for(cfg: dict, name: str) -> set:
         base = set(cfg.get("symbols") or ())
     elif key == SECTORS_UNIVERSE:
         base = sector_universe(cfg)
+    elif key == SECTOR_ETFS_UNIVERSE:
+        base = sector_etf_universe(cfg)
     else:
         return set()
     # Subtracted HERE, at the entries-only boundary, rather than inside

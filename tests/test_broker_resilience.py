@@ -303,7 +303,7 @@ def test_backoff_grows_and_is_jittered():
 # --------------------------------------------------------------------------
 
 RETRYING_READS = {"account", "positions", "bars", "latest_price", "get_order",
-                  "closed_orders", "open_stop_orders"}
+                  "closed_orders", "open_stop_orders", "market_open"}
 
 # `last_price` is a read but is deliberately UNdecorated: it delegates to
 # `bars`, which retries, and decorating both would nest the loops (3 x 3 = 9)

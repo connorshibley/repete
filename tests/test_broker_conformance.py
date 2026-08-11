@@ -65,6 +65,10 @@ CONFORMANT = {
 # required and is checked for non-emptiness — "exempt" with no reason is how a
 # real gap gets filed as a decision.
 EXEMPT = {
+    ("tests/test_swing_scan.py", "FakeBroker"):
+        "drives swing_scan.run_scan alone, never main's cycle: market_open, "
+        "latest_price and the two order methods are its whole surface, and "
+        "the scan's own no-exit-path test pins that it cannot need more",
     ("tests/test_daily_posts.py", "ScanBroker"):
         "drives daily_posts.plan_scan, which only fetches bars and quotes",
     ("tests/test_flatten_recovery.py", "StubBroker"):

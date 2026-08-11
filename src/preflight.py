@@ -390,7 +390,37 @@ def run(cfg: dict) -> list[str]:
             fails.append(f"strategies.{sname}.exclude_etfs is set but no etfs: "
                          f"list is configured — nothing would be excluded")
 
-    known_universes = {None, strategies.SECTORS_UNIVERSE}
+    # ---- the sector-ETF list, the `sector_etfs` universe ----
+    #
+    # DELIBERATELY NOT required to be inside `symbols:`. `symbols:` is the
+    # CORE universe — the 38 names the three enabled strategies were gated on —
+    # and the whole point of a per-strategy universe (see `sectors:` above) is
+    # to add names WITHOUT widening it. Forcing membership here would make
+    # adding one sector fund a live behaviour change to three gated strategies.
+    #
+    # What IS convicted is the silent-failure class: `universe_for` builds a
+    # SET from this list, so a duplicate collapses without a sound, and a fund
+    # that also appears in the stock `sectors:` map would be ranked as a peer
+    # of its own constituents by `reclaim` — the §49 category error (a basket
+    # is not a peer of the names it is made of) arriving through a config edit.
+    setfs = cfg.get("sector_etfs")
+    if setfs is not None:
+        if not isinstance(setfs, list) or not setfs:
+            fails.append("sector_etfs must be a non-empty list of symbols")
+        else:
+            if len(set(setfs)) != len(setfs):
+                fails.append("sector_etfs contains a duplicate symbol")
+            stock_sectors = {s for syms in (cfg.get("sectors") or {}).values()
+                             for s in (syms or ())}
+            for s in setfs:
+                if s in stock_sectors:
+                    fails.append(f"sector_etfs lists {s}, which also appears "
+                                 f"in the sectors: stock map — a basket must "
+                                 f"not be ranked as a peer of its own "
+                                 f"constituents (§49)")
+
+    known_universes = {None, strategies.SECTORS_UNIVERSE,
+                       strategies.SECTOR_ETFS_UNIVERSE}
     for sname, sparams in (cfg.get("strategies") or {}).items():
         key = (sparams or {}).get("universe")
         if key not in known_universes:
@@ -403,6 +433,10 @@ def run(cfg: dict) -> list[str]:
             fails.append(f"strategies.{sname}.universe is "
                          f"'{strategies.SECTORS_UNIVERSE}' but no sectors: "
                          f"block is configured")
+        if key == strategies.SECTOR_ETFS_UNIVERSE and not cfg.get("sector_etfs"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.SECTOR_ETFS_UNIVERSE}' but no "
+                         f"sector_etfs: list is configured")
 
     scfg = (cfg.get("risk") or {}).get("sector_concentration")
     if isinstance(scfg, dict) and scfg.get("enabled"):

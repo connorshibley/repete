@@ -67,6 +67,8 @@ class ConformantBroker:
         self._closed = closed or []
         self._live = live_price
         self._quote_error = quote_error
+        self.is_open = True          # market_open(); tests flip for the
+        self.clock_error = False     # closed-market / clock-down paths
         self.submitted = []
         self.bracket_calls = []
         self.canceled = []
@@ -86,6 +88,17 @@ class ConformantBroker:
         return self.view
 
     # ---------- market data ----------
+
+    def market_open(self) -> bool:
+        """Mirrors Broker.market_open (2026-08-11, swing_scan's closed-market
+        guard). Always open by default — a test that wants the closed or
+        clock-down path sets `fake.is_open = False` or `clock_error = True`.
+        The guard FAILS CLOSED on an exception, and the conformance registry
+        is what forces this fake to model that surface at all."""
+        self.calls.append("market_open")
+        if self.clock_error:
+            raise RuntimeError("clock endpoint down")
+        return self.is_open
 
     def bars(self, symbol, timeframe, limit):
         self.calls.append("bars")

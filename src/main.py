@@ -1336,7 +1336,12 @@ def _run_cycle(completed_bars_only: bool = False):
             # measured off that judgment would be scored against protective
             # exits that could never have been placed. `sig.action` is
             # exactly "buy" or "short" here — the guard above proved it.
-            direction=sig.action)
+            direction=sig.action,
+            # Per-strategy stop width (2026-08-11): the counterfactual must
+            # replay the stop THIS strategy would have placed, not the global
+            # default — a swing entry judged against a 2×ATR stop it would
+            # never have carried scores the judge on a fiction.
+            strategy=sig.strategy)
         return prices if prices else (None, None)
 
     def _process_signal(sig, symbol, bars, price, entry_ts, open_rec,
@@ -1453,7 +1458,8 @@ def _run_cycle(completed_bars_only: bool = False):
             bracket_prices = risk.bracket_prices(
                 price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
                 vol_bucket=(market_regime or {}).get("vol"),
-                direction=sig.action)
+                direction=sig.action,
+                strategy=sig.strategy)
             full_qty = risk.size_order(account, price, cfg, bars=bars,
                                        strategy=sig.strategy,
                                        stop_price=bracket_prices[0]
@@ -1935,7 +1941,8 @@ def _run_cycle(completed_bars_only: bool = False):
             # most volatile name in the universe. Refuse the entry instead.
             # Provable no-op as shipped (0 of 61,104 bars); 25 of 803,787 on the
             # wide universe. Same helper in both simulators.
-            if risk.unprotectable_entry(price, strategies.atr(bars, 14), cfg):
+            if risk.unprotectable_entry(price, strategies.atr(bars, 14), cfg,
+                                        strategy=sig.strategy):
                 hold_reasons[name] = {"reason": "ATR-derived stop would be "
                                                 "non-positive — this position "
                                                 "could not be protected",

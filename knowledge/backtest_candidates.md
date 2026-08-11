@@ -6444,3 +6444,82 @@ Nothing enabled. No risk rail moved. `mode: paper` unchanged. EDGE stands at
 and restoring the two numbers, byte-identical and asserted.
 
 <!-- recall: section=§61 specs= -->
+
+## §62 — SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE (DIAGNOSTIC, K=15, pre-registered 2026-08-11)
+
+**Registered before running:** s62a–h, eight specs frozen together (registration
+commit precedes the run in this branch's history). Two families so the
+flattering question was removed along with the flattering period: a–d score
+the strategy ALONE against SPY on `data/pit/`'s certified funds; e–h score the
+ADDITION of the strategy to the shipped ensemble. DIAGNOSTIC — data/pit
+refuses EDGE (§57), and the reading rule spends none of the licence.
+
+**What ran:** the four certified periods (2000-2006, 2007-2013, 2014-2019,
+2022-2026), judge model on, K=15 reported throughout.
+
+### The strategy alone (s62a–d): REJECTED, four of four
+
+| period | ret | PF | maxDD | trades | deploy | SPY |
+|---|---|---|---|---|---|---|
+| 2000-2006 | +0.58% | 1.094 | 3.75% | 42 | 2.60% | +10.01% |
+| 2007-2013 | +1.09% | 1.134 | 4.56% | 50 | 2.56% | +51.30% |
+| 2014-2019 | +2.57% | 1.979 | 1.40% | 22 | 2.26% | +97.39% |
+| 2022-2026 | +1.32% | 2.101 | 0.85% | 15 | 1.23% | +67.06% |
+
+Clause (b) `beats_benchmark_symbol` failed in ALL FOUR periods, and the
+risk-adjusted form (§51) failed alongside it in all four — levered to SPY's
+own drawdown the best period reaches +37.92% against SPY's +67.06%. min_trades
+passed everywhere, so this is not an unreadable result: the strategy traded,
+profitably, at trivial size, and lost to the index by a mile.
+
+**The pre-committed reading rule, clause (1): failing (b) in three or more of
+four resolves against the strategy — the recommendation to the owner is DO
+NOT ENABLE, and this recommendation is not negotiable after the fact.** It
+fired at four of four.
+
+### The addition (s62e–h): three of four pass, and every pass is a shrug
+
+| period | baseline PF | +swing PF | ΔmaxDD | paired diff/trade | shared |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.657 | 0.671 | −0.03pp | +$0.62, CI [−15.03, +13.05] | 94% |
+| 2007-2013 | 0.583 | 0.620 | −0.72pp | +$7.36, CI [−66.37, +47.40] | 92% |
+| 2014-2019 | 1.645 | 1.650 | +0.13pp | +$0.31, CI [−2.71, +3.82] | 98% |
+| 2022-2026 | 1.816 | 1.814 | +0.20pp | −$0.09, CI [−5.30, +4.58] | 97% |
+
+s62h failed `pf_gt_baseline` by 0.002. Every `not_worse_paired` interval
+straddles zero. The addition changes 2–6% of the book's trades and moves its
+profit factor at the third decimal — **harmless because it is nearly inert**.
+
+### Why it is inert, stated plainly
+
+Deployment never exceeded 2.6%. The entry demands a ≥12% sector drawdown AND
+a stabilized, no-longer-falling 20-day base AND a pullback into a 0.75·ATR
+zone — three conditions that rarely hold at once — and stop-distance sizing
+against a 3.5×ATR stop cuts each position further. The strategy as
+parameterized is a small, well-behaved trickle of trades, not a book.
+
+### What this licenses, per the frozen rule
+
+- `enabled: false` stands; the recommendation is DO NOT ENABLE this
+  parameterization.
+- No EDGE claim on any venue (rule 4), and none of the e–h passes may be
+  quoted as one.
+- Re-parameterizing (looser floor, larger size, more positions) is a NEW
+  registration — §63, specs frozen before running — not a tweak to this one.
+  Choosing new parameters AFTER reading this table is exactly the in-sample
+  selection the apparatus exists to prevent, so any §63 must argue its
+  parameters from mechanism, not from these results.
+- The live swingscan job stays useful regardless: it ledgers dry-run
+  candidates (`swing_scan_candidate` events), which is forward evidence the
+  next registration can cite without touching the frozen data.
+
+### Divergence noted alongside (see docs/divergences.md #21)
+
+The intraday trigger is unmodelled: live, swing_scan fills INSIDE the zone
+intraday; the simulator fills at the next open after a close inside the zone.
+Same conditions, one price feed apart. Direction ambiguous — intraday fills
+catch deeper pullbacks and also catch knives the daily close would have
+dodged. Open by construction until an hourly-resolution arm is registered on
+§25's data.
+
+<!-- recall: section=§62 specs=s62a,s62b,s62c,s62d,s62e,s62f,s62g,s62h -->

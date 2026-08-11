@@ -773,8 +773,27 @@ def contraction_blocked(bars: list, cfg: dict,
     return value > float(threshold)
 
 
+def _own_stop_mult(cfg: dict, strategy: str | None) -> float | None:
+    """A strategy's own `stop_atr_mult`, or None when it does not set one.
+
+    THE per-strategy stop-width lookup — `bracket_prices` and
+    `unprotectable_entry` must answer from the same number, because the second
+    exists to predict when the first will return None. Two lookups would let
+    them disagree, and the disagreement is precisely an entry that passes the
+    unprotectable guard and then degrades to a stopless market order.
+
+    Added 2026-08-11 for `swing_sectors` (owner: "accept volatility" — a wider
+    per-trade stop, NOT a portfolio-rail move). Every strategy that does not
+    set the key keeps the global `risk.brackets` multipliers byte-identically.
+    """
+    if not strategy:
+        return None
+    own = ((cfg.get("strategies") or {}).get(strategy) or {}).get("stop_atr_mult")
+    return float(own) if own else None
+
+
 def unprotectable_entry(entry_price: float, atr_value: float | None,
-                        cfg: dict) -> bool:
+                        cfg: dict, strategy: str | None = None) -> bool:
     """True when brackets are ON but this entry's stop would be non-positive.
 
     `brackets()` below returns None in that case and the caller degrades to a
@@ -807,7 +826,12 @@ def unprotectable_entry(entry_price: float, atr_value: float | None,
     # The WIDEST configured multiplier. If any vol regime could push the stop
     # below zero the name is unprotectable in that regime, and whether it is
     # blocked must not depend on which bucket happens to be current.
-    mult = max(b.get("stop_atr_mult") or 0, b.get("stop_atr_mult_high_vol") or 0)
+    # A strategy's own stop width REPLACES both (see _own_stop_mult): the
+    # override is unconditional in bracket_prices, so the widest multiplier
+    # that entry can actually receive IS the override.
+    mult = (_own_stop_mult(cfg, strategy)
+            or max(b.get("stop_atr_mult") or 0,
+                   b.get("stop_atr_mult_high_vol") or 0))
     if mult <= 0:
         return False
     return round(entry_price - mult * atr_value, 2) <= 0
@@ -961,7 +985,8 @@ def cooldown_blocked(last_exit_ts: str | None, now_ts: str,
 def bracket_prices(entry_price: float, atr_value: float | None,
                    cfg: dict,
                    vol_bucket: str | None = None,
-                   direction: str = "buy") -> tuple[float, float | None] | None:
+                   direction: str = "buy",
+                   strategy: str | None = None) -> tuple[float, float | None] | None:
     """Deterministic stop/take-profit prices for a bracket entry.
 
     Long (`direction="buy"`, the default — every pre-Phase-2 caller):
@@ -987,6 +1012,16 @@ def bracket_prices(entry_price: float, atr_value: float | None,
     high_mult = b.get("stop_atr_mult_high_vol", 0)
     if high_mult and vol_bucket == "high":
         mult = high_mult
+    # A strategy's own stop width wins UNCONDITIONALLY — over the base AND the
+    # high-vol multiplier. The override exists because the strategy's thesis
+    # priced its own volatility (swing_sectors: a days-to-weeks sector repair
+    # must survive normal chop, so 2×ATR would stop it out of the very moves
+    # it exists to hold through); letting the vol bucket re-tighten it would
+    # re-impose exactly the judgment the override was written to replace.
+    # `unprotectable_entry` above mirrors this rule — the two must not diverge.
+    own = _own_stop_mult(cfg, strategy)
+    if own:
+        mult = own
     tp_mult = b.get("take_profit_atr_mult", 0)
 
     # The non-positive-price guard protects whichever leg can actually go

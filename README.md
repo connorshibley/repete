@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**2,292 tests as of 2026-08-11**, offline by design — no credentials, ever, in CI.
+**2,357 tests as of 2026-08-11**, offline by design — no credentials, ever, in CI.
 
 **Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
 regenerates the test count, the divergence total and the open/closed split, and
@@ -164,11 +164,11 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 10 closed round-trips as of 2026-08-06**, first close 2026-07-21 —
-+16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%.
-Realized **−$339.16**, profit factor **0.54**.
+**Live record: 11 closed round-trips as of 2026-08-11**, first close 2026-07-21 —
++16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
+−1.63%. Realized **−$416.28**, profit factor **0.49**.
 
-**Six of the ten won, and it still lost money** — the losers were bigger. That
+**Six of the eleven won, and it still lost money** — the losers were bigger. That
 pair of facts is why a win rate is not reported here on its own, and it is the
 kind of number a hit-rate headline is built to hide.
 
@@ -205,7 +205,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 2292, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2357, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

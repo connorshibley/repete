@@ -324,6 +324,21 @@ class Broker:
         ][-limit:]
 
     @retryable_read
+    def market_open(self) -> bool:
+        """True when the market is open RIGHT NOW, by Alpaca's own clock.
+
+        Added for swing_scan (2026-08-11), which runs on wall-clock launchd
+        entries that cannot know about holidays or half-days: a market order
+        submitted while closed queues to the next open and fills at a price
+        no guard ever saw. The scan FAILS CLOSED on this — a skipped pass is
+        a success, and there are twelve more that day. The scheduled cycle
+        deliberately does NOT call it: its fixed times are the operator's own
+        claim about market hours, and adding a new abort condition to the
+        cycle would be a live behaviour change to the gated ensemble.
+        """
+        return bool(self.trading.get_clock().is_open)
+
+    @retryable_read
     def latest_price(self, symbol: str) -> float:
         """Most recent trade price — the entry drift guard compares this
         against the bar-close the signal priced from. Raises on failure;
