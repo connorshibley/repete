@@ -306,6 +306,48 @@ def test_the_core_universe_did_not_widen():
         assert strategies.universe_for(CFG, name) == set(CFG["symbols"])
 
 
+# --------------------------------------------------- preflight convictions
+
+def _preflight(mutate):
+    import preflight
+    cfg = copy.deepcopy(CFG)
+    mutate(cfg)
+    return preflight.run(cfg)
+
+
+def test_preflight_accepts_the_shipped_sector_etfs():
+    fails = _preflight(lambda c: None)
+    assert not any("sector_etfs" in f for f in fails)
+
+
+def test_preflight_convicts_a_duplicate_sector_etf():
+    """universe_for builds a SET, so a duplicate collapses without a sound —
+    the cross-section quietly shrinks below what the gate was run on."""
+    fails = _preflight(lambda c: c["sector_etfs"].append("XLE"))
+    assert any("duplicate" in f and "sector_etfs" in f for f in fails)
+
+
+def test_preflight_convicts_a_fund_that_is_also_a_stock_sector_member():
+    """A basket ranked as a peer of its own constituents is the §49 category
+    error arriving through a config edit — reclaim would score XLE inside
+    the Energy sector median."""
+    fails = _preflight(lambda c: c["sectors"]["Energy"].append("XLE"))
+    assert any("§49" in f or "constituents" in f for f in fails)
+
+
+def test_preflight_convicts_the_universe_key_with_no_list():
+    fails = _preflight(lambda c: c.pop("sector_etfs"))
+    assert any("no\nsector_etfs" in f.replace("no ", "no\n") or
+               "sector_etfs: list is configured" in f for f in fails)
+
+
+def test_preflight_still_convicts_an_unknown_universe_key():
+    fails = _preflight(
+        lambda c: c["strategies"]["swing_sectors"].__setitem__(
+            "universe", "sectr_etfs"))
+    assert any("not a known" in f for f in fails)
+
+
 def test_the_swing_stop_is_wider_than_the_global_one():
     """'Accept volatility' lives HERE, per-trade — pinned so a later edit
     cannot quietly make the swing stop tighter than the default while the
