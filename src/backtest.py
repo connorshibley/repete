@@ -501,7 +501,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 # stop-distance sizing (§8) sees the same stop it will place.
                 prices = risk.bracket_prices(
                     fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
-                    vol_bucket=vol_series.get(ts))
+                    vol_bucket=vol_series.get(ts),
+                    strategy=strategy_name)
                 stop, tp = prices if prices else (None, None)
                 qty = risk.size_order(acct.account_dict(last_close), fill, cfg,
                                       bars=hist,
@@ -665,7 +666,8 @@ def simulate(sym_bars: dict, cfg: dict, params: dict | None = None,
                 # below zero means brackets() returns None and the position runs
                 # with NO stop. Same helper as live and the ensemble.
                 if risk.unprotectable_entry(
-                        hist[-1]["close"], strategies.atr(hist, 14), cfg):
+                        hist[-1]["close"], strategies.atr(hist, 14), cfg,
+                        strategy=strategy_name):
                     continue
                 # per-cycle entry cap, first-come in symbol order — the same
                 # semantics as the live loop in main.py
@@ -955,7 +957,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 prices = risk.bracket_prices(
                     fill, strategy.atr(hist, bcfg.get("atr_period", 14)), cfg,
                     direction=action,
-                    vol_bucket=vol_series.get(ts))
+                    vol_bucket=vol_series.get(ts),
+                    strategy=owner)
                 stop, tp = prices if prices else (None, None)
                 # QTY STAYS UNSIGNED all the way through sizing, the judge and
                 # the heat cap, and only the STORED POSITION carries a sign.
@@ -1260,7 +1263,8 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 # different symbol is unaffected — unlike the market-wide credit
                 # gate above.
                 if risk.unprotectable_entry(
-                        hist[-1]["close"], strategies.atr(hist, 14), cfg):
+                        hist[-1]["close"], strategies.atr(hist, 14), cfg,
+                        strategy=name):
                     _blocked("unprotectable_entry")
                     continue
                 entry_cap = sparams.get("max_entries_per_cycle", 0)
