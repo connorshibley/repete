@@ -66,8 +66,9 @@ def prepare(all_bars: dict, params: dict, cfg: dict | None = None) -> dict:
         return {"target": None, "eval": False, "returns": {}}
     if _bar_month(spine[-1]) == _bar_month(spine[-2]):
         return {"target": None, "eval": False, "returns": {}}
-    r_us = total_return(spine, lookback)
-    r_intl = total_return(all_bars.get(intl) or [], lookback)
+    r_us = total_return([float(b["close"]) for b in spine], lookback)
+    r_intl = total_return([float(b["close"])
+                           for b in (all_bars.get(intl) or [])], lookback)
     r_tb = tbill_return((cfg or {}).get("_rate_bars"), spine[-1]["ts"],
                         lookback)
     rets = {"us": r_us, "intl": r_intl, "tbill": r_tb}

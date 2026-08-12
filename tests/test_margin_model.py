@@ -226,3 +226,42 @@ def test_macro_gate_blocks_entries_in_ensemble(bars):
     plain = bt.simulate_ensemble(bars, _cfg(), macro=rising)
     assert gated.census["blocked"].get("macro", 0) > 0
     assert "macro" not in plain.census["blocked"]
+
+
+# ------------------------------------------------------- gem.prepare contract
+
+def test_gem_prepare_computes_returns_from_real_bars():
+    """The s67 crash test: prepare() must accept BAR DICTS (the only thing the
+    simulator ever hands it) — the first run passed bars straight into
+    total_return, which wants closes, and the reachability fixture missed it
+    because its universe carries no SPY spine."""
+    from strategies import gem as g
+    from datetime import date, timedelta
+    d0 = date(2023, 1, 2)
+    def mk(px0, drift):
+        rows, px = [], px0
+        for i in range(304):   # Jan 2 + 303d = Nov 1: last bar opens a month
+            px += drift
+            rows.append({"ts": f"{(d0 + timedelta(days=i)).isoformat()}"
+                               f"T21:00:00+00:00", "open": px, "high": px,
+                         "low": px, "close": px, "volume": 1})
+        return rows
+    bars = {"SPY": mk(400, 0.5), "EFA": mk(70, 0.01), "AGG": mk(95, 0.0)}
+    rates = {"^IRX": [{"ts": r["ts"], "close": 5.0} for r in bars["SPY"]]}
+    params = {"us": "SPY", "intl": "EFA", "bonds": "AGG", "lookback_days": 252}
+    got = g.prepare(bars, params, {"_rate_bars": rates})
+    assert got["eval"] is True
+    assert got["returns"]["us"] is not None
+    assert got["target"] == "SPY"          # strong US trend beats EFA + T-bill
+
+
+def test_gem_fails_closed_without_rate_series():
+    from strategies import gem as g
+    from datetime import date, timedelta
+    d0 = date(2023, 1, 2)
+    rows = [{"ts": f"{(d0 + timedelta(days=i)).isoformat()}T21:00:00+00:00",
+             "open": 1, "high": 1, "low": 1, "close": 400 + i, "volume": 1}
+            for i in range(304)]
+    params = {"us": "SPY", "intl": "EFA", "bonds": "AGG", "lookback_days": 252}
+    got = g.prepare({"SPY": rows, "EFA": rows, "AGG": rows}, params, {})
+    assert got["eval"] is True and got["target"] is None
