@@ -28,17 +28,17 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-RESULTS: list[dict] = []
-
-
-def check(cid: str, surface: str, role: str, criterion: str):
-    """Register one acceptance criterion. The body returns (ok, evidence)."""
-    def deco(fn):
-        RESULTS.append({"id": cid, "surface": surface, "role": role,
-                        "criterion": criterion, "fn": fn})
-        return fn
-    return deco
-
+# A `check()` decorator and a module-level RESULTS list used to sit here and
+# were never called once — run_all() records through a local rec() with inline
+# string IDs. So there was no importable list of these 35 criteria: anything
+# wanting to enumerate them had to parse this file, and nothing could tell
+# "this criterion passed" apart from "this criterion was deleted".
+#
+# The working version is scripts/qa_criteria.py, used by
+# scripts/qa_site_sweep.py. Converting run_all()'s 35 inline calls to it is a
+# mechanical change deliberately left out of a QA sweep — it would rewrite the
+# file this sweep is meant to be checking. tests/test_qa_inventory_is_current
+# greps the IDs out of the source in the meantime, and says so.
 
 # --------------------------------------------------------------- harness
 
@@ -64,6 +64,14 @@ def build_client(fixture: str, *, gate_open: bool):
     # reading the operator's real journal instead of the fixture's.
     cfg.setdefault("x_posting", {})["journal_path"] = os.path.join(
         fixture, "journal.jsonl")
+    # The two state files health.status() reads (F-14). Until 2026-08-11 these
+    # were module constants no config could redirect, so /healthz reported on
+    # whatever sat next to the PROCESS: the same fixture and the same command
+    # gave 58/58 with a ./memory/heartbeat present and 57/58 without. PUB-04
+    # was measuring the host and passing only because the sweep happened to run
+    # from a live checkout.
+    cfg["memory"]["heartbeat_path"] = os.path.join(fixture, "heartbeat")
+    cfg["memory"]["halt_path"] = os.path.join(fixture, "HALT")
     cfg["publisher"]["data_dir"] = os.path.join(fixture, "publisher_data")
     cfg["publisher"]["attorney_signoff"] = gate_open
     cfg["publisher"]["legal_pages_final"] = gate_open

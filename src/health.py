@@ -17,8 +17,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from strategies.base import ENTRY_ACTIONS  # noqa: E402
 
-HEARTBEAT_FILE = "memory/heartbeat"
-HALT_FILE = "HALT"
+import statepaths  # noqa: E402
+
+# Kept as names because twelve tests drive these functions through them; the
+# literals now have exactly one definition, in src/statepaths.py. These are the
+# DEFAULTS — status() resolves the live values from cfg, so a health check can
+# be pointed at a fixture instead of at whatever sits next to the process.
+HEARTBEAT_FILE = statepaths.DEFAULT_HEARTBEAT_PATH
+HALT_FILE = statepaths.DEFAULT_HALT_PATH
 # The heartbeat is written by the trading cycle, which fires at 15:45 ET on
 # weekdays. 26h covers a normal overnight gap BETWEEN two consecutive trading
 # days — Monday 15:45 to Tuesday 15:45 is 24h.
@@ -178,7 +184,12 @@ def status(cfg: dict | None = None, now: datetime | None = None,
     out: dict = {
         "checked_at": now.isoformat(),
         "mode": cfg.get("mode", "paper"),
-        "halted": os.path.exists(HALT_FILE),
+        # Resolved from cfg, which is why this reports on the data health was
+        # POINTED AT rather than on the process's working directory. Falls back
+        # to the cwd-relative default — including under the `cfg = {}` branch
+        # above, so a broken config.yaml can never make a genuinely halted bot
+        # report halted: false.
+        "halted": os.path.exists(statepaths.halt_path(cfg)),
         "heartbeat_age_hours": None,
         "storage_backend": "jsonl",
         "last_cycle": None,
@@ -199,7 +210,7 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         "problems": [],
     }
 
-    age = heartbeat_age_hours(now=now)
+    age = heartbeat_age_hours(statepaths.heartbeat_path(cfg), now=now)
     out["heartbeat_age_hours"] = round(age, 2) if age is not None else None
 
     try:

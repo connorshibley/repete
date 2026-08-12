@@ -1430,5 +1430,16 @@ storage:                 # EVENT STORE BACKEND (2026-07-22, backlog #4)
 memory:
   ledger_path: memory/ledger.jsonl
   learnings_path: memory/learnings.md
+  # Runtime STATE, resolved by src/statepaths.py. Both values below are the
+  # literals the code has always used, and they are load-bearing: fly symlinks
+  # memory/ onto /app/state, docker-compose mounts ./memory:ro for the
+  # publisher, and HEARTBEAT.md / docs/runbooks.md / deploy/ name them to
+  # operators. src/preflight.py REFUSES to start a cycle if either is changed,
+  # so these are redirectable for QA only.
+  heartbeat_path: memory/heartbeat
+  # Read by the MONITORS (health, watchdog). The trading rail keeps its own
+  # copy in risk.py on purpose — a config key that can move the kill switch is
+  # a way to disable it (scripts/halt.py:80).
+  halt_path: HALT
   negative_example_quota: 0.20   # ≥20% of retrieved past trades must be losers (anti-resonance)
   review_lookback_trades: 25     # how many recent CLOSED trades feed the weekly review

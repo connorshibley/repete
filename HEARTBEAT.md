@@ -17,6 +17,16 @@ Every run of the trading cycle ends by writing a single UTC timestamp to:
 memory/heartbeat
 ```
 
+That path is `memory.heartbeat_path` in `config.yaml`, resolved for the writer
+and for both readers by `src/statepaths.py` — one definition, where `main.py`,
+`health.py` and `watchdog.py` each used to hold their own copy of the literal
+with nothing making them agree. The default above is what ships and what every
+command on this page assumes; `src/preflight.py` refuses to start a cycle if it
+is changed, because the key exists only so a QA sweep can point a health check
+at a fixture (F-14, `docs/qa_findings.md`). `memory.halt_path` is the same
+arrangement for the HALT file — but only for the MONITORS: the trading rail in
+`risk.py` always reads where `scripts/halt.py` writes.
+
 The write lives in a `finally:` block wrapping the whole cycle
 (`run_cycle()` in `src/main.py`), so it fires on **every** exit path:
 

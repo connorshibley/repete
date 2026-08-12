@@ -4,16 +4,17 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twenty such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-one such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-10: #13, #14, #15, #16, #18 and #19.** Five of the six are
-open *by construction* rather than by defect — a sampling fact about the live
+**Open as of 2026-08-11: #13, #14, #15, #16, #18, #19 and #21.** Six of the seven
+are open *by construction* rather than by defect — a sampling fact about the live
 record, two judge inputs the simulator has no mechanism to represent, a cost the
-paper broker does not charge, and a fill-session hazard that only materialises
-when the cycle runs long. **#19 is not: it is a plain omission**, found
+paper broker does not charge, a fill-session hazard that only materialises when
+the cycle runs long, and a scanner that tests a live quote where the simulator
+tests a completed close. **#19 is not: it is a plain omission**, found
 2026-08-09, in which a live entry filter has been silently switched off in every
 gate ever run because no spec supplies the data it needs. **#17 and #20 are
 DEFECTS, each found and closed the same day.** #17 is the largest correction
@@ -57,6 +58,7 @@ code" is not closed; the repo has been wrong about that before.
 | 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
 | 19 | **The earnings blackout is unmodelled in EVERY gate** | **open** | found 2026-08-09 (§57); no registered spec has ever passed `earnings=` |
 | 20 | The re-entry cooldown was keyed by symbol in live, by (strategy, symbol) in the simulator | closed | `tests/test_cooldown_key_matches_sim.py` |
+| 21 | **The live swing scanner fills inside the entry zone intraday; the simulator fills at the next open** | **open** | open by construction — the 30-min scan tests a live quote, the cycle and every §62 arm test the last completed close |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -68,6 +70,24 @@ code" is not closed; the repo has been wrong about that before.
 > Found while writing `tests/test_doc_counts.py`, which now asserts the prose
 > total, the table rows and the `Open as of` line all agree. The three could
 > drift apart before because nothing compared them.
+>
+> **Row 21 was missing until 2026-08-11 — the third time, and the guard above
+> reported green throughout.** #21 was registered by #110 with a full `## #21`
+> section, but no table row, so the prose said twenty, the `Open as of` line
+> named six, and `README.md` said "20 … six open" while a registered OPEN
+> divergence existed a few hundred lines below. Every one of those three
+> statements agreed with the other two, which is exactly what the guard checked.
+>
+> The lesson is narrower than "add another check". The sentence above —
+> *"nothing compared them"* — named three artifacts and quietly implied they
+> were all of them. The **sections** were a fourth, and the deep-dive section is
+> where a divergence is actually written up; the table is a summary of it. So
+> the register could gain a fully documented entry and lose it from every count
+> in the repo. `test_doc_counts.py` now asserts **every `## #N` section has a
+> table row** (sections ⊆ rows, not equality — #1–#7 and #9 predate the
+> deep-dive convention and legitimately have no section). Found while rebasing
+> the QA-sweep branch, i.e. by reading the file for an unrelated reason — the
+> fourth entry in this register to be found that way.
 
 ---
 

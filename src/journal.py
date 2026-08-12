@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +26,23 @@ log = logging.getLogger("journal")
 
 DEFAULT_PATH = "memory/journal.jsonl"
 OUT_PATH = "journal.html"
+
+
+def permalink(base: str, trade_id: str) -> str:
+    """The public URL for one journal entry.
+
+    journal.html#<trade_id> is the only deep-link surface in this project, and
+    both callers used to build it with an f-string. A trade_id containing '#'
+    truncates the fragment at the first '#', so the browser looks for an
+    element named "t" and, finding none, silently leaves the reader at the top
+    of a page of hundreds of entries — no error, no 404, just the wrong place.
+    A space breaks it the same way in any client that does not auto-encode.
+
+    Verified in a browser: id "t#0001 spaced" exists in the document, and the
+    naive link delivers the fragment "t". Percent-encoding fixes it because
+    browsers decode the fragment before matching it against the id.
+    """
+    return f"{base}#{quote(trade_id, safe='')}"
 
 CSS = """
 body{font-family:Georgia,'Times New Roman',serif;margin:0;background:#f5f6f8;
