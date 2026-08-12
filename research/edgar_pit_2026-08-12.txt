@@ -1,0 +1,47 @@
+EDGAR POINT-IN-TIME PROBE
+run 2026-08-12T08:25:37-04:00
+read-only; no repo state mutated; no strategy or rail touched
+same restatement and failed-issuer names as probe_fmp_lookahead.py, so the two are directly comparable
+
+== 1. ACCEPTANCE TIMESTAMP ==
+  KHC: submissions unavailable
+  UAA: submissions unavailable
+
+  VERDICT: UNDETERMINED — no filings retrieved, so the question was not answered. An unanswerable question is not a passed one.
+
+== 2. RETROACTIVE EDIT ==
+
+  KHC: Kraft Heinz restated FY2016-2018 in its 2019 10-K/A
+    submissions unavailable
+
+  UAA: Under Armour restated revenue timing after the SEC inquiry
+    submissions unavailable
+
+  VERDICT: UNDETERMINED — no amendment/original pair was observable in the retained window.
+
+== 3. SURVIVORSHIP ==
+  SIVB (SVB Financial Group, failed March 2023): 0 filings retained
+  FRC (First Republic Bank, failed May 2023): 0 filings retained
+
+  VERDICT: FAIL — no filings for failed issuers. Any historical screen would exclude everyone who went bankrupt.
+
+EDGAR calls used: 6 (budget 20, SEC limit 10/sec)
+
+=======================================================================
+REFUSING: EDGAR data as read here does not support a point-in-time
+backtest. Do NOT register a filings gate on this source — a claim
+scored against it would be inflated and indistinguishable from a real
+edge.
+
+Filings may still be used as LIVE JUDGE CONTEXT ONLY: judge-only, so
+under invariant #2 it can veto or shrink and can never create a trade;
+ungated; and recorded as a sim/live divergence. That is exactly the
+shape W7 used for news memory.
+
+EDGE stands at 1 pass in 15 and K stays 15. Nothing is adopted
+by this result.
+=======================================================================
+
+  acceptance_timestamp   UNDETERMINED
+  no_retroactive_edit    UNDETERMINED
+  survivorship           FAIL

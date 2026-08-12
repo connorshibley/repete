@@ -77,10 +77,23 @@ HALT_MODES = (HALT_MODE_EXITS, HALT_MODE_FREEZE)
 def check_halt() -> bool:
     """Is a HALT engaged at all? Deliberately still a BOOLEAN.
 
-    `health.py`, `watchdog.py` and `daily_posts.py` each define `HALT_FILE`
-    independently and ask only this question. Widening what this returns would
-    make one predicate mean different things in four modules — the §29
-    `max_order_value_usd: 0` trap. Callers that need the mode ask `halt_mode()`.
+    `health.py` and `watchdog.py` ask only this question, and `daily_posts.py`
+    asks it through here. Widening what this returns would make one predicate
+    mean different things in several modules — the §29 `max_order_value_usd: 0`
+    trap. Callers that need the mode ask `halt_mode()`.
+
+    (This docstring used to name `daily_posts.py` as a third module holding its
+    own `HALT_FILE`. It never did — it calls this function. Corrected 2026-08-11
+    while mapping the halt surface for F-14.)
+
+    THIS READS THE CWD-RELATIVE `HALT_FILE`, AND THAT IS DELIBERATE. The
+    monitors resolve their halt path from config (`statepaths.halt_path`) so a
+    health check can be pointed at a QA fixture; the trading rail must not,
+    because a config key able to move the kill switch is a way to disable it —
+    `scripts/halt.py:80`, "a HALT engaged into some other directory is a stop
+    button wired to nothing." The rail reads where halt.py writes, always, and
+    `preflight._state_path_fails` refuses to start a cycle if the monitors have
+    been pointed somewhere else.
     """
     return os.path.exists(HALT_FILE)
 
@@ -702,8 +715,98 @@ def rvol_blocked(bars: list, cfg: dict, strategy: str | None = None) -> bool:
     return value < float(threshold)
 
 
+def extra_lookback_bars(cfg: dict) -> int:
+    """Bars the RAILS need beyond what the strategies ask for, or 0.
+
+    `strategies.max_lookback_bars` sums up `required_lookback` across strategy
+    modules and nothing else, which was complete right up until a rail needed
+    more history than any strategy. `contraction_blocked` needs
+    `period + lookback` bars and fails OPEN below that — so under-fetching does
+    not error, it silently disarms the filter on every bar.
+
+    Returns 0 unless the contraction rail is switched on somewhere: globally,
+    or by any single strategy's own override. Checking BOTH matters — a spec
+    arm that sets only `strategies.tsmom.max_contraction_pctile` would
+    otherwise arm a rail and starve it.
+    """
+    risk_cfg = cfg.get("risk") or {}
+    thresholds = [risk_cfg.get("max_contraction_pctile", 0)]
+    thresholds += [(params or {}).get("max_contraction_pctile", 0)
+                   for params in (cfg.get("strategies") or {}).values()]
+    if not any(thresholds):
+        return 0
+    return (int(risk_cfg.get("contraction_period", 20))
+            + int(risk_cfg.get("contraction_lookback", 252)))
+
+
+def contraction_blocked(bars: list, cfg: dict,
+                        strategy: str | None = None) -> bool:
+    """§58: block an ENTRY whose recent range is NOT contracted — the "coil".
+
+    A PRECONDITION on entries the ensemble already takes, not a trigger. §17
+    tried the trigger form (a Donchian breakout) and it was rejected with a
+    profit factor of 0.874 excluding its three best trades. §21 then measured
+    the trade-count levers exhausted, and §23 concluded that what remains is
+    quality rather than count. This is the shape that conclusion points at, and
+    it ships the way §23's own filter ships: wired, tested, and OFF.
+
+    Structured exactly like `rvol_blocked` above, for the identical reason —
+    ONE implementation called by live and by both simulators. Five sim/live
+    divergences have already cost real rework; a filter re-implemented per call
+    site would be the sixth.
+
+    FAILS OPEN. A `None` percentile (short history) permits the entry. That is
+    the safe polarity for a data gap, but it carries a trap of its own: a rail
+    never handed enough bars blocks NOTHING while reporting as installed.
+    `strategies.max_lookback_bars` is what stops that, and it is tested.
+
+    Threshold is the percentile at or below which an entry is still allowed:
+        strategies.<name>.max_contraction_pctile -> risk.max_contraction_pctile
+        -> 0 (disabled)
+    0 means OFF rather than "only the single quietest window in a year",
+    matching `min_rvol`'s convention. The degenerate reading is not worth a
+    second key. Never applied to exits: a position must always be able to leave.
+    """
+    threshold = None
+    if strategy:
+        threshold = ((cfg.get("strategies") or {}).get(strategy) or {}
+                     ).get("max_contraction_pctile")
+    if threshold is None:
+        threshold = (cfg.get("risk") or {}).get("max_contraction_pctile", 0)
+    if not threshold:
+        return False
+    risk_cfg = cfg.get("risk") or {}
+    period = int(risk_cfg.get("contraction_period", 20))
+    lookback = int(risk_cfg.get("contraction_lookback", 252))
+    # Local import for the same reason as rvol above.
+    from strategies.base import contraction_pctile as _pctile
+    value = _pctile(bars, period, lookback)
+    if value is None:
+        return False                      # fail open — see docstring
+    return value > float(threshold)
+
+
+def _own_stop_mult(cfg: dict, strategy: str | None) -> float | None:
+    """A strategy's own `stop_atr_mult`, or None when it does not set one.
+
+    THE per-strategy stop-width lookup — `bracket_prices` and
+    `unprotectable_entry` must answer from the same number, because the second
+    exists to predict when the first will return None. Two lookups would let
+    them disagree, and the disagreement is precisely an entry that passes the
+    unprotectable guard and then degrades to a stopless market order.
+
+    Added 2026-08-11 for `swing_sectors` (owner: "accept volatility" — a wider
+    per-trade stop, NOT a portfolio-rail move). Every strategy that does not
+    set the key keeps the global `risk.brackets` multipliers byte-identically.
+    """
+    if not strategy:
+        return None
+    own = ((cfg.get("strategies") or {}).get(strategy) or {}).get("stop_atr_mult")
+    return float(own) if own else None
+
+
 def unprotectable_entry(entry_price: float, atr_value: float | None,
-                        cfg: dict) -> bool:
+                        cfg: dict, strategy: str | None = None) -> bool:
     """True when brackets are ON but this entry's stop would be non-positive.
 
     `brackets()` below returns None in that case and the caller degrades to a
@@ -736,7 +839,12 @@ def unprotectable_entry(entry_price: float, atr_value: float | None,
     # The WIDEST configured multiplier. If any vol regime could push the stop
     # below zero the name is unprotectable in that regime, and whether it is
     # blocked must not depend on which bucket happens to be current.
-    mult = max(b.get("stop_atr_mult") or 0, b.get("stop_atr_mult_high_vol") or 0)
+    # A strategy's own stop width REPLACES both (see _own_stop_mult): the
+    # override is unconditional in bracket_prices, so the widest multiplier
+    # that entry can actually receive IS the override.
+    mult = (_own_stop_mult(cfg, strategy)
+            or max(b.get("stop_atr_mult") or 0,
+                   b.get("stop_atr_mult_high_vol") or 0))
     if mult <= 0:
         return False
     return round(entry_price - mult * atr_value, 2) <= 0
@@ -804,6 +912,67 @@ def credit_blocked(credit_bars: dict | None, ts: str, cfg: dict) -> bool:
         return False                       # fail open — see docstring
     latest, avg = got
     return latest < avg
+
+
+def _asof_closes(bars: list, ts: str, n: int) -> list:
+    """Last `n` closes with bar ts <= `ts`, oldest first. ts-bounded so a
+    backtest cannot read a value the live bot could not have seen."""
+    out = [b["close"] for b in bars if b.get("ts", "") <= ts]
+    return out[-n:] if len(out) >= n else []
+
+
+def financing_rate_pct(rate_bars: dict | None, ts: str, cfg: dict) -> float:
+    """§64: the annualized borrow rate (percent) charged on negative cash.
+
+    FAILS CLOSED, unlike every gate above — and that asymmetry is the point.
+    A gate that fails open permits a trade; a financing model that fails open
+    lends for FREE, which is divergence #16 (the §53 short leg was handed a
+    cost-free borrow and still lost). Missing aux, short history or a
+    non-positive print all fall back to `risk.margin.flat_rate_pct` — a
+    deliberately punitive flat rate — never to zero.
+
+    The aux series is ^IRX (13-week T-bill, annualized PERCENT — 4.85 means
+    4.85%/yr), a market print that is never revised, so the as-of read is
+    point-in-time by construction. Spread rides on top.
+    """
+    mcfg = (cfg.get("risk") or {}).get("margin") or {}
+    spread = float(mcfg.get("spread_bps_annual", 150)) / 100.0
+    flat = float(mcfg.get("flat_rate_pct", 6.0))
+    series = (rate_bars or {}).get("^IRX") or []
+    got = _asof_closes(series, ts, 1)
+    if not got or got[0] <= -1.0:          # sanity floor, not a gate
+        return flat
+    return got[0] + spread
+
+
+def macro_blocked(macro_bars: dict | None, ts: str, cfg: dict) -> bool:
+    """§64: block an ENTRY while the macro regime series signals risk-off.
+
+    The claim under test is that entries taken while unemployment trends up
+    are worse trades — an input no traded symbol's price history contains,
+    `credit_blocked`'s argument exactly. The measure: the latest as-of value
+    of the configured series against its own trailing mean.
+
+    The four properties `credit_blocked` pinned hold here too, deliberately:
+    ONE implementation shared by every caller; `ts`-bounded (the aux is a
+    daily as-of step series built from first-print vintages, and this reads
+    only bars at or before `ts`); FAILS OPEN (missing series, short history
+    or the feature off all permit the entry — freshness rails own outages);
+    NEVER applied to exits.
+
+    Config: `risk.macro_gate: {enabled, series, ma_days}`; disabled ships.
+    """
+    gcfg = (cfg.get("risk") or {}).get("macro_gate") or {}
+    if not gcfg.get("enabled"):
+        return False
+    series = (macro_bars or {}).get(str(gcfg.get("series", "UNRATE"))) or []
+    ma_days = int(gcfg.get("ma_days", 252) or 0)
+    if ma_days <= 0:
+        return False
+    window = _asof_closes(series, ts, ma_days)
+    if not window:
+        return False                       # fail open — see docstring
+    return window[-1] > sum(window) / len(window)
 
 
 def rotate_scan_order(symbols: list, day=None) -> list:
@@ -890,7 +1059,8 @@ def cooldown_blocked(last_exit_ts: str | None, now_ts: str,
 def bracket_prices(entry_price: float, atr_value: float | None,
                    cfg: dict,
                    vol_bucket: str | None = None,
-                   direction: str = "buy") -> tuple[float, float | None] | None:
+                   direction: str = "buy",
+                   strategy: str | None = None) -> tuple[float, float | None] | None:
     """Deterministic stop/take-profit prices for a bracket entry.
 
     Long (`direction="buy"`, the default — every pre-Phase-2 caller):
@@ -916,6 +1086,16 @@ def bracket_prices(entry_price: float, atr_value: float | None,
     high_mult = b.get("stop_atr_mult_high_vol", 0)
     if high_mult and vol_bucket == "high":
         mult = high_mult
+    # A strategy's own stop width wins UNCONDITIONALLY — over the base AND the
+    # high-vol multiplier. The override exists because the strategy's thesis
+    # priced its own volatility (swing_sectors: a days-to-weeks sector repair
+    # must survive normal chop, so 2×ATR would stop it out of the very moves
+    # it exists to hold through); letting the vol bucket re-tighten it would
+    # re-impose exactly the judgment the override was written to replace.
+    # `unprotectable_entry` above mirrors this rule — the two must not diverge.
+    own = _own_stop_mult(cfg, strategy)
+    if own:
+        mult = own
     tp_mult = b.get("take_profit_atr_mult", 0)
 
     # The non-positive-price guard protects whichever leg can actually go

@@ -246,21 +246,26 @@ def sanity_check(bars: dict, symbols: list, start: str, end: str,
     return problems
 
 
-def load_manifest() -> dict:
-    if os.path.exists(MANIFEST):
-        with open(MANIFEST) as f:
+def manifest_path(snap_dir: str) -> str:
+    return os.path.join(snap_dir, "MANIFEST.json")
+
+
+def load_manifest(snap_dir: str = SNAP_DIR) -> dict:
+    mpath = manifest_path(snap_dir)
+    if os.path.exists(mpath):
+        with open(mpath) as f:
             return json.load(f)
     return {"snapshots": {}}
 
 
-def cmd_verify() -> int:
-    man = load_manifest()
+def cmd_verify(snap_dir: str = SNAP_DIR) -> int:
+    man = load_manifest(snap_dir)
     if not man["snapshots"]:
-        print("no snapshots recorded in MANIFEST.json")
+        print(f"no snapshots recorded in {manifest_path(snap_dir)}")
         return 1
     bad = 0
     for name, meta in sorted(man["snapshots"].items()):
-        path = os.path.join(SNAP_DIR, name)
+        path = os.path.join(snap_dir, name)
         if not os.path.exists(path):
             print(f"MISSING  {name}")
             bad += 1
@@ -283,6 +288,15 @@ def main() -> int:
     p.add_argument("--symbols", nargs="+", default=None,
                    help="default: every symbol in config.yaml")
     p.add_argument("--out", default=None, help="default: bars_<start>_<end>.json.gz")
+    p.add_argument("--dir", default="data/snapshots",
+                   help="where the snapshot and its MANIFEST live. §56 writes "
+                        "the survivorship-CERTIFIED universe to data/pit/, "
+                        "which is a different place on purpose: register_gate's "
+                        "EDGE freeze is keyed on the data/snapshots/ prefix, "
+                        "and everything under it is survivor-selected by "
+                        "construction. Writing elsewhere is only legitimate "
+                        "with a passing probe record — "
+                        "tests/test_pit_snapshot_requires_probe.py enforces that.")
     p.add_argument("--verify", action="store_true",
                    help="re-hash committed snapshots and exit")
     p.add_argument("--universe", default=None,
@@ -303,9 +317,10 @@ def main() -> int:
                         "SPY silently stops that rail binding, which is a "
                         "sim/live divergence, not a smaller universe.")
     args = p.parse_args()
+    snap_dir = os.path.join(os.path.dirname(__file__), "..", *args.dir.split("/"))
 
     if args.verify:
-        return cmd_verify()
+        return cmd_verify(snap_dir)
 
     if args.universe:
         print(f"resolving universe {args.universe}…")
@@ -326,10 +341,10 @@ def main() -> int:
         # exactly what to pass instead.
         raise SystemExit(
             f"--out takes a filename, not a path: {name!r}\n"
-            f"It is written into data/snapshots/ automatically.\n"
+            f"It is written into {args.dir}/ automatically.\n"
             f"  use:  --out {os.path.basename(name)}")
-    os.makedirs(SNAP_DIR, exist_ok=True)
-    path = os.path.join(SNAP_DIR, name)
+    os.makedirs(snap_dir, exist_ok=True)
+    path = os.path.join(snap_dir, name)
 
     print(f"fetching {len(symbols)} symbols {args.start} → {args.end} (yfinance)…")
     bars = fetch(symbols, args.start, args.end)
@@ -356,7 +371,7 @@ def main() -> int:
                             sort_keys=True).encode())
 
     n_bars = sum(len(v) for v in bars.values())
-    man = load_manifest()
+    man = load_manifest(snap_dir)
     man["snapshots"][name] = {
         "sha256": sha256_file(path),
         "source": "yfinance (auto_adjust=True — split/dividend adjusted)",
@@ -368,7 +383,7 @@ def main() -> int:
         "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price "
                 "snapshot used by §1–§13; re-baseline inside this file.",
     }
-    with open(MANIFEST, "w") as f:
+    with open(manifest_path(snap_dir), "w") as f:
         json.dump(man, f, indent=2, sort_keys=True)
 
     size_mb = os.path.getsize(path) / 1e6

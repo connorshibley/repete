@@ -1,0 +1,30 @@
+s66d — vol_lever discrete vol-managed SPY (2022-2026)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T14:39:59 | sha 0df9a698493643c7… | judge OFF
+
+prior: Moreira-Muir's mechanism is real and the market factor is the one place it survives costs (Barroso-Detzel). But Cederburg showed the real-time Sharpe edge mostly evaporates, and MM's own Table V shows a 1.5x cap cuts expected return below the unmanaged market's. Expected: clause (b) FAILS most periods; the drawdown behavior is the informative output. READING RULE across s66a-d, committed before any run: (1) THIS CANDIDATE CAN NEVER LICENSE AN EDGE REGISTRATION, REGARDLESS OF OUTCOME — its own literature predicts the total-return bar fails, and a surprise 3-of-4 pass on a handful of monthly switches is exactly the luck this record warns about; (2) candidate max_drawdown_pct at least 5pp shallower than SPY's benchmark drawdown in 3 or more periods AND clause (b) passing in 2 or more resolves 'note as a possible ensemble risk-overlay', a future separately-registered question; (3) anything else closes the candidate. The expanding-median discretization is pre-committed in the module docstring; no continuous- weight variant may be quoted as this spec's result.
+
+  verified bars_etf_2022-01-01_2026-07-10.json.gz  sha256 d84f9ce13ee58187…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  15 symbols | 2 arms | 3 worker(s)
+
+  baseline                 ret  +13.50%  PF 1.984  maxDD 10.31%  trades     8  symbols   1  deploy  35.21%  (0s)
+  lev150                   ret  -11.64%  PF 0.000  maxDD 12.18%  trades     3  symbols   1  deploy   2.78%  (0s)
+                           signals     21  blocked     18  |  drawdown 18
+
+  buy-and-hold on this universe: +52.98%
+
+-- PRE-REGISTERED PASS MARK (lev150) --
+  [PASS] (a) min_trades  3 vs 3
+  [FAIL] (b) beats_benchmark_symbol  -11.64% vs SPY +67.06% | maxDD 12.18% vs SPY 24.50% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  -11.64% at 12.18% maxDD -> -23.43% levered to SPY's 24.50% maxDD, vs SPY +67.06%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

@@ -3,10 +3,38 @@
 Paper trading is the default and is enforced by a double interlock:
 config.yaml `mode: live` AND .env `LIVE_TRADING_CONFIRMED=YES` are both
 required before a single live order can be placed.
+
+RESILIENCE (2026-08-06). Two things were measured before any of it was written,
+and both changed the shape of the fix:
+
+1. **The SDK already retries — the wrong errors.** `alpaca-py` 0.43.5's
+   `RESTClient.__init__` sets `_retry=3`, `_retry_wait=3`,
+   `_retry_codes=[429, 504]`, and neither `TradingClient` nor
+   `StockHistoricalDataClient` exposes those parameters, so the module defaults
+   always apply. Rate limits and gateway timeouts have been retried since day
+   one. The audit line "zero retry/backoff in broker.py" was wrong.
+
+2. **Nothing has ever had a timeout, and THAT is the defect.**
+   `RESTClient._request` builds `opts = {"headers": ..., "allow_redirects":
+   False}` with NO `timeout` key, and `requests.Session.request` defaults to
+   `None` — wait forever. Measured on the live bot 2026-08-05: 52.5s on
+   account+positions, 89.7s on one symbol's bars, 103.7s on an open-order
+   lookup. All three ended in `RemoteDisconnected` — a connection-level error,
+   not a 429/504 — so the SDK's retry never engaged. 246 seconds, four minutes
+   of a fifteen-minute window, spent on dead sockets.
+
+Hence the ordering: **timeout first, retry second.** A retry without a timeout
+is strictly worse than no retry at all — three attempts at 90s is 4.5 minutes
+on a single symbol, and the window closes at 16:00 (divergence #18).
 """
-import os
+import functools
 import logging
+import os
+import random
+import time
 from datetime import datetime, timedelta, timezone
+
+import requests
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (MarketOrderRequest, TakeProfitRequest,
@@ -28,6 +56,142 @@ _TIMEFRAMES = {
     "1Hour": TimeFrame(1, TimeFrameUnit.Hour),
     "1Day": TimeFrame(1, TimeFrameUnit.Day),
 }
+
+
+# ---------- resilience knobs (all overridable from config.yaml `ops`) --------
+
+DEFAULT_TIMEOUT_SEC = 10.0        # read timeout; 0 disables the whole patch
+DEFAULT_CONNECT_TIMEOUT_SEC = 5.0
+DEFAULT_RETRY_ATTEMPTS = 2        # EXTRA attempts, so 3 calls worst case
+DEFAULT_RETRY_BUDGET_SEC = 60.0   # per Broker instance == per cycle
+_BACKOFF_SEC = (0.5, 1.5)         # attempt 0 -> 0.5s, attempt 1 -> 1.5s
+
+# Connection-class failures ONLY. An APIError means the request arrived and was
+# refused — retrying it is asking the same question and being told no again,
+# and on an order path it is how a duplicate gets born. `ConnectionError`
+# covers urllib3's ProtocolError/RemoteDisconnected, which is the shape both
+# 2026-08-05 hangs actually took.
+_RETRYABLE = (requests.exceptions.ConnectionError,
+              requests.exceptions.Timeout)
+
+
+class RetryBudget:
+    """Seconds this Broker may spend retrying, across every call it makes.
+
+    Per-call retry limits are not enough here. The cycle fetches bars for ~40
+    symbols one at a time; 40 x 2 retries x a 10s timeout is twenty minutes
+    against a fifteen-minute window. A resilience fix that can overrun the
+    close would trade one failure for divergence #18, which is worse.
+
+    Charged with the elapsed time of each FAILED attempt plus the sleep that
+    follows it — not with wall clock, and not with successful calls, because
+    neither is what the budget is protecting against.
+    """
+
+    def __init__(self, total_sec: float):
+        self.total = max(0.0, float(total_sec))
+        self.spent = 0.0
+        self.exhausted_reported = False
+
+    def charge(self, seconds: float) -> None:
+        self.spent += max(0.0, seconds)
+
+    def remaining(self) -> float:
+        return max(0.0, self.total - self.spent)
+
+
+def install_timeout(client, timeout: float,
+                    connect_timeout: float = DEFAULT_CONNECT_TIMEOUT_SEC):
+    """Give one alpaca-py client a default socket timeout. Idempotent.
+
+    The SDK takes no timeout parameter anywhere, so this wraps the bound
+    `request` of the `requests.Session` it holds. WRAPS rather than REPLACES:
+    a fresh Session would silently discard any adapter, header or cookie the
+    SDK configured on its own, now or in a future version.
+
+    `_session` is a PRIVATE attribute of a third-party package and this is a
+    bet on it. The bet is made falsifiable rather than hopeful: an SDK that
+    renames or retypes it raises HERE, at construction, which surfaces as a
+    refusal to start rather than as every call silently losing its timeout
+    again. `tests/test_broker_resilience.py` mutates exactly that.
+    """
+    session = getattr(client, "_session", None)
+    if not isinstance(session, requests.Session):
+        raise RuntimeError(
+            f"{type(client).__name__} has no requests.Session at `_session` "
+            f"(got {type(session).__name__}) — alpaca-py changed shape and "
+            f"broker calls would run with NO TIMEOUT, which is the 2026-08-05 "
+            f"failure (246s on three dead sockets). Re-point "
+            f"broker.install_timeout() at the new attribute before upgrading.")
+    if getattr(session, "_repete_timeout", None) is not None:
+        return session
+    original = session.request
+    default = (min(connect_timeout, timeout), timeout)
+
+    @functools.wraps(original)
+    def request(*args, **kwargs):
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = default
+        return original(*args, **kwargs)
+
+    session.request = request
+    session._repete_timeout = default
+    return session
+
+
+def _backoff_sec(attempt: int) -> float:
+    """Jittered backoff. Jitter is +0-50%, so two symbols failing in the same
+    millisecond do not retry in lockstep."""
+    base = _BACKOFF_SEC[min(attempt, len(_BACKOFF_SEC) - 1)]
+    return base * (1.0 + random.random() * 0.5)
+
+
+def retryable_read(method):
+    """Retry a READ on connection-class failures, inside the shared budget.
+
+    Reads only, and the exclusion is structural rather than documented:
+    `tests/test_broker_resilience.py` walks this module's AST, asserts every
+    write method is undecorated, and asserts the read/write split NAMES every
+    public method on Broker — so a method added later fails the suite until
+    somebody classifies it.
+
+    Why writes are excluded even though both live submission sites pass a
+    `client_order_id`: on retry Alpaca rejects the duplicate, and the caller
+    would then have to tell "already placed, this is success" apart from "real
+    failure". Getting that classifier wrong doubles a position. The timeout is
+    the large win on writes; automatic re-submission is a new way to be wrong
+    for a small one. Writes keep the SDK's own 3x 429/504 retry.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        attempts = getattr(self, "_retry_attempts", 0)
+        budget = getattr(self, "_retry_budget", None)
+        for attempt in range(attempts + 1):
+            started = time.monotonic()
+            try:
+                return method(self, *args, **kwargs)
+            except _RETRYABLE as exc:
+                elapsed = time.monotonic() - started
+                if attempt >= attempts or budget is None:
+                    raise
+                budget.charge(elapsed)
+                if budget.remaining() <= 0:
+                    if not budget.exhausted_reported:
+                        budget.exhausted_reported = True
+                        log.error(
+                            "broker retry budget of %.0fs is spent — further "
+                            "failures this cycle fail immediately rather than "
+                            "eating into the close", budget.total)
+                    raise
+                delay = min(_backoff_sec(attempt), budget.remaining())
+                budget.charge(delay)
+                log.warning("%s failed (%s) — retry %d/%d in %.1fs",
+                            method.__name__, exc, attempt + 1, attempts, delay)
+                time.sleep(delay)
+        raise AssertionError("unreachable")   # pragma: no cover
+
+    wrapper._repete_retryable = True
+    return wrapper
 
 
 def _safe_multiplier(raw) -> float:
@@ -73,8 +237,24 @@ class Broker:
         self.trading = TradingClient(key, secret, paper=self.paper)
         self.data = StockHistoricalDataClient(key, secret)
 
+        ops = cfg.get("ops") or {}
+        timeout = float(ops.get("broker_timeout_sec", DEFAULT_TIMEOUT_SEC))
+        self._retry_attempts = int(
+            ops.get("broker_retry_attempts", DEFAULT_RETRY_ATTEMPTS))
+        self._retry_budget = RetryBudget(
+            ops.get("broker_retry_budget_sec", DEFAULT_RETRY_BUDGET_SEC))
+        # A fresh budget per Broker, and main.py builds one Broker per cycle —
+        # so the budget is per cycle without anything having to reset it.
+        if timeout > 0:
+            install_timeout(self.trading, timeout)
+            install_timeout(self.data, timeout)
+        else:
+            log.warning("ops.broker_timeout_sec is 0 — broker calls can hang "
+                        "indefinitely (the 2026-08-05 failure mode)")
+
     # ---------- account / state (source of truth — see state.py) ----------
 
+    @retryable_read
     def account(self) -> dict:
         a = self.trading.get_account()
         return {
@@ -91,6 +271,7 @@ class Broker:
             "multiplier": _safe_multiplier(getattr(a, "multiplier", None)),
         }
 
+    @retryable_read
     def positions(self) -> dict:
         out = {}
         for p in self.trading.get_all_positions():
@@ -104,6 +285,7 @@ class Broker:
 
     # ---------- market data ----------
 
+    @retryable_read
     def bars(self, symbol: str, timeframe: str, limit: int):
         """Return a list of dicts (ts, open, high, low, close, volume), oldest first."""
         # Without an explicit start, Alpaca windows the query to the current
@@ -141,6 +323,22 @@ class Broker:
             for b in rows
         ][-limit:]
 
+    @retryable_read
+    def market_open(self) -> bool:
+        """True when the market is open RIGHT NOW, by Alpaca's own clock.
+
+        Added for swing_scan (2026-08-11), which runs on wall-clock launchd
+        entries that cannot know about holidays or half-days: a market order
+        submitted while closed queues to the next open and fills at a price
+        no guard ever saw. The scan FAILS CLOSED on this — a skipped pass is
+        a success, and there are twelve more that day. The scheduled cycle
+        deliberately does NOT call it: its fixed times are the operator's own
+        claim about market hours, and adding a new abort condition to the
+        cycle would be a live behaviour change to the gated ensemble.
+        """
+        return bool(self.trading.get_clock().is_open)
+
+    @retryable_read
     def latest_price(self, symbol: str) -> float:
         """Most recent trade price — the entry drift guard compares this
         against the bar-close the signal priced from. Raises on failure;
@@ -276,6 +474,7 @@ class Broker:
                 "stop_price": stop_price,
                 "take_profit_price": take_profit_price, "leg_ids": legs}
 
+    @retryable_read
     def get_order(self, order_id: str) -> dict:
         """Order status incl. legs (nested lookup)."""
         o = self.trading.get_order_by_id(order_id, GetOrderByIdRequest(nested=True))
@@ -295,6 +494,7 @@ class Broker:
                      for l in (o.legs or [])],
         }
 
+    @retryable_read
     def closed_orders(self, symbol: str, limit: int = 20) -> list[dict]:
         """Recently closed orders for one symbol, newest first (reconciliation fallback)."""
         orders = self.trading.get_orders(GetOrdersRequest(
@@ -320,6 +520,7 @@ class Broker:
             log.info("Cancelled %d open order(s) on %s", len(open_orders), symbol)
         return len(open_orders)
 
+    @retryable_read
     def open_stop_orders(self) -> list[dict]:
         """All open stop legs (protective exits), for the heat report.
         One row per stop: symbol, qty, stop_price."""
@@ -344,7 +545,13 @@ class Broker:
         return {"id": str(o.id), "stop_price": stop_price}
 
     def last_price(self, symbol: str) -> float | None:
-        """Latest daily close — final fallback for reconciliation exit prices."""
+        """Latest daily close — final fallback for reconciliation exit prices.
+
+        Deliberately NOT decorated with `@retryable_read`: its only work is a
+        call to `self.bars`, which is. Decorating both would nest one retry
+        loop inside another and multiply the attempts (3 x 3 = 9) while each
+        layer believed it was allowing three.
+        """
         bars = self.bars(symbol, "1Day", 1)
         return bars[-1]["close"] if bars else None
 

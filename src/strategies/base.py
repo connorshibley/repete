@@ -200,3 +200,84 @@ def rvol(bars: list[dict], period: int = 20) -> float | None:
     if base <= 0:
         return None
     return float(bars[-1].get("volume") or 0) / base
+
+
+def range_ratio(bars: list[dict], period: int = 20) -> float | None:
+    """How wide the last `period` bars traded, as a fraction of price:
+
+        (max high - min low) / last close
+
+    Divided by price so the number is comparable across a $30 fund and a $600
+    one, and across 2003 and 2026 for the same fund. An absolute range is not.
+
+    ATR would be the obvious alternative and is deliberately not used: ATR is a
+    MEAN of per-bar true ranges, so a quiet month containing one gap reads as
+    moderately active. The high-water-to-low-water span reads it as what it is —
+    a range that was breached. A coil is a claim about the envelope, not about
+    the average day inside it.
+
+    None (never a number) on insufficient history or a non-positive close.
+    """
+    if len(bars) < period or period < 1:
+        return None
+    window = bars[-period:]
+    close = float(window[-1]["close"])
+    if close <= 0:
+        return None
+    return (max(float(b["high"]) for b in window)
+            - min(float(b["low"]) for b in window)) / close
+
+
+def contraction_pctile(bars: list[dict], period: int = 20,
+                       lookback: int = 252) -> float | None:
+    """Where today's `range_ratio` sits inside its OWN trailing distribution,
+    0-100. LOWER means tighter — 10.0 says "narrower than 90% of the last year".
+
+    Ranked against itself rather than against a fixed threshold because there
+    is no such thing as a universally narrow range: XLU's quiet is XLE's storm,
+    and 2017's quiet is not 2008's. A percentile is the only form of this
+    statistic that means the same thing on every symbol in a cross-section,
+    which is what an ensemble rail needs.
+
+    Volatility clustering is the empirical fact this leans on, and it is chosen
+    partly BECAUSE it is not a return anomaly — a premium can be arbitraged
+    away once published, whereas the tendency of quiet periods to sit next to
+    quiet periods is a property of the price process itself.
+
+    Needs `period + lookback` bars: `lookback` historical values of a statistic
+    that each need `period` bars. Returns None below that, and callers FAIL
+    OPEN on None — so a caller that is never given enough history silently
+    blocks nothing. `strategies.max_lookback_bars` is what stops that being the
+    normal case; see the note there.
+
+    The rank is STRICT (`<`, not `<=`), so a flat series of identical ratios
+    scores 0.0 rather than 50.0. That polarity is chosen on purpose: a symbol
+    whose range never moves is genuinely coiled, and the alternative would have
+    a dead instrument read as average.
+
+    THE ARITHMETIC IS RESTATED HERE RATHER THAN LOOPING OVER `range_ratio`,
+    and that duplication is a measured choice, not an oversight. The natural
+    form — `range_ratio(bars[:len(bars) - i], period)` for each i — slices the
+    whole (multi-thousand-bar) list `lookback` times and re-runs a Python-level
+    `float()` over every element, which is three orders of magnitude slower
+    than this and would dominate the runtime of every gate that turns the rail
+    on. `test_contraction.py` pins the two against each other on the final
+    window, so the copy cannot drift from the original without a red test.
+    """
+    need = period + lookback
+    if len(bars) < need or lookback < 1 or period < 1:
+        return None
+    tail = bars[-need:]
+    highs = [float(b["high"]) for b in tail]
+    lows = [float(b["low"]) for b in tail]
+    closes = [float(b["close"]) for b in tail]
+    ratios = []
+    for end in range(period, need + 1):        # `end` exclusive, oldest first
+        close = closes[end - 1]
+        if close <= 0:
+            return None
+        ratios.append((max(highs[end - period:end])
+                       - min(lows[end - period:end])) / close)
+    today = ratios[-1]
+    below = sum(1 for h in ratios[:-1] if h < today)
+    return 100.0 * below / lookback

@@ -1,0 +1,48 @@
+§57 — THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT
+==============================================================================
+DIAGNOSTIC, K=15. Four specs registered TOGETHER 2026-08-10T00:36:14Z,
+before any was run. Snapshots certified by
+research/etf_probe_2026-08-09.json (verdict PASS).
+
+id    period                        ret     PF   maxDD  trades   deploy
+s57a  2000-01-03..2006-12-29      -8.20  0.657   10.69     251    10.76
+s57b  2007-01-03..2013-12-31      -6.44  0.583   11.25     124     7.91
+s57c  2014-01-02..2019-12-31     +30.61  1.645    6.09     774    48.14
+s57d  2022-01-03..2026-07-10     +34.77  1.816    4.61     637    49.70
+
+PRE-REGISTERED CLAUSES
+  s57a  passed=False
+    [PASS] (a) min_trades  251 vs 30
+    [FAIL] (b) beats_benchmark_symbol  -8.20% vs SPY +10.01% | maxDD 10.69% vs SPY 47.52% (reported, not gated)
+    [FAIL] (c) beats_exposure_matched  -8.20% vs +4.13% (B&H +38.39% x 10.8% deployment)
+  s57b  passed=False
+    [PASS] (a) min_trades  124 vs 30
+    [FAIL] (b) beats_benchmark_symbol  -6.44% vs SPY +51.30% | maxDD 11.25% vs SPY 55.19% (reported, not gated)
+    [FAIL] (c) beats_exposure_matched  -6.44% vs +5.15% (B&H +65.05% x 7.9% deployment)
+  s57c  passed=False
+    [PASS] (a) min_trades  774 vs 30
+    [FAIL] (b) beats_benchmark_symbol  +30.61% vs SPY +97.39% | maxDD 6.09% vs SPY 19.35% (reported, not gated)
+    [FAIL] (c) beats_exposure_matched  +30.61% vs +40.03% (B&H +83.16% x 48.1% deployment)
+  s57d  passed=False
+    [PASS] (a) min_trades  637 vs 30
+    [FAIL] (b) beats_benchmark_symbol  +34.77% vs SPY +67.06% | maxDD 4.61% vs SPY 24.50% (reported, not gated)
+    [PASS] (c) beats_exposure_matched  +34.77% vs +26.33% (B&H +52.98% x 49.7% deployment)
+
+Clause (b) beats_benchmark_symbol FAILS in 4 of 4 periods.
+
+THE READING RULE, committed in the registration before the run:
+  "(1) fails clause (b) in three or more periods — the ensemble does not
+   beat a clean index on this universe, and the ambiguity resolves
+   against it."
+
+4 of 4 is outcome (1). It licenses NO further EDGE
+registration on this universe. Nothing is enabled. EDGE stands at
+1 pass in 15; K stays 15.
+
+REPORTED, NOT GATED — and it cuts the other way. The bot draws down far
+less than the index in every period (10.69 vs 47.52, 11.25 vs 55.19,
+6.09 vs 19.35, 4.61 vs 24.50). §51's beats_benchmark_risk_adjusted was
+available and was NOT registered here. Reaching for it now, after the
+absolute-return clause failed, would be the selection this apparatus
+exists to prevent. If it is worth testing it is worth its own
+pre-registration and its own budget.

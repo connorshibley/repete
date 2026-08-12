@@ -1,0 +1,182 @@
+# §58f — 2007-2013 on the 38-name book
+#
+# SIXTEEN SPECS IN ONE REGISTRATION. s58a-h and s59a-h are written and frozen
+# TOGETHER, before any of them is run. That convention (§41, §44, §48, §57) is
+# not optional here and the reason is specific: this registration spans TWO
+# universes, so the temptation is not merely to pick a flattering period but to
+# report the flattering UNIVERSE. Committing all sixteen removes both choices.
+#
+# THERE IS NOWHERE LEFT TO REGISTER AN EDGE CLAIM, and that is why this is a
+# DIAGNOSTIC rather than a compromise.
+#
+#   data/snapshots/  EDGE frozen by §52 — every snapshot there is built from
+#                    CURRENT index membership, sized at up to +130pp by §48 and
+#                    large enough to explain this project's only EDGE pass.
+#   data/pit/        EDGE closed by §57's OWN pre-committed reading rule. The
+#                    certified universe was built in Phase 10 precisely so an
+#                    EDGE claim would have somewhere honest to live; §57 then
+#                    ran the incumbent on it and lost to SPY in four periods of
+#                    four, and the rule frozen before that run says a 3-of-4
+#                    failure "licenses no further EDGE registration on this
+#                    universe".
+#
+# Honouring a rule only when its outcome is convenient is the selection this
+# apparatus exists to prevent. Both refusals are now executed by
+# `register_gate.freeze_violation`, so this is checked rather than remembered.
+#
+# A DIAGNOSTIC spends no Bonferroni budget and K STAYS 15. It decides nothing
+# and can enable nothing. Only the owner enables a strategy (CLAUDE.md
+# invariant 2).
+#
+# WHAT THIS TESTS. A volatility-contraction PRECONDITION on entries the ensemble
+# already takes — the "coil". Block a buy unless the last 20 bars' high-to-low
+# range, as a fraction of price, sits at or below a given percentile of its own
+# trailing year.
+#
+# STRUCTURALLY DISTINCT FROM §17, which is the obvious objection. §17 tested a
+# Donchian BREAKOUT — a trigger, and it was rejected with a profit factor of
+# 0.874 excluding its three best trades. This is not a trigger and generates no
+# entries of its own. It only removes them. §21 measured the trade-count levers
+# exhausted ("what remains is calendar time") and §23 concluded that what is
+# left is quality rather than count; a precondition is the shape that conclusion
+# points at.
+#
+# THE GRID IS THE POINT, and it is here because §23 paid for it. §23's
+# relative-volume filter cleared all six deterministic clauses by wide margins —
+# PF +0.94 against a required +0.10, drawdown down 40%, per-trade P&L doubled —
+# and its profit factor across the threshold grid ran 1.955 -> 2.898 -> 2.240 ->
+# 1.705. A lone interior peak. If "more volume confirmation means better trades"
+# were a mechanism, asking for MORE of it should not reverse the result.
+#
+# So this spec uses `family:` rather than `candidate:`: EVERY coil arm must
+# clear, not the best one. And clause (e) is `no_interior_optimum`, which §55
+# built out of §23's own written conclusion and which has never yet been
+# exercised on a real registration. This is that exercise.
+#
+# THE 38-NAME BOOK, unmodified — this is the universe the bot actually trades.
+# §50's asymmetry governs how a result here reads and is restated in `prior`
+# rather than assumed: the strategy trades a survivor-only universe, so the
+# comparison runs in its favour. A FAIL is decisive; a PASS is not.
+id: s58f
+claim: DIAGNOSTIC
+title: "the volatility-contraction precondition on the 38-name book (2007-2013)"
+
+# Judge ON, matching live and matching §43/§48/§57. The judge cuts a large
+# share of live buys; scoring without it measures a bot that does not ship.
+judge_model: true
+
+snapshot:
+  path: data/snapshots/bars_wide_2007-01-01_2013-12-31.json.gz
+  sha256: 2ba815e1b0d2ca5db7b1e1778a65ab4126f9526e1347299464573ea16d7591d5
+
+cash: 100000.0
+bonferroni_k: 15
+
+# EVERY coil arm must clear, not the best of them — §23's failure made
+# unpassable. See the header.
+family: [coil40, coil25, coil10]
+
+arms:
+  - name: baseline
+  - name: coil40
+    set:
+      risk.max_contraction_pctile: 40
+  - name: coil25
+    set:
+      risk.max_contraction_pctile: 25
+  - name: coil10
+    set:
+      risk.max_contraction_pctile: 10
+
+clauses:
+  # Without this, a handful of trades could clear the rest on noise.
+  - {id: a, rule: min_trades, n: 30}
+
+  # The filter has to make the trades it keeps better, not merely fewer.
+  - {id: b, rule: pf_gt_baseline}
+
+  # §55's paired estimator, on its first real registration. A filter's trade
+  # set is a strict SUBSET of the baseline's, so the variance the two arms
+  # share cancels instead of being counted twice — which is the exact case
+  # `compare_paired` was built for and the exact case §23 was measured under
+  # the old independent estimator.
+  - {id: c, rule: significantly_better_paired}
+
+  # Drawdown must not be bought with return.
+  - {id: d, rule: maxdd_within, pp: 2.0}
+
+  # §23's own written conclusion, executed. A strictly INTERIOR peak fails;
+  # flat, monotone, and optima at either END all pass, because an end optimum
+  # says the grid failed to bracket the effect rather than that it was fitted.
+  - {id: e, rule: no_interior_optimum, metric: profit_factor,
+     order: [baseline, coil40, coil25, coil10]}
+
+prior: >-
+  The honest expectation is that it fails, and §23 is the reason rather than a
+  general pessimism: this is the same SHAPE of idea — a quality filter on
+  existing entries — and the strongest version of that idea already ran, already
+  doubled per-trade P&L, and was still rejected because the interval could not
+  separate it from noise at n approximately 128. §18 generalised it: "at these
+  sample sizes this method cannot certify an edge." Phase 9's paired estimator
+  is a real improvement on exactly that problem, which is why clause (d) uses
+  it, but a sharper instrument is a better measurement and not a lower bar.
+
+  A SECOND, INDEPENDENT REASON TO EXPECT FAILURE, stated because it is specific
+  to this rail rather than inherited. §57's census showed the drawdown latch
+  already blocking 8,890 of 9,234 entry signals in 2000-2006 and 11,208 of
+  11,627 in 2007-2013, with deployment at 10.76% and 7.91%. Adding a filter to a
+  book that is already 96% blocked removes trades from a sample that is small
+  precisely because everything else already removed them.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, across s58a-h taken together:
+  (1) the CERTIFIED family (a-d) is the interpretable one. Failing the family
+  clause in three or more of its four periods resolves against the idea, and
+  the rail stays at 0 permanently unless a later section argues otherwise on
+  new evidence;
+  (2) on the 38-name family (e-h), §50's asymmetry governs — a FAIL is
+  decisive, a PASS is not, because the strategy trades a survivor-only
+  universe and the comparison runs in its favour;
+  (3) NO outcome licenses an EDGE registration on either universe. §52 freezes
+  one and §57 closes the other. Written here so a future reader cannot mistake
+  a good DIAGNOSTIC for a warrant;
+  (4) any other split is INDETERMINATE and licenses nothing. Saying so now is
+  the point.
+
+failure_modes:
+  - >-
+    THE RAIL IS INERT FOR THE FIRST 272 BARS OF EVERY PERIOD, and that is more
+    than the strategies' own 201. `contraction_pctile` needs 20 bars for the
+    range plus 252 trailing values to rank it against, and it FAILS OPEN below
+    that. So there is a window of roughly 71 bars at the start of each period in
+    which the ensemble can enter and the filter cannot refuse — the coil arms
+    are byte-identical to baseline there. This dilutes any effect toward zero
+    rather than manufacturing one, but it means "the filter did nothing" and
+    "the filter was not yet armed" are not distinguishable from the summary
+    alone.
+  - >-
+    A FILTER CANNOT BE SCORED IN ISOLATION FROM WHAT IT FILTERS. §57 measured
+    this ensemble losing to SPY in four periods of four on the certified
+    universe. An arm that improves a losing book is a smaller loss, not an edge,
+    and clause (b) — profit factor against the BASELINE ARM — is a relative
+    question that a losing baseline makes easy. Read it alongside the absolute
+    figures in the summary, which are printed whether or not any clause reads
+    them.
+  - >-
+    TWO RISK RAILS ARE MEASURED INERT ON THE CERTIFIED UNIVERSE (§56/§57).
+    `sector_concentration` never fires, because no ETF appears in the frozen
+    `sectors:` map. `correlation_cap` at threshold 0.85 was measured admitting a
+    median 7 of 8 candidates across 76 rolling windows. A census reporting
+    `blocked: {correlation: 0}` is a true statement about the rail and a false
+    comfort about the book. The threshold is deliberately NOT re-picked here.
+  - >-
+    THE EARNINGS BLACKOUT IS UNMODELLED — divergence #19. No registered spec has
+    ever passed `earnings=`, so tsmom's live `earnings_blackout_days: 3` has
+    never been represented in any gate. Harmless on ETFs, which have none; NOT
+    harmless on the 38-name arms, where it means these numbers describe a bot
+    that takes trades live would refuse.
+  - >-
+    THE PERCENTILE IS RANKED AGAINST THE SYMBOL'S OWN YEAR, which is what makes
+    it comparable across a cross-section and also what makes it blind to a
+    market-wide regime. In a year when everything is quiet, every symbol still
+    has a bottom decile. This measures relative quiet, never absolute quiet, and
+    no clause here can tell the two apart.

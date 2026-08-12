@@ -12,6 +12,11 @@ was an artifact.
 
 ## The protocol, in order
 
+0. **Read the record first** — `bot-research-recall`. `recall.py search` over
+   64 sections and 55 frozen hypotheses, then `recall.py section §N` on
+   anything close. Registering a question the record has already answered
+   spends K on a result the repo already owns.
+
 1. **Write the spec** — `research/specs/<id>.yaml`. Never a draft you intend to
    edit after seeing a number.
 2. **`python scripts/register_gate.py <id>`** — appends
@@ -97,6 +102,20 @@ discovery from a fluke.
 - **`failure_modes`** — name, before the run, the ways a PASS could be wrong.
   §51's pre-registered asymmetry — **"a FAIL is decisive; a PASS is not"** — is
   the single line that kept its pass from being read as a discovery.
+
+**§60 scored all 55 priors and found they carry no information.** Fifty-one
+stated a direction and every one of them said *fail*; not one prior in this
+project's history predicted its own hypothesis would pass. Hit rate 80.4%
+against a base rate of 80.4% — the author's forecasts and a rubber stamp
+reading "it fails" are, arithmetically, the same strategy.
+
+That is not an argument for optimism. It means a prior earns its place only
+when it says something a constant pessimist would not: **which clause** you
+expect to sink it (§41, §44), a number computed **before** the run that the
+result must match (§43, §50), or an honest "I do not know" (§51's `GENUINELY
+UNCERTAIN`, which preceded the only three-of-three pass in the record). Run
+`recall.py calibrate` after registering; if the hit rate and the base rate ever
+separate, that is a result worth writing up.
 
 If you cannot write a failure mode that would invalidate a pass, you do not
 understand the claim well enough to register it.

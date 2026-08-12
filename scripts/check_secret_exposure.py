@@ -53,7 +53,15 @@ WATCHED = (
     "PUBLISHER_SESSION_SECRET", "RESEND_API_KEY",
     "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
     "FMP_API_KEY",
+    "FRED_API_KEY",
 )
+
+# NOT watched, on purpose: SEC_EDGAR_USER_AGENT. It lives in .env and it does
+# carry a real email address, but it is contact metadata rather than a
+# credential — EDGAR needs no key, and anyone holding the string gains nothing.
+# More to the point, this script exists to answer "does this need ROTATING",
+# and an email address cannot be rotated. Listing it would report hits with no
+# available remedy, which trains the reader to ignore the output.
 
 # Below this length a "secret" is more likely a placeholder, and short strings
 # collide with ordinary prose — a 6-character value would match half the corpus

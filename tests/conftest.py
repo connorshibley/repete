@@ -52,6 +52,26 @@ def _no_real_alerts(monkeypatch):
     monkeypatch.setattr(alerting, "_post_json", _no_post)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_offhost_backups(monkeypatch, tmp_path_factory):
+    """No test may write into the owner's real iCloud Drive.
+
+    `scripts/backup.sh` mirrors every archive off-host, resolving iCloud by
+    default. `tests/test_backup_restore.py` runs that script for real against an
+    AGENT_ROOT fixture, so without this the suite would deposit a fixture
+    archive into `~/…/CloudDocs/trading-agent-backups` on every run and then
+    prune the owner's genuine archives to the newest 30 alongside them.
+
+    Same shape as `_no_real_alerts`: the destination is redirected for the whole
+    suite, and a test that wants to exercise the mirror sets the variable
+    itself. Pointing it at a tmp dir rather than "" keeps the mirror path
+    EXERCISED — disabling it outright would leave the feature untested, which is
+    how a backup control quietly stops being one.
+    """
+    monkeypatch.setenv("REPETE_OFFHOST_DIR",
+                       str(tmp_path_factory.mktemp("offhost")))
+
+
 @pytest.fixture
 def cfg(tmp_path):
     """Minimal dict config mirroring config.yaml, network layers disabled.

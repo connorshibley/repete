@@ -275,6 +275,66 @@ changed.
 
 ---
 
+## Universe truncated (fewer symbols than the cycle asked for)
+
+**Symptoms:** ledger `universe_truncated` naming the missing symbols; if enough
+were lost, `universe_floor_blocked` and "entries blocked, exits still run".
+Decisions from that cycle carry `rail: "universe"`.
+
+**Diagnose:**
+
+```bash
+grep -c universe_truncated memory/ledger.jsonl
+grep data_error memory/ledger.jsonl | tail -5
+```
+
+`data_error` details carry the exception per symbol. Three shapes, and they
+mean different things:
+
+| detail contains | what it is | what to do |
+|---|---|---|
+| `NameResolutionError` | the laptop lost DNS | check wifi/VPN; usually self-heals |
+| `RemoteDisconnected` / `Connection aborted` | Alpaca closed the socket | nothing; the read retries now |
+| `subscription` / `403` | the data plan does not cover that symbol | remove it from `symbols:` or upgrade |
+
+**Fix:** a truncation of one or two symbols needs no action — that tier exists
+to be visible, not to be fixed. A blocked cycle means the feed lost a fifth of
+the cross-section; the bot has already refused entries and kept exits running,
+which is the correct posture. Do not widen `risk.min_universe_fraction` to make
+the alert stop.
+
+**Verify:** the next cycle logs no `universe_floor_blocked` and entries flow.
+
+**Why entries and not the whole cycle:** every gate scored the full universe. A
+book entered from a quarter of it is a different bot than the one that was
+gated — that is divergence #17 seen from the live side. Exits are never blocked
+by a data rail; a stranded position is worse than a missed entry.
+
+---
+
+## Broker call hangs / cycle runs long
+
+**Symptoms:** minutes-long gaps in `logs/agent.log` between broker calls; a
+`cycle_margin_low` alarm; `broker retry budget ... is spent` in the log.
+
+**Diagnose:** the 2026-08-05 signature is a `RemoteDisconnected` at the END of
+a 90-second gap — connection-level, so `alpaca-py`'s own 429/504 retry never
+looked at it, and there was no socket timeout at all. Since 2026-08-06 every
+SDK call carries `ops.broker_timeout_sec` (5s connect / 10s read) and reads
+retry twice inside `ops.broker_retry_budget_sec` (60s per cycle).
+
+**Fix:** if the budget message appears, the outage is broad rather than a
+single flaky socket — check https://status.alpaca.markets. Do NOT raise the
+budget to push through it: the budget is what keeps the cycle inside its
+15-minute window, and overrunning it is divergence #18 (a late DAY order is
+queued for the next open, not rejected).
+
+**Verify:** `python -c "import broker" ` is not the check. The real one is
+`pytest tests/test_broker_resilience.py`, whose black-hole-socket test points a
+real client at a server that never answers and asserts it gives up.
+
+---
+
 ## Missed cycle (nothing ran at 15:45 ET)
 
 **Symptoms:** watchdog alert at 16:15; no `cycle_complete` event today;
@@ -384,6 +444,17 @@ guard reads a local file and cannot see the other machine.
 **Take a backup now:** `scripts/backup.sh`
 **Prove it restores:** `python scripts/restore_drill.py`
 
+Since 2026-08-06 every archive is written **twice**: `backups/` locally (newest
+14) and `~/Library/Mobile Documents/com~apple~CloudDocs/trading-agent-backups`
+(newest 30). The second is the one that survives this laptop.
+`REPETE_OFFHOST_DIR` overrides the destination; `""` disables the mirror.
+
+**If this disk is gone**, the archives are on any Mac signed into the same
+account, or at icloud.com:
+```bash
+ls -1t ~/Library/Mobile\ Documents/com~apple~CloudDocs/trading-agent-backups/
+```
+
 **Actual restore after data loss:**
 ```bash
 tar -xzf backups/agent-backup-<newest>.tar.gz -C /tmp/restore
@@ -396,6 +467,75 @@ The streams are append-only JSONL — a restore is a file copy, no database
 surgery. Anything traded between backup and restore is reconciled at the
 next cycle start from the BROKER (source of truth for positions, invariant
 #4); the ledger gap is honest history, note it in an `event` record.
+
+**`off-host copy missing`** from the drill means the mirror stopped — iCloud
+signed out, the folder moved, or the disk filled. The local archive is fine;
+what has failed is the copy that survives the machine. Fix it and re-run
+`scripts/backup.sh`, which re-mirrors the newest archive.
+
+**`archive is not a prefix of live`** is a different animal, and worse. These
+streams are append-only, so live should only ever have grown. Divergence means
+some historical record changed — a corrupted write, a restore from the wrong
+machine, or a hand-edit (`memory/lessons.jsonl` is generated; CLAUDE.md says
+never to edit it by hand). Do **not** overwrite the archive by taking a fresh
+backup: that would replace the evidence with the corruption. Diff the archive
+against live first and find out which record moved.
+
+---
+
+## "thin margin to the close"
+
+**Symptom:** an alert saying the cycle finished fewer than
+`ops.min_close_margin_min` (default 5) minutes before the 16:00 ET close. At
+most once a day.
+
+**What it means.** The cycle fires at 15:45 against a 16:00 close, so the whole
+budget is fifteen minutes. This says the book was being traded into the bell.
+It is **not** a claim that anything was actually mis-filled.
+
+**Why it matters — divergence #18.** Nothing compares the clock to the close
+before submitting. Exits go out `TimeInForce.DAY`, and Alpaca does not reject a
+DAY order placed after the bell — it **queues it for the next open**. So an
+overrun never fails loudly; it silently converts a same-close fill into a
+next-open one, across an overnight gap no gate ever modelled.
+
+**Diagnose — the timing is already in the ledger:**
+```bash
+grep cycle_timing memory/ledger.jsonl | tail -5
+```
+Long `duration_s` with a normal start ⇒ the cycle got slower; look for broker
+socket hangs (`Connection aborted`) in `logs/agent.log` — that is what cost
+2026-08-05 its 7.72 minutes. Short `duration_s` but small `margin_min` ⇒ the
+cycle STARTED late; check whether the laptop was asleep and launchd fired
+backlogged jobs together, as on 2026-07-30.
+
+**Fix.** None in code yet, deliberately. A hard cutoff that refuses to submit
+near the bell is a behaviour change, and refusing an exit is not obviously safer
+than filling it late. Treat a repeat as the signal to take Phase 4 (broker
+retry/backoff) or to move the cycle earlier.
+
+---
+
+## "log rotation failed"
+
+**Symptom:** an alert from `run_rotate_logs.sh`; `logs/` keeps growing.
+
+**Run it by hand:**
+```bash
+sh scripts/rotate_logs.sh
+```
+
+**What it does.** Daily 17:05, every day. Any file over 5 MB is **copied** to
+`.1` then **truncated in place**, keeping 5 generations. `copytruncate`, not
+rename, and that is load-bearing: four separate processes write
+`logs/agent.log`, so renaming would leave three of them appending into an
+orphaned inode. Truncating in place keeps the inode and they carry on. It is
+also the only mechanism that can bound `cron.log` and `launchd.err.log`, which
+are written by shell redirects and by launchd rather than by Python.
+
+**Not urgent unless it is.** Steady growth is ~17 KB/trading-day, so 10 MB is
+~2.3 years out. What this defends against is a crash loop — `agent.jsonl` once
+grew 144 KB in one day, 9× its median.
 
 ---
 

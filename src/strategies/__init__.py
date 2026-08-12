@@ -7,14 +7,24 @@ section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
 from strategies import (ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol,
-                        reclaim)
+                        reclaim, hi52, swing_sectors, trend_hold, tom_tilt,
+                        vol_lever, gem)
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
-# Registered != enabled. `lowvol` (§32, 2026-07-27) ships DISABLED and stays
-# that way unless its pre-registered gate passes; being in this dict only means
-# a config MAY name it.
+# Registered != enabled. `lowvol` (§32, 2026-07-27) and `hi52` (§59,
+# 2026-08-10) both ship DISABLED and stay that way unless a pre-registered gate
+# passes; being in this dict only means a config MAY name it.
+#
+# EVERY MODULE HERE MUST HAVE A `config.yaml` BLOCK. `strategy_params` returns
+# None without one and `generate` answers `hold "no config for strategy <n>"` —
+# so an unconfigured module is UNREACHABLE while looking registered. `lowvol`
+# was in exactly that state from §32 until §58 found it, and its own test
+# passed the whole time by asserting only that it was not enabled.
+# `test_registry_is_reachable.py` is what stops that recurring.
 REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
-                                donchian, lowvol, reclaim)}
+                                donchian, lowvol, reclaim, hi52,
+                                swing_sectors, trend_hold, tom_tilt,
+                                vol_lever, gem)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
@@ -36,10 +46,30 @@ def strategy_params(cfg: dict, name: str) -> dict | None:
 #: Value of a strategy's `universe:` key meaning "the `sectors:` map".
 SECTORS_UNIVERSE = "sectors"
 
+#: Value of a strategy's `universe:` key meaning "the `sector_etfs:` list" —
+#: the SPDR sector funds themselves, one per sector. A separate key rather
+#: than a filter over `etfs:` because `etfs:` also carries the broad-market
+#: funds (SPY, QQQ, DIA, IWM), and a sector-value ranking that contains the
+#: whole market as a member is measuring itself against itself.
+SECTOR_ETFS_UNIVERSE = "sector_etfs"
+
+#: §64 single-symbol universe (the `spy_only:` list) and the GEM rotation legs
+#: (the `gem_legs:` list). Separate keys, not filters over `etfs:`, for the
+#: sector_etfs reason above: each names EXACTLY the instruments its strategy's
+#: evidence record is about, and nothing else can drift in through a config
+#: edit elsewhere.
+SPY_ONLY_UNIVERSE = "spy_only"
+GEM_LEGS_UNIVERSE = "gem_legs"
+
 
 def sector_universe(cfg: dict) -> set:
     """Every symbol named anywhere in config's `sectors:` block."""
     return {s for syms in (cfg.get("sectors") or {}).values() for s in (syms or ())}
+
+
+def sector_etf_universe(cfg: dict) -> set:
+    """The symbols in config's `sector_etfs:` list."""
+    return set(cfg.get("sector_etfs") or ())
 
 
 def excluded_etfs(cfg: dict, name: str) -> set:
@@ -93,6 +123,12 @@ def universe_for(cfg: dict, name: str) -> set:
         base = set(cfg.get("symbols") or ())
     elif key == SECTORS_UNIVERSE:
         base = sector_universe(cfg)
+    elif key == SECTOR_ETFS_UNIVERSE:
+        base = sector_etf_universe(cfg)
+    elif key == SPY_ONLY_UNIVERSE:
+        base = set(cfg.get("spy_only") or ())
+    elif key == GEM_LEGS_UNIVERSE:
+        base = set(cfg.get("gem_legs") or ())
     else:
         return set()
     # Subtracted HERE, at the entries-only boundary, rather than inside
@@ -131,11 +167,28 @@ def enabled(cfg: dict) -> list[tuple[str, dict]]:
 def max_lookback_bars(cfg: dict) -> int:
     """Bars to fetch per symbol: enough for every enabled strategy, plus any
     disabled strategy that may still own an open position (exits keep
-    working after a strategy is disabled), floored by the legacy setting."""
+    working after a strategy is disabled), floored by the legacy setting.
+
+    RAILS COUNT TOO, and until §58 they did not. Every strategy declares its own
+    `required_lookback` and the shipped config's answer is 253 — set by the
+    DISABLED xsmom, since a disabled strategy's exits still need history. But
+    `risk.contraction_blocked` needs 272, and a rail handed less than it needs
+    does not raise. It returns None, FAILS OPEN, and permits every entry. The
+    filter would appear in config, appear in the census key list, be called on
+    every signal, and block nothing: a check that cannot fail, which `ci.yml`
+    names as worse than no check at all.
+
+    `risk.extra_lookback_bars` returns 0 while the knob is unset, so the shipped
+    configuration's answer is unchanged and provably so — `test_contraction.py`
+    pins both the 253 and the 272.
+    """
     floor = cfg.get("strategy", {}).get("lookback_bars", 100)
     needs = [REGISTRY[name].required_lookback(params)
              for name, params in _config_map(cfg).items() if name in REGISTRY]
-    return max([floor] + needs)
+    # Local import: risk imports strategies.base, so a module-level import here
+    # would close the cycle strategies -> risk -> strategies.base -> strategies.
+    from risk import extra_lookback_bars
+    return max([floor, extra_lookback_bars(cfg)] + needs)
 
 
 def generate(name: str, symbol: str, bars: list[dict], cfg: dict,

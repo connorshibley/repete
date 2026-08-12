@@ -25,6 +25,65 @@ import ranking
 import regime as regime_mod
 
 
+# The label `Memory.knowledge_block()` prefixes to the file's text. It sits
+# OUTSIDE the slice, so the block's real footprint is its budget plus this.
+KNOWLEDGE_LABEL_CHARS = 66
+
+# Every block of the judge prompt, in assembly order.
+CONTEXT_BLOCKS = ("book", "trades", "lessons", "knowledge", "market_context",
+                  "news_memory", "scoreboard", "calibration", "regime")
+
+
+def context_budgets(cfg: dict) -> dict[str, int | None]:
+    """Chars each block of the judge prompt may occupy. `None` = unbounded.
+
+    A module function, not just a method, so `preflight` can check the
+    arithmetic without constructing a `Memory` — preflight is pure by design
+    and building one would open the lesson and judgment stores.
+
+    Reads each block's budget from wherever its feature lives: `knowledge` and
+    `news_memory` already had their own homes and keep them; the rest are named
+    under `learning.context_budgets`.
+    """
+    lcfg = cfg.get("learning") or {}
+    total = lcfg.get("max_context_chars", 4000)
+    named = lcfg.get("context_budgets") or {}
+    news = cfg.get("news") or {}
+
+    def cfg_or(key, fallback):
+        return int(named[key]) if named.get(key) else fallback
+
+    knowledge = int((cfg.get("llm") or {}).get("knowledge_max_context_chars")
+                    or total // 4)
+    return {
+        # Previously unbudgeted. `max_open_positions: 0` means UNCAPPED (§29),
+        # so the book can list every name in the universe — the largest block
+        # in the prompt was the one nobody had bounded.
+        "book": cfg_or("book", None),
+        "trades": cfg_or("trades", None),
+        "lessons": cfg_or("lessons", total // 2),
+        "knowledge": knowledge + KNOWLEDGE_LABEL_CHARS,
+        "market_context": cfg_or("market_context", total // 4),
+        "news_memory": int((news.get("memory") or {}).get(
+            "max_context_chars") or 600),
+        "scoreboard": cfg_or("scoreboard", total // 4),
+        "calibration": cfg_or("calibration", None),
+        "regime": cfg_or("regime", None),
+    }
+
+
+def budget_overage(cfg: dict) -> int:
+    """How far the named budgets exceed the total. 0 when they fit.
+
+    Unbounded blocks contribute nothing, so this is a LOWER bound — a config
+    that leaves the book unbudgeted can still overflow without this noticing,
+    which is why the runtime `context_evicted` event exists beside it.
+    """
+    b = context_budgets(cfg)
+    total = (cfg.get("learning") or {}).get("max_context_chars", 4000)
+    return max(0, sum(v for v in b.values() if v is not None) - total)
+
+
 class Memory:
     def __init__(self, cfg: dict, ledger: Ledger):
         self.cfg = cfg["memory"]
@@ -121,8 +180,102 @@ class Memory:
             keep_ids.add(id(t))
         return [t for t in ranked if id(t) in keep_ids][:n]
 
+    def budgets(self) -> dict[str, int | None]:
+        """Chars each block of the judge prompt may occupy. `None` = unbounded.
+
+        THE SINGLE SOURCE OF TRUTH, and the fix for a bug that ran for months.
+        Three of these used to be DERIVED SHARES of the total — lessons at
+        `// 2`, market context and the scoreboard at `// 4` each. That is
+        exactly 100% of the cap between them, before knowledge, news memory,
+        the book, the trade block, calibration or the regime label got
+        anything. The oversubscription was scale-invariant: doubling the total
+        left it at exactly 100%.
+
+        It was not theoretical. Measured 2026-08-11 against the live memory
+        files, `context_for_llm` assembled 5,613 chars against a 4,000 cap and
+        the bare `ctx[:4000]` at the end dropped NEWS MEMORY, YOUR LAST
+        RESOLVED CALLS, YOUR RECENT CALIBRATION and CURRENT REGIME entirely,
+        cutting TODAY'S MARKET CONTEXT mid-word. Silently, on every judge call,
+        with no marker in the prompt and no test that could fail. §61.
+
+        Naming a budget must not CHANGE it. Every block that had one keeps its
+        old value as the fallback, and the four that had none fall back to
+        `None` rather than to a number — an unset config is byte-identical to
+        before, which is the rollback path and is pinned by
+        `test_an_unset_config_is_byte_identical`.
+        """
+        return context_budgets({"learning": self.lcfg, "llm": self.llm_cfg,
+                                "news": self.news_cfg})
+
+    def budget_overage(self) -> int:
+        """How far the named budgets exceed the total. 0 when they fit."""
+        return budget_overage(
+            {"learning": self.lcfg, "llm": self.llm_cfg, "news": self.news_cfg})
+
+    def budget_unbounded(self) -> list[str]:
+        """Blocks with no budget, and therefore no share this can guarantee."""
+        return sorted(k for k, v in self.budgets().items() if v is None)
+
+    # Headings in assembly order, so an eviction can name what it dropped
+    # rather than reporting a character count nobody can act on.
+    _BLOCK_MARKERS = (
+        ("book", "CURRENT BOOK"),
+        # Matches BOTH headers: "MOST SIMILAR PAST CLOSED TRADES" when a live
+        # signal is present, "RECENT CLOSED TRADES" for the balanced sample.
+        ("trades", "CLOSED TRADES"),
+        ("lessons", "VALIDATED LESSONS"),
+        ("knowledge", "KNOWLEDGE (external"),
+        ("market_context", "TODAY'S MARKET CONTEXT"),
+        ("news_memory", "NEWS MEMORY"),
+        ("scoreboard", "YOUR LAST RESOLVED"),
+        ("calibration", "YOUR RECENT CALIBRATION"),
+        ("regime", "CURRENT REGIME"),
+    )
+
+    def _evicted_blocks(self, ctx: str, cap: int) -> list[str]:
+        """Which blocks the final cap removes or cuts. Present-then-gone only.
+
+        A block absent from the UNCUT context was never there to lose — a flat
+        book has no CURRENT BOOK block, and reporting that as an eviction would
+        cry wolf on the ordinary case.
+        """
+        lost = []
+        for name, marker in self._BLOCK_MARKERS:
+            at = ctx.find(marker)
+            if at < 0:
+                continue
+            if at >= cap:
+                lost.append(name)
+            elif at + len(marker) < len(ctx) and cap < len(ctx):
+                # Present but the cut lands inside it.
+                nxt = min((ctx.find(m, at + 1) for _, m in self._BLOCK_MARKERS
+                           if ctx.find(m, at + 1) > 0), default=len(ctx))
+                if cap < nxt:
+                    lost.append(f"{name} (cut)")
+        return lost
+
+    def _record_eviction(self, ctx: str, cap: int) -> None:
+        """Ledger the fact that the judge did not see everything it was given.
+
+        This is the signal whose absence let four blocks go missing for months:
+        `ctx[:cap]` returned happily, nothing marked the prompt, and the only
+        symptom was worse judgments. Never raises — it sits on the path to every
+        judge call, and `alerting.py`'s rule is that observability must not be
+        able to break trading.
+        """
+        try:
+            self.ledger.log_context_eviction(
+                cap=cap,
+                assembled_chars=len(ctx),
+                blocks_lost=self._evicted_blocks(ctx, cap),
+                budget_overage=self.budget_overage(),
+                unbounded_blocks=self.budget_unbounded(),
+            )
+        except Exception:  # noqa: BLE001 — observability never breaks a review
+            pass
+
     def knowledge_budget(self) -> int:
-        """Chars this block may occupy.
+        """Chars the principles TEXT may occupy, before the label.
 
         Its OWN budget as of 2026-08-04, defaulting to the historical
         `learning.max_context_chars // 4` so an unset config is byte-identical
@@ -131,11 +284,12 @@ class Memory:
         principle anyone added would have been silently dropped — the same trap
         `news.memory.max_context_chars` was given its own budget to avoid.
 
-        DELIBERATELY NOT RAISED. `context_for_llm` caps the WHOLE block at
-        `learning.max_context_chars`, and the sub-budgets already oversubscribe
-        it. Knowledge is assembled before the scoreboard, calibration and
-        CURRENT REGIME, so every extra char here comes off the TAIL — widening
-        this block would buy principles by losing the regime label.
+        RAISED 2026-08-11, after the constraint above it was fixed. The old
+        docstring said DELIBERATELY NOT RAISED, and it was right at the time:
+        while the sub-budgets summed to 100% of the cap, every extra char here
+        came off the tail and bought principles by losing the regime label.
+        `budgets()` now names every block and `learning.max_context_chars`
+        covers their sum, so growth here costs the tail nothing. §61.
         """
         fallback = self.lcfg.get("max_context_chars", 4000) // 4
         return int(self.llm_cfg.get("knowledge_max_context_chars") or fallback)
@@ -176,7 +330,7 @@ class Memory:
         flag = (ctx.get("symbol_flags") or {}).get(symbol or "")
         if flag:
             parts.append(f"{symbol} news: {flag}")
-        cap = self.lcfg.get("max_context_chars", 4000) // 4
+        cap = self.budgets()["market_context"]
         return "\n".join(parts)[:cap]
 
     def book_block(self, positions: dict | None,
@@ -195,7 +349,9 @@ class Memory:
             lines.append(f"  {sym}: qty {p.get('qty', 0):g}, value "
                          f"${p.get('market_value', 0):,.0f}, unrealized "
                          f"${p.get('unrealized_pl', 0):+,.0f}")
-        return "\n".join(lines)
+        cap = self.budgets()["book"]
+        text = "\n".join(lines)
+        return text[:cap] if cap else text
 
     def context_for_llm(self, symbol: str | None = None,
                         regime: dict | None = None,
@@ -222,23 +378,30 @@ class Memory:
             lines.append(f"  [{t['result'].upper()}] {t['symbol']} {t['action']} — "
                          f"reason: {t['strategy_reason']} — P&L: {t['pnl_pct']}%")
         trade_block = "\n".join(lines) or "  (no closed trades yet)"
+        budgets = self.budgets()
+        if budgets["trades"]:
+            trade_block = trade_block[:budgets["trades"]]
 
         now = datetime.now(timezone.utc)
         ranked = ranking.top_lessons(self.lessons.replay(), symbol, regime_label,
                                      self.lcfg.get("top_k_lessons", 8), now,
                                      strategy=strategy)
         lesson_block = ranking.format_lessons_block(
-            ranked, regime_label, self.lcfg.get("max_context_chars", 4000) // 2)
+            ranked, regime_label, budgets["lessons"])
 
         replayed = self.judgments.replay()
         calib = calibration_line(calibration_metrics(replayed))
-        scoreboard = recent_outcomes_block(
-            replayed, 20)[:self.lcfg.get("max_context_chars", 4000) // 4]
+        if budgets["calibration"]:
+            calib = calib[:budgets["calibration"]]
+        scoreboard = recent_outcomes_block(replayed, 20)[:budgets["scoreboard"]]
 
         knowledge = self.knowledge_block()
         news = self.market_context_block(symbol)
         recall = self.news_memory_block(symbol)
         book = self.book_block(positions, account)
+        regime_desc = regime_mod.describe(regime)
+        if budgets["regime"]:
+            regime_desc = regime_desc[:budgets["regime"]]
         ctx = ((f"{book}\n\n" if book else "")
                + f"{header}\n"
                f"{trade_block}\n\n"
@@ -249,8 +412,11 @@ class Memory:
                + (f"{recall}\n\n" if recall else "")
                + (f"{scoreboard}\n\n" if scoreboard else "")
                + f"{calib}\n"
-               f"CURRENT REGIME: {regime_mod.describe(regime)}")
-        return ctx[:self.lcfg.get("max_context_chars", 4000)]
+               f"CURRENT REGIME: {regime_desc}")
+        cap = self.lcfg.get("max_context_chars", 4000)
+        if len(ctx) > cap:
+            self._record_eviction(ctx, cap)
+        return ctx[:cap]
 
     def news_memory_block(self, symbol: str | None = None) -> str:
         """Accumulated news history for this symbol (W7), distinct from

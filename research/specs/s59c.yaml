@@ -1,0 +1,184 @@
+# §59c — 2014-2019 — the late-cycle bull
+#
+# SIXTEEN SPECS IN ONE REGISTRATION. s58a-h and s59a-h are written and frozen
+# TOGETHER, before any of them is run. That convention (§41, §44, §48, §57) is
+# not optional here and the reason is specific: this registration spans TWO
+# universes, so the temptation is not merely to pick a flattering period but to
+# report the flattering UNIVERSE. Committing all sixteen removes both choices.
+#
+# THERE IS NOWHERE LEFT TO REGISTER AN EDGE CLAIM, and that is why this is a
+# DIAGNOSTIC rather than a compromise.
+#
+#   data/snapshots/  EDGE frozen by §52 — every snapshot there is built from
+#                    CURRENT index membership, sized at up to +130pp by §48 and
+#                    large enough to explain this project's only EDGE pass.
+#   data/pit/        EDGE closed by §57's OWN pre-committed reading rule. The
+#                    certified universe was built in Phase 10 precisely so an
+#                    EDGE claim would have somewhere honest to live; §57 then
+#                    ran the incumbent on it and lost to SPY in four periods of
+#                    four, and the rule frozen before that run says a 3-of-4
+#                    failure "licenses no further EDGE registration on this
+#                    universe".
+#
+# Honouring a rule only when its outcome is convenient is the selection this
+# apparatus exists to prevent. Both refusals are now executed by
+# `register_gate.freeze_violation`, so this is checked rather than remembered.
+#
+# A DIAGNOSTIC spends no Bonferroni budget and K STAYS 15. It decides nothing
+# and can enable nothing. Only the owner enables a strategy (CLAUDE.md
+# invariant 2).
+#
+# WHAT THIS TESTS. 52-week-high proximity (George & Hwang, Journal of Finance
+# 2004): rank the universe by `close / max(high, 252 bars)`, buy the quarter
+# nearest their own highs, exit when a holding leaves the top half. A name must
+# also be within 10% of its high in absolute terms, so the rule cannot buy the
+# least-broken member of a broken universe.
+#
+# WHY THIS AND NOT MORE MOMENTUM. §35 and §37 tested cross-sectional momentum
+# and it was rejected hard — −23% to −26% on 2007-2013, "SIGNIFICANTLY WORSE" at
+# −$169.18 per trade. This is not a variation on that ranking; it is the paper
+# that says that ranking is the wrong one. George & Hwang found nearness to the
+# 52-week high SUBSUMES a large share of momentum profits, and does so without
+# the long-run reversal that makes momentum expensive to hold. The two arms
+# differ in the STATISTIC and in nothing else: `buy_top_fraction` and
+# `exit_below_fraction` are copied from xsmom rather than chosen.
+#
+# ARGUED AGAINST IN ADVANCE. §35's prior applies with full force — a rule
+# published twenty-two years ago has had two decades to be arbitraged away, and
+# that prior was CORRECT about Jegadeesh-Titman. It is registered because it is
+# pre-specified, not because it is likely.
+#
+# THE ARM CARRIES `replace: symbols`. Without it, seven of the fifteen funds
+# would be loaded, priced, and NEVER TRADED: `strategies.universe_for` defaults
+# to `cfg["symbols"]`, which lists only eight of them, and the omission is
+# silent — no error, no log line, visible only as a smaller signal denominator.
+id: s59c
+claim: DIAGNOSTIC
+title: "52-week-high proximity on the certified ETF universe (2014-2019)"
+
+# Judge ON, matching live and matching §43/§48/§57. The judge cuts a large
+# share of live buys; scoring without it measures a bot that does not ship.
+judge_model: true
+
+snapshot:
+  path: data/pit/bars_etf_2014-01-01_2019-12-31.json.gz
+  sha256: 847a1ec84edaa40e98f829980c83b0c7466c6e328d13bd350a2626340e4dbdaa
+
+cash: 100000.0
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - XLRE
+        - XLC
+        - SPY
+        - DIA
+        - QQQ
+        - IWM
+    set:
+      strategies.hi52.exclude_etfs: false
+  - name: hi52on
+    replace:
+      symbols:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - XLRE
+        - XLC
+        - SPY
+        - DIA
+        - QQQ
+        - IWM
+    set:
+      strategies.hi52.enabled: true
+      strategies.hi52.exclude_etfs: false
+
+clauses:
+  - {id: a, rule: min_trades, n: 30}
+
+  - {id: b, rule: pf_gt_baseline}
+
+  # The survivorship-free bar. SPY is INSIDE the certified universe, so it
+  # scores rather than silently skipping — an absent benchmark FAILS loudly.
+  - {id: c, rule: beats_benchmark_symbol, symbol: SPY}
+
+  - {id: d, rule: significantly_better_paired}
+
+prior: >-
+  Expected to fail. EDGE stands at 1 pass in 15 and the one pass was explained
+  away by survivorship. Nothing about a published anomaly's pedigree survives
+  the fact that it is published: §35 predicted exactly this for
+  Jegadeesh-Titman and was right.
+
+  What is different is not the probability. It is that the certified arms
+  (a-d) are the first time a NEW strategy has been scored against a benchmark
+  that is not inflated. Every one of the fifteen rejections carried the
+  ambiguity that the bot might have been losing to an index that never
+  existed; §57 removed that excuse for the incumbent, and these arms remove it
+  for a candidate.
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, across s59a-h taken together:
+  (1) the CERTIFIED family (a-d) is the interpretable one. Failing clause (b)
+  or (c) in three or more of its four periods resolves against the strategy,
+  and `hi52` stays disabled;
+  (2) on the 38-name family (e-h), §50's asymmetry governs — a FAIL is
+  decisive, a PASS is not;
+  (3) NO outcome licenses an EDGE registration on either universe, for the
+  reasons in the header. A DIAGNOSTIC pass would be a reason to seek a
+  certified STOCK source (priced at USD 630/yr in docs/data_vendors.md and
+  deliberately not purchased), never a reason to enable anything;
+  (4) any other split is INDETERMINATE and licenses nothing.
+
+failure_modes:
+  - >-
+    THE CERTIFIED UNIVERSE IS FIFTEEN SECTOR FUNDS, NOT THE LIVE BOOK. A
+    cross-sectional rule over fifteen ETFs is a SECTOR ROTATION strategy, and
+    George & Hwang studied individual equities. Whatever a-d measure, it is a
+    result about rotating between sectors, and it does not transfer to the
+    38-name book by itself. That is why e-h exist and why their own limitation
+    is stated above rather than left to be discovered.
+  - >-
+    `buy_top_fraction: 0.25` OF FIFTEEN IS THREE OR FOUR NAMES. The
+    cross-section is small enough that one fund entering or leaving the top
+    quarter is a large fraction of the signal, and the earliest period has
+    thirteen. §48's finding applies: twenty positions were only three to six
+    independent bets, and this is smaller still.
+  - >-
+    THE ARMS MUST SET `exclude_etfs: false` ON THE CERTIFIED UNIVERSE, and the
+    failure if they do not is silent rather than loud. `etfs:` names eight of
+    the fifteen funds, so the ranking would shrink to 7 of 15 — and 5 of 13 in
+    the earliest period — losing SPY, which is the benchmark clause (c) scores
+    against. It does not empty and it does not raise: n stays above the `< 4`
+    guard, so the strategy runs, reports trades, and quietly means "the best 1
+    of 7" instead of "the best 3 of 15". Pinned by `tests/test_hi52.py`.
+  - >-
+    THE MANDATES WERE REMAPPED. The original nine funds were defined on the
+    older S&P sector scheme and moved onto GICS in the early 2000s — XLV was
+    "Consumer Services" before it was "Health Care". The FUND is continuous and
+    no survivorship is introduced, but a rotation result in 2000-2006 is
+    rotating between slightly different things than the same tickers name today.
+  - >-
+    THE EARNINGS BLACKOUT IS UNMODELLED — divergence #19, harmless on ETFs and
+    not harmless on the 38-name arms.
+  - >-
+    A PASS WOULD NOT BE AN EDGE. It would say one candidate beat one baseline on
+    one universe over one period family, on a simulator with six open
+    divergences against live. The live forward record — ten closed trades,
+    realized -$339.16 — is untouched by anything here.

@@ -135,6 +135,169 @@ def test_drill_fails_on_cleanly_truncated_archive(tmp_path):
     assert any("truncated" in f for f in fails), fails
 
 
+# ---- content hashes (2026-08-06) ------------------------------------------
+
+def test_manifest_carries_a_sha256_per_stream(tmp_path):
+    root = _fixture_root(tmp_path, n_records=5)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    with tarfile.open(archive) as t:
+        man = json.load(t.extractfile("backup_manifest.json"))
+    assert set(man["sha256"]) == {"ledger.jsonl", "lessons.jsonl"}
+    # and the recorded hash is the real one, not a placeholder
+    assert man["sha256"]["ledger.jsonl"] == restore_drill.sha256_of(
+        str(root / "memory" / "ledger.jsonl"))
+
+
+def test_drill_catches_corruption_that_preserves_count_and_json(tmp_path):
+    """The gap the hashes close.
+
+    Counts and parseability both survive a byte flipped INSIDE a value, so
+    every check the drill had before today passes on this archive. Only the
+    content hash sees it. Run without live_memory so the prefix check cannot
+    take the credit.
+    """
+    root = _fixture_root(tmp_path, n_records=5)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+
+    def _flip(work):
+        p = work / "memory" / "ledger.jsonl"
+        p.write_text(p.read_text().replace('"event": "e"', '"event": "X"', 1))
+
+    bad = _repack_with(archive, tmp_path, _flip)
+    fails = restore_drill.drill(bad)                    # no live comparison
+    assert any("content hash" in f for f in fails), fails
+    # prove the OLD checks would have missed it
+    assert not any("unparseable" in f or "truncated" in f for f in fails), fails
+
+
+def test_an_archive_without_hashes_still_passes(tmp_path):
+    """Archives written before 2026-08-06 have no sha256 block. Refusing them
+    would discard the only backup history that exists."""
+    root = _fixture_root(tmp_path, n_records=5)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+
+    def _strip_hashes(work):
+        p = work / "backup_manifest.json"
+        doc = json.loads(p.read_text())
+        doc.pop("sha256", None)
+        p.write_text(json.dumps(doc))
+
+    old = _repack_with(archive, tmp_path, _strip_hashes)
+    assert restore_drill.drill(old, live_memory=str(root / "memory")) == []
+
+
+# ---- the prefix property (2026-08-06) --------------------------------------
+
+def test_drill_catches_a_rewritten_history(tmp_path):
+    """Live must only ever have GROWN. A changed historical record means the
+    append-only promise was broken — by corruption or by a hand-edit."""
+    root = _fixture_root(tmp_path, n_records=5)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    p = root / "memory" / "ledger.jsonl"
+    # same byte length, same record count, still valid JSON — only the
+    # prefix test can see this
+    p.write_text(p.read_text().replace('"event": "e"', '"event": "X"', 1))
+    fails = restore_drill.drill(archive, live_memory=str(root / "memory"))
+    assert any("not a prefix of live" in f for f in fails), fails
+
+
+def test_live_growing_past_the_archive_is_not_a_failure(tmp_path):
+    """The control. An archive is SUPPOSED to lag live; if this ever fails the
+    prefix check has become a false alarm that would be switched off."""
+    root = _fixture_root(tmp_path, n_records=5)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    with open(root / "memory" / "ledger.jsonl", "a") as f:
+        for i in range(5, 9):
+            f.write(json.dumps({"type": "event", "event": "e", "i": i}) + "\n")
+    assert restore_drill.drill(archive, live_memory=str(root / "memory")) == []
+
+
+# ---- the off-host mirror (2026-08-06) --------------------------------------
+
+def test_backup_mirrors_off_host_byte_for_byte(tmp_path, monkeypatch):
+    off = tmp_path / "off"
+    monkeypatch.setenv("REPETE_OFFHOST_DIR", str(off))
+    root = _fixture_root(tmp_path)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    mirror = off / os.path.basename(archive)
+    assert mirror.exists(), "the archive never reached the off-host directory"
+    assert (restore_drill.sha256_of(str(mirror))
+            == restore_drill.sha256_of(archive))
+
+
+def test_drill_fails_when_the_off_host_copy_is_missing(tmp_path, monkeypatch):
+    """'The mirror silently stopped' is the failure this whole phase exists to
+    make loud."""
+    off = tmp_path / "off"
+    monkeypatch.setenv("REPETE_OFFHOST_DIR", str(off))
+    root = _fixture_root(tmp_path)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    os.remove(off / os.path.basename(archive))
+    fails, _ = restore_drill.check_offhost(archive, str(off))
+    assert any("off-host copy missing" in f for f in fails), fails
+
+
+def test_drill_fails_when_the_off_host_copy_differs(tmp_path, monkeypatch):
+    off = tmp_path / "off"
+    monkeypatch.setenv("REPETE_OFFHOST_DIR", str(off))
+    root = _fixture_root(tmp_path)
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    (off / os.path.basename(archive)).write_bytes(b"truncated")
+    fails, _ = restore_drill.check_offhost(archive, str(off))
+    assert any("differs from local" in f for f in fails), fails
+
+
+def test_off_host_check_skips_loudly_when_none_resolves(tmp_path, monkeypatch):
+    """On CI there is no iCloud. It must not fail — and it must not pass in
+    silence either, which is the trap ci.yml already names."""
+    monkeypatch.setenv("REPETE_OFFHOST_DIR", "")
+    assert restore_drill.offhost_dir() is None
+    fails, note = restore_drill.check_offhost("whatever.tar.gz", None)
+    assert fails == []
+    assert "SKIPPED" in note
+
+
+def test_off_host_prunes_to_30_not_14(tmp_path, monkeypatch):
+    """The durable copy keeps more history than the local one."""
+    off = tmp_path / "off"
+    off.mkdir()
+    for i in range(40):
+        (off / f"agent-backup-202601{i:02d}-000000.tar.gz").write_bytes(b"x")
+    monkeypatch.setenv("REPETE_OFFHOST_DIR", str(off))
+    root = _fixture_root(tmp_path)
+    assert _run_backup(root).returncode == 0
+    assert len([p for p in os.listdir(off) if p.endswith(".tar.gz")]) == 30
+
+
+def test_archive_carries_no_appledouble_sidecars(tmp_path):
+    """macOS tar writes `._ledger.jsonl` beside any file with an xattr. The
+    drill's extractall(filter='data') drops them, but the runbook's manual
+    restore uses system tar and would copy them into live memory/."""
+    root = _fixture_root(tmp_path)
+    target = str(root / "memory" / "ledger.jsonl")
+    # Give the file a real extended attribute, or macOS tar has no reason to
+    # emit a sidecar and the test would pass without proving anything.
+    if sys.platform == "darwin":
+        subprocess.run(["xattr", "-w", "com.apple.test", "x", target],
+                       check=False, capture_output=True)
+    elif hasattr(os, "setxattr"):
+        os.setxattr(target, "user.test", b"x")
+    assert _run_backup(root).returncode == 0
+    archive = restore_drill.newest_backup(str(root / "backups"))
+    with tarfile.open(archive) as t:
+        sidecars = [n for n in t.getnames()
+                    if os.path.basename(n).startswith("._")]
+    assert sidecars == [], sidecars
+
+
 def test_drill_accepts_sqlite_only_archive(tmp_path):
     """A sqlite deployment has no .jsonl streams — that must not be a failure."""
     import sqlite3

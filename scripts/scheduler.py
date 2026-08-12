@@ -42,6 +42,12 @@ MARK_HOURS = range(10, 16)
 # BEFORE JOBS, which references them in its literal.
 RETRY_HOURS = range(9, 16)
 RETRY_MINUTES = (0, 15, 30, 45)
+# swing-scan: every 30 min at :05/:35 across the session, matching
+# com.trading-agent.swingscan.plist entry for entry. The 9:05 firing is
+# PRE-OPEN on purpose: Broker.market_open() fails closed, so it costs one
+# clock read and proves the closed-market guard every trading day.
+SCAN_HOURS = range(9, 16)
+SCAN_MINUTES = (5, 35)
 JOBS = [
     ("news-brain",   range(0, 5), None, 25, [PY, "src/market_context.py"]),
     ("plan-post",    range(0, 5), 9,    35,
@@ -91,6 +97,13 @@ JOBS = [
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
     ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),
+    # Log rotation (2026-08-06). EVERY day, unlike backup: what this guards is
+    # a crash loop filling a disk, and that does not wait for a session. It
+    # belongs here as well as on launchd because docker-compose bind-mounts
+    # ./logs, so the container writes the same agent.log and agent.jsonl to a
+    # real volume. cron.log has no container equivalent — scheduler.py logs to
+    # stdout — and rotate_logs.sh simply skips files that are not there.
+    ("logrotate",    range(0, 7), 17,   5,  ["sh", "scripts/rotate_logs.sh"]),
     # §47 random-entry decay monitor. Sunday 11:30 ET, matching
     # com.trading-agent.decaycheck.plist — after the week's trading is closed
     # out and before the next week opens. ALERT-ONLY: it cannot halt trading
@@ -105,6 +118,15 @@ JOBS = [
     # exist, which is why it can afford to fire this often.
     ("flatten-retry", range(0, 5), RETRY_HOURS, RETRY_MINUTES,
      [PY, "src/flatten_recovery.py"]),
+    # Intraday swing opportunity scan (2026-08-11, owner: act on opportunity,
+    # not the clock). AT MOST one gated long per pass, and only when a live
+    # quote sits inside a zone precomputed from COMPLETED daily bars — the
+    # conditions live in strategies/swing_sectors.assess(), the pipeline in
+    # src/swing_scan.py, and §19a stands (no forming-bar inputs anywhere).
+    # Ships inert: swing_sectors is enabled: false until §62, so every pass
+    # is a dry run that ledgers candidates and places nothing.
+    ("swingscan", range(0, 5), SCAN_HOURS, SCAN_MINUTES,
+     [PY, "src/swing_scan.py"]),
 ]
 # news-brain runs hourly at :25 between these ET hours (market-day awareness)
 NEWS_HOURS = range(9, 16)

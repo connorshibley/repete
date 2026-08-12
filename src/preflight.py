@@ -125,6 +125,38 @@ def run(cfg: dict) -> list[str]:
                 f"this rail would otherwise size orders off a number the "
                 f"account cannot back")
 
+    # The universe floor is a FRACTION, not a percentage, and the two are one
+    # keystroke apart. `0.8` blocks entries below 80% of the requested
+    # cross-section; `80` blocks every cycle ever, and `-1` can never fire.
+    # Both mistakes read as a configured rail while being the opposite of one,
+    # which is the failure mode this file exists for.
+    v = r.get("min_universe_fraction")
+    if v is not None and (not isinstance(v, (int, float))
+                          or isinstance(v, bool) or v < 0 or v > 1):
+        fails.append(
+            f"risk.min_universe_fraction must be a fraction between 0 and 1 "
+            f"({v!r}) — it is the share of REQUESTED symbols that must have "
+            f"usable bars before entries are allowed, not a percentage. Above "
+            f"1 blocks every cycle; below 0 can never fire. Use 0 to disable.")
+
+    # Broker resilience. Not in `risk` because these bound how long the bot
+    # waits and retries, not what it is allowed to trade.
+    o = cfg.get("ops") or {}
+    if isinstance(o, dict):
+        for key, why in (
+            ("broker_timeout_sec",
+             "it is the socket timeout; 0 restores the 2026-08-05 hang"),
+            ("broker_retry_attempts",
+             "it is how many EXTRA attempts a failed read gets"),
+            ("broker_retry_budget_sec",
+             "it bounds total retry time per cycle against the 16:00 close"),
+        ):
+            v = o.get(key)
+            if v is not None and (not isinstance(v, (int, float))
+                                  or isinstance(v, bool) or v < 0):
+                fails.append(
+                    f"ops.{key} must be a non-negative number ({v!r}) — {why}")
+
     # The kill switch's recovery budget. A typo here does not stop the bot, but
     # it decides how long an AUTOMATIC LIQUIDATION keeps retrying after the
     # daily-loss rail fired. Worth failing loudly on rather than falling back
@@ -358,7 +390,39 @@ def run(cfg: dict) -> list[str]:
             fails.append(f"strategies.{sname}.exclude_etfs is set but no etfs: "
                          f"list is configured — nothing would be excluded")
 
-    known_universes = {None, strategies.SECTORS_UNIVERSE}
+    # ---- the sector-ETF list, the `sector_etfs` universe ----
+    #
+    # DELIBERATELY NOT required to be inside `symbols:`. `symbols:` is the
+    # CORE universe — the 38 names the three enabled strategies were gated on —
+    # and the whole point of a per-strategy universe (see `sectors:` above) is
+    # to add names WITHOUT widening it. Forcing membership here would make
+    # adding one sector fund a live behaviour change to three gated strategies.
+    #
+    # What IS convicted is the silent-failure class: `universe_for` builds a
+    # SET from this list, so a duplicate collapses without a sound, and a fund
+    # that also appears in the stock `sectors:` map would be ranked as a peer
+    # of its own constituents by `reclaim` — the §49 category error (a basket
+    # is not a peer of the names it is made of) arriving through a config edit.
+    setfs = cfg.get("sector_etfs")
+    if setfs is not None:
+        if not isinstance(setfs, list) or not setfs:
+            fails.append("sector_etfs must be a non-empty list of symbols")
+        else:
+            if len(set(setfs)) != len(setfs):
+                fails.append("sector_etfs contains a duplicate symbol")
+            stock_sectors = {s for syms in (cfg.get("sectors") or {}).values()
+                             for s in (syms or ())}
+            for s in setfs:
+                if s in stock_sectors:
+                    fails.append(f"sector_etfs lists {s}, which also appears "
+                                 f"in the sectors: stock map — a basket must "
+                                 f"not be ranked as a peer of its own "
+                                 f"constituents (§49)")
+
+    known_universes = {None, strategies.SECTORS_UNIVERSE,
+                       strategies.SECTOR_ETFS_UNIVERSE,
+                       strategies.SPY_ONLY_UNIVERSE,
+                       strategies.GEM_LEGS_UNIVERSE}
     for sname, sparams in (cfg.get("strategies") or {}).items():
         key = (sparams or {}).get("universe")
         if key not in known_universes:
@@ -371,6 +435,18 @@ def run(cfg: dict) -> list[str]:
             fails.append(f"strategies.{sname}.universe is "
                          f"'{strategies.SECTORS_UNIVERSE}' but no sectors: "
                          f"block is configured")
+        if key == strategies.SECTOR_ETFS_UNIVERSE and not cfg.get("sector_etfs"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.SECTOR_ETFS_UNIVERSE}' but no "
+                         f"sector_etfs: list is configured")
+        if key == strategies.SPY_ONLY_UNIVERSE and not cfg.get("spy_only"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.SPY_ONLY_UNIVERSE}' but no "
+                         f"spy_only: list is configured")
+        if key == strategies.GEM_LEGS_UNIVERSE and not cfg.get("gem_legs"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.GEM_LEGS_UNIVERSE}' but no "
+                         f"gem_legs: list is configured")
 
     scfg = (cfg.get("risk") or {}).get("sector_concentration")
     if isinstance(scfg, dict) and scfg.get("enabled"):
@@ -388,7 +464,41 @@ def run(cfg: dict) -> list[str]:
     if os.path.isdir(mem_dir) and not os.access(mem_dir, os.W_OK):
         fails.append(f"memory dir {mem_dir} not writable")
     fails.extend(_ledger_tail_fails(cfg, ledger_path))
+    fails.extend(_state_path_fails(cfg))
 
+    return fails
+
+
+def _state_path_fails(cfg: dict) -> list[str]:
+    """`memory.heartbeat_path` / `memory.halt_path` may only hold their
+    defaults in a process that trades.
+
+    These keys exist so a QA sweep can point `/healthz` at a fixture instead of
+    at whatever sits next to the process (F-14, docs/qa_findings.md). They
+    redirect the MONITORS — `health.status` and `watchdog.check` — and
+    deliberately NOT the trading rail: `risk.check_halt()` keeps its own
+    cwd-relative constant, because a config key able to move the kill switch is
+    a way to disable it, and `scripts/halt.py:80` already settled that question
+    ("a HALT engaged into some other directory is a stop button wired to
+    nothing").
+
+    That split is only safe if it cannot exist while trading. This is the
+    enforcement: refuse the cycle outright rather than run one in which the
+    health check and the kill switch are reading different files. Fail-safe
+    polarity, per this module's docstring.
+    """
+    import statepaths
+    mem = cfg.get("memory") or {}
+    fails = []
+    for key, default in (("heartbeat_path", statepaths.DEFAULT_HEARTBEAT_PATH),
+                         ("halt_path", statepaths.DEFAULT_HALT_PATH)):
+        value = mem.get(key)
+        if value is not None and value != default:
+            fails.append(
+                f"memory.{key} is {value!r}, not the default {default!r} — "
+                f"that key exists to point a health check at a QA fixture, and "
+                f"a cycle must never run with the monitors watching a "
+                f"different file than the kill switch")
     return fails
 
 
@@ -467,3 +577,45 @@ def _last_nonempty_line(path: str) -> str | None:
         return lines[-1].decode("utf-8", "replace") if lines else None
     except OSError:
         return None  # no ledger yet — first run is fine
+
+
+def warnings(cfg: dict) -> list[str]:
+    """Config faults worth SAYING but not worth refusing to trade over.
+
+    Deliberately a separate channel from `run()`. Everything `run()` returns
+    blocks the cycle — it is fail-safe by design and `main.py` treats any
+    entry as fatal. A context budget that oversubscribes its total produces a
+    worse judge prompt, not an unsafe trade, and a config edit must not be able
+    to take the bot down at 09:25.
+
+    Pure, like `run()`: `memory.context_budgets` is a module function precisely
+    so this can do the arithmetic without opening the lesson and judgment
+    stores.
+    """
+    out: list[str] = []
+    try:
+        import memory as memory_mod
+        over = memory_mod.budget_overage(cfg)
+        total = (cfg.get("learning") or {}).get("max_context_chars", 4000)
+        if over:
+            budgets = memory_mod.context_budgets(cfg)
+            named = sum(v for v in budgets.values() if v is not None)
+            # Name the blocks that lose, not just the arithmetic. They are the
+            # ones assembled LAST, because `context_for_llm` slices the tail.
+            at_risk = [b for b in memory_mod.CONTEXT_BLOCKS[-4:]
+                       if budgets.get(b) is not None]
+            out.append(
+                f"learning context budgets oversubscribe their total by "
+                f"{over} chars ({named} budgeted vs max_context_chars "
+                f"{total}) — context_for_llm slices the TAIL, so "
+                f"{', '.join(at_risk)} are what the judge stops seeing. §61.")
+        unbounded = [k for k, v in memory_mod.context_budgets(cfg).items()
+                     if v is None]
+        if unbounded:
+            out.append(
+                f"context blocks with no budget: {', '.join(sorted(unbounded))}"
+                f" — their size is unbounded, so the {total}-char total can "
+                f"still be exceeded without the check above noticing")
+    except Exception as e:  # noqa: BLE001 — a warning must never break startup
+        out.append(f"context budget check failed to run: {e}")
+    return out

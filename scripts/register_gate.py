@@ -70,19 +70,10 @@ FROZEN_SNAPSHOT_DIR = "data/snapshots"
 FROZEN_CLAIMS = ("EDGE",)
 
 
-def freeze_violation(spec: dict) -> str | None:
-    """Why this spec may not be registered, or None if it may.
-
-    Pure and path-based on purpose: it must not depend on the snapshot file
-    being present, so the rule reads the same on a machine that has not
-    downloaded the data.
-    """
-    if spec.get("claim") not in FROZEN_CLAIMS:
-        return None
-    path = (spec.get("snapshot") or {}).get("path", "")
-    if not path.replace("\\", "/").startswith(FROZEN_SNAPSHOT_DIR + "/"):
-        return None
-    return (f"{spec['claim']} claims on {FROZEN_SNAPSHOT_DIR}/ are FROZEN "
+def _s52_reason(claim: str, path: str) -> str:
+    """§52's refusal. NOT to be reworded — `test_edge_freeze.py` asserts on this
+    text, and a control whose message drifts is a control nobody trusts."""
+    return (f"{claim} claims on {FROZEN_SNAPSHOT_DIR}/ are FROZEN "
             f"(§52).\n\n"
             f"  snapshot: {path}\n\n"
             f"Every snapshot there is built from CURRENT index membership, so "
@@ -100,6 +91,80 @@ def freeze_violation(spec: dict) -> str | None:
             f"To proceed anyway:\n"
             f"  register_gate.py <id> --override-freeze \"<why this claim is "
             f"sound regardless>\"")
+
+
+# --------------------------------------------------------------- §57 READING RULE
+#
+# `data/pit/` is the OPPOSITE kind of directory: §56's probe certified that every
+# fund in it returns history from its documented inception unbroken to the
+# present, while correctly refusing to call four known-dead symbols healthy.
+# Nothing there is survivor-selected. It was built, in Phase 10, precisely so an
+# EDGE claim would have somewhere honest to live.
+#
+# It is frozen anyway, and for a reason that is not survivorship.
+#
+# §57 registered a reading rule BEFORE running: "fails clause (b) in three or
+# more periods — the ensemble does not beat a clean index on this universe, and
+# the ambiguity resolves against it. It licenses NO further EDGE registration on
+# this universe." The ensemble then lost to SPY in four periods of four.
+#
+# That rule was written down while the outcome was unknown, which is the only
+# time such a rule means anything. Leaving it as prose in a markdown file is the
+# shape this repository has now been caught by twice: §23's monotonicity lesson
+# sat in prose for thirty-one sections until §55 made it a clause, and `ci.yml`
+# states the standard outright — a check that cannot fail is worse than no
+# check. So the rule is executed here rather than remembered.
+#
+# NOT A CLAIM THAT THE DATA IS BAD. The data is the best this project has. What
+# is exhausted is the licence to make an EDGE claim against it, and the same
+# audited override lifts this one as lifts §52's.
+FROZEN_PIT_DIR = "data/pit"
+
+
+def _s57_reason(claim: str, path: str) -> str:
+    return (f"{claim} claims on {FROZEN_PIT_DIR}/ are FROZEN (§57).\n\n"
+            f"  snapshot: {path}\n\n"
+            f"This data is NOT survivor-selected — §56's probe certified it, "
+            f"and it was\nbuilt so an EDGE claim would have somewhere honest to "
+            f"live. The freeze is\nnot about the data.\n\n"
+            f"§57 committed a reading rule BEFORE the run: failing "
+            f"`beats_benchmark_symbol`\nin three or more of the four periods "
+            f"licenses no further EDGE registration on\nthis universe. The "
+            f"incumbent ensemble then failed it in FOUR of four.\n\n"
+            f"Honouring a rule only when its outcome is convenient is the "
+            f"selection this\napparatus exists to prevent.\n\n"
+            f"Still allowed : DIAGNOSTIC, METHOD, CAPACITY\n"
+            f"Lifts the freeze: a pre-registration that supersedes §57's "
+            f"reading rule on\nits own terms, argued before its data is seen\n"
+            f"To proceed anyway:\n"
+            f"  register_gate.py <id> --override-freeze \"<why this claim is "
+            f"sound regardless>\"")
+
+
+#: directory prefix -> the function that explains why EDGE is refused there.
+#: A mapping rather than two `if`s so a third frozen venue is a data change,
+#: and so `freeze_violation` cannot grow a branch that silently matches nothing.
+FROZEN_SNAPSHOT_DIRS = {
+    FROZEN_SNAPSHOT_DIR: _s52_reason,
+    FROZEN_PIT_DIR: _s57_reason,
+}
+
+
+def freeze_violation(spec: dict) -> str | None:
+    """Why this spec may not be registered, or None if it may.
+
+    Pure and path-based on purpose: it must not depend on the snapshot file
+    being present, so the rule reads the same on a machine that has not
+    downloaded the data.
+    """
+    if spec.get("claim") not in FROZEN_CLAIMS:
+        return None
+    path = (spec.get("snapshot") or {}).get("path", "")
+    normalised = path.replace("\\", "/")
+    for prefix, reason in FROZEN_SNAPSHOT_DIRS.items():
+        if normalised.startswith(prefix + "/"):
+            return reason(spec["claim"], path)
+    return None
 
 
 def spec_path(spec_id: str) -> str:

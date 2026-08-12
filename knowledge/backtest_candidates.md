@@ -4625,6 +4625,31 @@ that the code path executes, nothing more.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE 0 for 12.**
 
+### Note, 2026-08-11 — the instrument changed at n=11, and the sample is not homogeneous
+
+§61 altered the judge's context mid-accumulation. Trades 1–11 were judged on a
+prompt from which NEWS MEMORY, YOUR LAST RESOLVED CALLS, YOUR RECENT
+CALIBRATION and CURRENT REGIME had been silently evicted; trades 12–20 will be
+judged on a prompt that carries all four. The judge may veto or downsize any
+entry, so this is upstream of which trades populate this monitor's sample.
+
+**Owner decision, taken with n=11 in front of them**, over the alternative of
+waiting for n=20. Recorded here because §47's own "Known asymmetry, stated
+rather than hidden" is the standard, and a monitor whose sample spans two
+different instruments is exactly the thing that should not be discovered later
+from a percentile.
+
+The threshold does not move and the null does not change. What changes is what
+the first reading at n=20 will be entitled to say: it will describe a bot that
+was two bots, and the honest read is that it bounds nothing tightly. If a
+cleaner answer is wanted, the counter restarts from trades judged under the
+current prompt — which is a decision for whoever reads the first result, not
+one to pre-empt here.
+
+The monitor still cannot halt anything (`src/decaycheck.py`,
+`test_monitor_cannot_halt_trading`), so this is a measurement-validity cost and
+not a safety one.
+
 ---
 
 ## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)
@@ -5672,3 +5697,1113 @@ file. Full reasoning in `research/s54_run_2026-08-05.txt`.
 
 **Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
 1 pass in 15; K stays 15.**
+
+## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-06, tooling — not a claim)
+
+Same status as §36: this changes how a verdict is *measured*, so it is recorded
+here and registers nothing. No spec, no `bonferroni_k`, no row in
+`verdicts.jsonl`. **EDGE stands at 1 pass in 15; K stays 15.**
+
+### The defect, and it was written down in this module from the start
+
+`src/significance.py` has always named it, at lines 27-33:
+
+> Baseline and candidate run on the SAME bars, so their trades are dependent. We
+> resample them independently, which overstates the variance of the difference…
+> That bias is in the safe direction for a gate.
+
+"Safe direction" was the right call and an incomplete one, because nobody had
+measured what it cost. §23 is where the price shows up. Its candidate trades are
+a strict **subset** of the baseline's — 128 of 179 — so every shared trade sits
+in both arms and its idiosyncratic P&L ought to cancel out of the difference.
+Under independent resampling it does not cancel. It is counted twice.
+
+What §23 was actually asking, in arithmetic the independent test cannot see:
+
+    179 x $14.91  −  128 x $31.78   ⇒   the filter REMOVED 51 trades
+                                        averaging **−$27.43**
+                                        and KEPT 128 averaging **+$31.78**
+
+That is a question about two **disjoint** samples. It was scored as a question
+about two overlapping ones, and came back INCONCLUSIVE at P(better) = 85.8%.
+
+### What is now in the box
+
+| | |
+|---|---|
+| `significance.compare_paired` | common random numbers — ONE moving-block index draw per replicate, applied to both arms, so shared variance cancels where it is genuinely shared |
+| `significance.disjoint_report` | the nested form: when the candidate really is a pure filter, KEPT vs REMOVED, which is the sharpest available reading |
+| `significance.trade_keys` | `(entry_ts, symbol)` — **time first**, because the union is sorted on it and a moving block over ticker-major order would cluster by AAPL instead of by market |
+| `gatespec` / `run_gate` | clause rules `significantly_better_paired`, `not_worse_paired`, and `no_interior_optimum` |
+
+`compare()` is **not modified**. Every §1-§54 number still reproduces, pinned by
+`tests/data/significance_golden.json`, which was generated from the unmodified
+function *before* any of this was written and committed in the same PR.
+
+### The measurement that changed the design — the first version was broken
+
+Coverage was run against a **true null** (removal by coin flip, so the effect is
+exactly zero), 600 seeds, before the estimator was believed:
+
+| interval | block | two-sided rejection | nominal |
+|---|---|---|---|
+| percentile | sqrt(n) | **0.0750** | 0.0500 — OVER-REJECTS |
+| **basic (reverse-percentile)** | **sqrt(n)** | **0.0500** | **nominal** |
+| percentile | 1 | 0.0600 | |
+| basic | 1 | 0.0350 | over-conservative |
+
+The first implementation used the percentile interval, which is what `compare()`
+uses, and it over-rejected by ~1.5x. **A more powerful test that does not cover
+is not sharper, it is broken** — it would launder noise into verdicts, which is
+the one failure this whole programme exists to prevent. The basic interval
+reflects the bootstrap distribution about the observed statistic and fixes it.
+
+Why `compare()` does not need the same correction and is not getting it: its
+independent resampling is so conservative that it rejected **0 of 120** true
+nulls. That bias swamps the percentile bias, in the safe direction. Removing the
+independence bias is exactly what *exposes* the percentile one.
+
+### What the pairing buys — power, measured on the same seeds and the same alpha
+
+| removed-trade shift | `compare` | `compare_paired` |
+|---|---|---|
+| 0 (true null) | 0.000 | 0.035 |
+| 40 | 0.000 | 0.275 |
+| 80 | 0.025 | **0.645** |
+| 120 | 0.160 | **0.905** |
+
+At a shift of 80 the incumbent finds 1 real effect in 40 and the paired test
+finds two in three. That gap is the whole of §55.
+
+**The honest limit, and it is not small.** The pairing buys power in proportion
+to how much variance the two arms actually SHARE. Measured: with a realistic
+filter it narrows the interval ~2.1x; with an *oracle* filter — one that removes
+the worst trades by looking at their outcome — it buys **nothing at all**,
+because there is no shared variance left to cancel. No real filter is in the
+oracle case, and testing against one would have flattered the method.
+
+### `no_interior_optimum` — §23's own conclusion, finally executed
+
+§23 wrote this down and it then stayed prose for thirty-one sections:
+
+> Where a grid is available, **check monotonicity**: a lone interior optimum is
+> weak evidence regardless of how good the winning cell looks.
+
+Its profit factor across the threshold grid ran **1.955 → 2.898 → 2.240 →
+1.705** — peaking at the second of four arms and ending *below* baseline. If
+"more volume confirmation means better trades" were a mechanism, asking for more
+confirmation should not reverse it.
+
+The rule fails only a **strictly interior** optimum. Flat responses, monotone
+ones and optima at either END all pass: an end optimum says the grid failed to
+bracket the effect, which is a reason to widen the grid, not evidence of
+fitting. Making it a monotonicity requirement — the obvious name — would have
+been the wrong rule. `better: high|low` is validated rather than defaulted,
+because an interior *peak* is the tell for profit factor and an interior
+*trough* is the tell for drawdown, and a silent default reads half the metrics
+backwards.
+
+Acceptance test: §23's four real arms are replayed through it and it must FAIL.
+A rule that cannot catch the case it was written for is decoration.
+
+### What this does NOT do, stated so it cannot be spun later
+
+- **It does not reopen §23.** Re-scoring it under a sharper instrument would be
+  a fresh EDGE claim, and §52 froze those on every snapshot in `data/snapshots/`.
+  §55 buys the instrument. It does not buy the right to use it.
+- **It withdraws no verdict.** The fifteen rejections stand, exactly as §41 set
+  the precedent when its own simulator finding could have reopened ten.
+- **It is not a lower bar.** Coverage is nominal, measured, and the clause that
+  proves it is in the suite.
+- **It cannot help the biggest problem.** Survivorship (+130.06pp at §48,
+  +200.28pp at §51) is a bias in the DATA. A better estimator measures a
+  poisoned quantity more precisely.
+
+### A harness finding, recorded because it produced a false result first
+
+The first mutation run reported the **control as CAUGHT**, which should be
+impossible — C1 edits a docstring nothing reads. The cause was not the control.
+M10 changes `len(order) >= 3` to `>= 2`: **the same number of bytes**. Python
+invalidates a `.pyc` on (source mtime, source size), and restoring the file
+inside the same one-second tick with an unchanged size left both fields matching
+the mutant. Every run after M10 executed **mutated bytecode** while the md5
+check — which reads the `.py` — reported "restored".
+
+So the harness now purges `__pycache__` on both sides of every mutation. Same
+family as Phase 4's finding that a test which HANGS is worse than one that
+fails: **the md5 proof is on the source, and the interpreter does not have to
+agree with it.** A harness whose own residue fails the control is reporting on
+itself.
+
+Final run: **M1-M11 CAUGHT, C1 SURVIVED.** M1 is the one that matters — it
+reverts the interval to the percentile form and the coverage test catches it,
+which is what makes the 0.0500 above a measurement rather than a claim.
+
+### State
+
+2,077 tests. `min_rvol` still unset; `base.rvol()` and `risk.rvol_blocked()`
+remain dormant tested capability. Nothing enabled, no threshold moved,
+`mode: paper` unchanged.
+
+## §56 — A UNIVERSE WITH NOTHING THAT LEFT (2026-08-09, tooling — not a claim)
+
+Same status as §36 and §55: this changes what a verdict can be measured ON, so
+it is recorded here and registers nothing. **EDGE stands at 1 pass in 15; K
+stays 15.**
+
+### The question §52 left open
+
+§52 froze the EDGE budget because every snapshot in `data/snapshots/` is built
+by `index_constituents()` from **current** Wikipedia membership, so the
+companies that failed are absent by construction. §48 sized the inflation at
++130.06pp and §51 showed it was large enough to explain this project's only
+EDGE pass, at +200.28pp. `probe_delisted_coverage.py` then asked whether the
+losers could be bought back and REFUSED: yfinance serves no pre-delisting
+history for SIVB, FRC, TWTR or ATVI, and returns SBNY bars that all postdate
+the bank's seizure by seventeen months.
+
+That closed one route. It did not close the other: **instead of adding back the
+losers, find a universe that never had any.**
+
+### The candidate, and what the probe can and cannot say
+
+The Select Sector SPDR suite is a GICS partition — chosen by *construction*,
+not by performance. `scripts/probe_etf_universe_survivorship.py` measures
+whether that story holds in the data, and is explicit that one part of it
+cannot be measured at all:
+
+| | |
+|---|---|
+| **CHECKED** | each fund's history begins at its declared inception, runs unbroken to the present, and contains no hole longer than any legitimate market closure |
+| **NOT CHECKED** | that the enumeration is COMPLETE. "No Select Sector SPDR was ever launched and closed" is an external sourced fact; prices cannot prove a negative. The list is a DECLARED ASSUMPTION and `report()` prints it as one |
+
+**The negative control is what makes the probe a probe.** One predicate,
+`assess()`, is applied to the fifteen candidates AND to four symbols the sibling
+probe already measured dead. Every candidate must pass it and every dead symbol
+must fail it. A predicate too weak to see death cannot certify anything, and the
+probe refuses on that alone no matter how clean the fifteen look.
+
+### The result: PASS, and one number worth pausing on
+
+    control AAPL: 8436 rows
+    check 1  continuous from inception : PASS
+    check 2  detects the known dead    : PASS
+
+**Every one of the fifteen funds returned history beginning EXACTLY on its
+declared inception date** — the nine originals all on 1998-12-22, XLRE on
+2015-10-08, XLC on 2018-06-19, SPY 1993-01-29, DIA 1998-01-20, QQQ 1999-03-10,
+IWM 2000-05-26. Those dates were written into the probe from fund documentation
+*before* the fetch. Fifteen independent dates matching to the day is not proof
+of completeness, but it is real corroboration that the declared list describes
+the funds that actually exist.
+
+And the control fired exactly as designed: **SBNY returns 475 recent,
+continuous, plausible-looking bars and was caught as 7,450 days late.** A
+predicate that called SBNY healthy would have certified a seized bank.
+
+### `data/pit/`, and why the path alone would be dishonest
+
+`register_gate.freeze_violation` blocks `claim: EDGE` by matching the prefix
+`data/snapshots/`. That is a **proxy** for "survivor-selected", good only
+because everything under that directory is built from current membership — and
+it means a snapshot written anywhere else clears the freeze with no override
+and no argument.
+
+Moving a file to dodge a control would be gaming it. So the certified snapshots
+go to `data/pit/`, and `tests/test_pit_snapshot_requires_probe.py` fails if any
+file there is not covered by a committed probe record reporting PASS, or
+contains a symbol no passing probe examined. **Verified by removing the record:
+five tests go red.** Without that test this whole section is a path trick.
+
+Four snapshots on the §43/§48/§50 period boundaries, so the numbers are
+comparable with the existing four-period family. The universe legitimately
+**grows 9 → 11**: XLRE and XLC did not exist earlier, and `simulate_ensemble`
+handles a symbol appearing mid-history natively. That growth *is* the
+point-in-time property, not a defect in the data.
+
+### Three things measured on the way, one of them a correction to myself
+
+**1. Seven of the fifteen would never have traded.** `strategies.universe_for`
+defaults to `cfg["symbols"]`, which lists only eight of them. XLI, XLY, XLP,
+XLU, XLB, XLRE and XLC would be loaded, priced and marked to market, and never
+entered — no error, no log line, visible only as a smaller signal denominator.
+Every §57 arm therefore carries `replace: {symbols: [...]}`.
+
+**2. `sector_concentration` is completely inert here.** No ETF appears in the
+frozen `sectors:` map, so `sector_of` returns `None` and the rail skips. Zero
+sector-concentration control on a universe organised *by sector*. Not fixed:
+mapping ETFs into `sectors:` would re-arm the ETF-vs-constituent category error
+that map was built to avoid, and would silently change `reclaim`'s universe.
+
+**3. I predicted the correlation cap wrong, and the run said so.** Before
+building, the pairwise correlation matrix over the repo's existing EIGHT ETFs
+was measured across 76 rolling 60-bar windows: the 0.85 threshold sits above
+almost every cross-sector pair (XLK–XLE 0.183, SPY–XLF 0.735), and greedy
+admission let through a **median 7 of 8**. I wrote down that the cap would bind
+*less* on fifteen names.
+
+The actual runs say the opposite. On the full universe `correlation` is the
+**dominant** block: 2,074 of 2,392 blocks in 2014-2019 and 1,042 of 1,304 in
+2022-2026. Eight names give 28 pairs; fifteen give 105, and the rail needs only
+two correlated holdings to refuse. Extrapolating a per-pair statistic to a
+whole-book admission rule was the error, and the census is the measurement that
+corrects it. **The threshold is not being re-picked** — choosing it after seeing
+this would be fitting to the sample.
+
+### A caveat that belongs on the front of any §57 reading
+
+The original nine funds were mandated on the older S&P sector scheme and were
+remapped onto GICS in the early 2000s — XLV was "Consumer Services" before it
+was "Health Care". The FUND is continuous and no survivorship enters, but what
+a ticker *represents* in 2000-2006 is not exactly what it represents in
+2022-2026. A composition change, not a survivorship one, and a reason to read
+the earliest period most cautiously.
+
+### State
+
+`data/pit/` holds four certified snapshots, 13/13/15/15 symbols. Nothing
+enabled, no threshold moved, `mode: paper` unchanged.
+
+## §57 — THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT (DIAGNOSTIC, K=15, pre-registered 2026-08-09)
+
+s57a-d written and frozen **together, before any was run**, then run once each.
+**DIAGNOSTIC — this decides nothing and spends no EDGE budget.**
+
+### The result
+
+| period | return | PF | maxDD | trades | deploy | (a) trades | (b) vs SPY | (c) exposure-matched |
+|---|---|---|---|---|---|---|---|---|
+| 2000-2006 | **−8.20%** | 0.657 | 10.69% | 251 | 10.76% | PASS | **FAIL** −8.20 vs +10.01 | FAIL |
+| 2007-2013 | **−6.44%** | 0.583 | 11.25% | 124 | 7.91% | PASS | **FAIL** −6.44 vs +51.30 | FAIL |
+| 2014-2019 | +30.61% | 1.645 | 6.09% | 774 | 48.14% | PASS | **FAIL** +30.61 vs +97.39 | FAIL |
+| 2022-2026 | +34.77% | 1.816 | 4.61% | 637 | 49.70% | PASS | **FAIL** +34.77 vs +67.06 | PASS |
+
+**Clause (b) fails in four periods of four.**
+
+The reading rule was committed in the registration before the run: *"fails
+clause (b) in three or more periods — the ensemble does not beat a clean index
+on this universe, and the ambiguity resolves against it."* Four of four is
+outcome (1). It licenses **no further EDGE registration on this universe.**
+
+### Why this one is different from the other fifteen
+
+Every previous rejection was scored against a benchmark built from survivor-
+selected membership, and therefore carried an excuse: the bot might have been
+losing to an index that never existed. Here the benchmark is SPY, priced inside
+a universe the probe certified has nothing missing. **That excuse is gone, in
+both directions** — and the answer did not change.
+
+### The counterweight, stated because it cuts the other way
+
+The bot draws down **far** less than the index in every period: 10.69% against
+SPY's 47.52%, 11.25% against 55.19%, 6.09% against 19.35%, 4.61% against
+24.50%. On a risk-adjusted footing this table would read very differently.
+
+**That clause was not registered, and it is not being added now.** §51 defines
+`beats_benchmark_risk_adjusted` and it was available; it was not chosen, and
+reaching for it after seeing that the absolute-return clause failed is exactly
+the selection this apparatus exists to prevent. The drawdown numbers are
+reported here because a reader deserves them, not because they change the
+verdict. If risk-adjusted performance on this universe is worth testing, it is
+worth testing as its own pre-registration, spending its own budget.
+
+### What the census says the bot was actually doing
+
+2000-2006 and 2007-2013: the drawdown latch dominates — 8,890 of 9,234 blocks
+and 11,208 of 11,627 — with deployment at 10.76% and 7.91%. §40's finding,
+reproduced on new data. 2014-2019 and 2022-2026: deployment is ~49% and
+**correlation** becomes the dominant rail (see §56's correction).
+
+### A runner defect found by this section, reported before the numbers
+
+The first four runs computed every arm and then **crashed on the write**.
+§55 added a sixth element to `run_arm`'s return — the trade keys
+`compare_paired` needs — and updated three of the four places that consume the
+record. Two sites still destructured positionally, and both were in the write
+path, so the failure landed after all the compute. That is the §39 failure mode
+the repo had already paid for once, at 388 seconds.
+
+Nothing caught it because every test in `test_run_gate_reproduces.py` drives
+`evaluate()`, which never sees those records. Fixed by giving the tuple named
+field positions (`SUMMARY, PNLS, SECS, JUDGE_STATS, KEYS`) and replacing every
+positional unpack with an index, plus two tests over `in_spec_order`'s real
+output that fail if the arity and the constants drift apart.
+
+### State
+
+Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** The live forward record — ten closed trades,
+realized −$339.16 — is untouched by anything here.
+
+---
+
+## §58 — THE COIL: A VOLATILITY-CONTRACTION PRECONDITION (DIAGNOSTIC, K=15, pre-registered 2026-08-10)
+
+s58a-h and s59a-h — **sixteen specs written and frozen together, before any was
+run**, then run once each. Eight periods across two universes per section.
+**DIAGNOSTIC — these decide nothing and spend no EDGE budget. K stays 15.**
+
+### Why a DIAGNOSTIC, when Phase 10 was built to make an EDGE claim possible
+
+Both venues are closed, and the second one closed itself:
+
+| venue | status |
+|---|---|
+| `data/snapshots/` — 38-name book | EDGE frozen by §52 (survivorship, up to +130pp) |
+| `data/pit/` — 15 certified ETFs | EDGE closed by **§57's own pre-committed reading rule** |
+
+§57 registered, before running, that failing `beats_benchmark_symbol` in three
+or more of four periods "licenses no further EDGE registration on this
+universe." It then failed in four of four. Honouring that only when its outcome
+is convenient is the selection this apparatus exists to prevent — so the rule is
+now **executed** by `register_gate.freeze_violation` rather than remembered, with
+the same audited `--override-freeze` escape §52 has. Prose in a markdown file is
+what §23's monotonicity lesson was for thirty-one sections.
+
+### What was tested
+
+A **precondition**, not a trigger: block an entry unless the last 20 bars'
+high-to-low range, as a fraction of price, sits at or below a given percentile
+of its own trailing year. Four arms — baseline, 40, 25, 10 — and `family:`
+rather than `candidate:`, so **every** coil arm must clear. That is §23's
+failure made unpassable.
+
+### The result — REJECTED in eight of eight
+
+Certified ETF universe:
+
+| period | baseline PF | coil40 | coil25 | coil10 | why rejected |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.657 | 0.567 | 0.575 | **0.991** | (b) and (c) |
+| 2007-2013 | 0.583 | 0.544 | 1.286 | **1.358** | (b) on coil40, (c) |
+| 2014-2019 | 1.645 | **1.737** | 1.684 | 1.265 | **(e) INTERIOR** |
+| 2022-2026 | **1.816** | 1.393 | 1.416 | 1.094 | (b) and (c) |
+
+38-name book:
+
+| period | baseline PF | coil40 | coil25 | coil10 | why rejected |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.231 | 0.231 | 0.231 | 0.231 | (b) — nothing moved at all |
+| 2007-2013 | 1.132 | **1.185** | 1.185 | 1.185 | **(e) INTERIOR** |
+| 2014-2019 | 1.732 | 1.835 | **2.070** | 1.909 | **(e) INTERIOR**, (c) |
+| 2022-2026 | **1.698** | 1.560 | 1.670 | 1.825 | (b) on two arms, (c) |
+
+### §55's monotonicity rule earned its keep on its first production run
+
+`no_interior_optimum` was built in §55 out of §23's own written conclusion and
+had never been exercised on a real registration. It **failed three of the eight
+specs**, and s58g is the case it was written for:
+
+    profit factor  1.732 -> 1.835 -> 2.070 -> 1.909      peak at coil25, INTERIOR
+
+All three coil arms cleared `min_trades`, cleared `pf_gt_baseline`, and cleared
+`maxdd_within` — coil25 at **PF 2.070 against 1.732, with maxDD 6.32% against
+12.64%**. Read without clause (e) that is "the filter raises profit factor by a
+third and halves drawdown," which is §23's table almost line for line. The only
+two things that refused it were the paired interval and the monotonicity rule.
+
+A lesson that cannot fail a gate is a lesson that gets forgotten. This one can
+now fail one, and did.
+
+### The mechanism is NOT the one the registration assumed, and this is the finding
+
+A filter should remove trades. In the two certified periods where the drawdown
+latch dominated, it **added** them:
+
+| spec / arm | drawdown blocks | trades | deployment | return |
+|---|---|---|---|---|
+| s58a baseline | 8,890 | 251 | 10.76% | −8.20% |
+| s58a coil10 | **0** | **406** | 19.20% | −0.28% |
+| s58b baseline | 11,208 | 124 | 7.91% | −6.44% |
+| s58b coil25 | **78** | **464** | 23.48% | +9.81% |
+
+The filter's dominant effect is not selecting better trades. It is **declining
+the early losses that arm the drawdown latch**, after which the latch never
+engages and the book is free to trade far more than the baseline ever was.
+§40's finding — the latch dominates the census — governs here too, one layer up:
+*any* entry filter measured on this ensemble is really being measured through
+the latch.
+
+**This invalidates a premise the registration stated in its own clause (c)
+comment.** That comment argued for the paired estimator because "a filter's
+trade set is a strict SUBSET of the baseline's, so the shared variance cancels."
+It is not a subset. Common-trade overlap ran **13% to 58%**, and in s58b coil25
+there were 387 candidate-only trades against 47 baseline-only. The estimator is
+valid whether or not the sets are nested — `significance.py` says so explicitly —
+so no verdict is affected and no number is wrong. What was wrong is the reason
+given for choosing it, written before the mechanism was understood.
+
+### And on the 38-name book in 2000-2006, nothing moved at all
+
+s58e returns identical figures for all four arms — ret −7.91%, PF 0.231, 37
+trades — while the contraction rail blocked between 9,411 and 16,879 signals.
+Every entry it refused was one the drawdown latch (19,411 blocks) would have
+refused anyway. A rail can be fully armed, visibly firing thousands of times,
+and change nothing.
+
+### State
+
+Nothing enabled. `risk.max_contraction_pctile` stays **0**. No threshold moved.
+`mode: paper` unchanged. Reading rule outcome for the certified family: the
+family clause failed in four of four, which is outcome (1) — **the rail stays at
+0 permanently unless a later section argues otherwise on new evidence.**
+
+---
+
+## §59 — 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) (DIAGNOSTIC, K=15, pre-registered 2026-08-10)
+
+Registered and frozen together with §58. `close / max(high, 252 bars)`, buy the
+quarter nearest their own highs, exit below the top half, with an absolute floor
+at 90% of the high so the rule cannot buy the least-broken name in a broken
+universe.
+
+**Not a momentum variant — the paper that says momentum's ranking is the wrong
+one.** §35/§37 rejected cross-sectional momentum hard (−23% to −26% on
+2007-2013, −$169.18 per trade). George & Hwang found nearness to the 52-week
+high subsumes much of momentum's profit *without* the long-run reversal.
+`buy_top_fraction` and `exit_below_fraction` are copied from xsmom rather than
+chosen, so the two differ in the statistic and in nothing else.
+
+### The result — REJECTED in eight of eight
+
+| period | universe | baseline | hi52on | (b) PF | (c) vs SPY | (d) paired |
+|---|---|---|---|---|---|---|
+| 2000-2006 | certified | −8.20% | −8.33% | FAIL | **FAIL** −8.33 vs +10.01 | INCONCLUSIVE |
+| 2007-2013 | certified | −6.44% | −5.54% | PASS | **FAIL** −5.54 vs +51.30 | INCONCLUSIVE |
+| 2014-2019 | certified | +30.61% | +35.56% | PASS | **FAIL** +35.56 vs +97.39 | INCONCLUSIVE |
+| 2022-2026 | certified | +34.77% | +33.76% | FAIL | **FAIL** +33.76 vs +67.06 | INCONCLUSIVE |
+| 2000-2006 | 38-name | −7.91% | −7.91% | FAIL | FAIL | INCONCLUSIVE |
+| 2007-2013 | 38-name | +2.85% | +2.96% | PASS | FAIL | INCONCLUSIVE |
+| 2014-2019 | 38-name | +95.89% | **+105.12%** | PASS | **PASS** vs +97.39 | INCONCLUSIVE |
+| 2022-2026 | 38-name | +105.84% | **+107.94%** | PASS | **PASS** vs +63.52 | INCONCLUSIVE |
+
+**On the certified universe clause (c) fails four of four.** That is the reading
+rule's outcome (1), committed before the run: `hi52` stays disabled.
+
+### The two that passed their benchmark, and why they change nothing
+
+s59g and s59h clear `min_trades`, `pf_gt_baseline` and `beats_benchmark_symbol`
+— +105.12% against SPY's +97.39%, and +107.94% against +63.52%. Both are on
+`data/snapshots/`, and §50's asymmetry was restated in the registration
+precisely so this could not be read as a win afterwards: **the strategy trades a
+survivor-only universe, so the comparison runs in its favour. A FAIL there is
+decisive; a PASS is not.**
+
+The paired interval refused both anyway — +$9.01/trade with a 99.67% CI of
+[−$25.18, +$35.51], and +$4.43 with [−$19.94, +$28.12]. The point estimates are
+positive and small; the intervals contain zero comfortably. §18's generalisation
+holds: at these sample sizes this method cannot certify an edge, and Phase 9's
+sharper instrument is a better measurement rather than a lower bar.
+
+### A candidate that changed literally nothing
+
+s59e returns byte-identical figures with `hi52` enabled and disabled — −7.91%,
+PF 0.231, 37 trades. The drawdown latch blocked 19,411 signals for the baseline
+and 19,950 with hi52 on: every additional signal the new strategy produced was
+absorbed. Clause (b) correctly fails on equality, because "not worse" is not
+"better".
+
+### The pipeline reproduced §57 exactly
+
+Every §59 baseline arm on `data/pit/` is the identical configuration §57 scored,
+and it returned the identical numbers in all four periods — −8.20%/0.657,
+−6.44%/0.583, +30.61%/1.645, +34.77%/1.816, matching trade counts and deployment
+to the digit. §35's rule: *a referee that cannot reproduce a verdict it has
+already seen is not a referee, it is a new source of error.* It can.
+
+### State
+
+Nothing enabled. `hi52` ships `enabled: false`. EDGE stands at **1 pass in 15;
+K stays 15.** The live forward record — ten closed trades, realized −$339.16 —
+is untouched by anything here.
+
+## §60 — THE PROJECT SCORES ITS OWN PREDICTIONS (2026-08-11, tooling — not a claim)
+
+Registers nothing, spends no Bonferroni budget, enables nothing. **K stays 15.**
+No file the trading loop reads was touched: `mode: paper` unchanged, no
+strategy, no rail, no threshold.
+
+`prior` has been a mandatory field on every spec since the runner existed, and
+`research/README.md` says why — it is *"the only thing that makes a surprise
+legible afterwards."* Fifty-five of them were written, hashed before their runs,
+and **never once read back**. Nothing in this repo had ever opened
+`registrations.jsonl` for anything but a membership test, or `verdicts.jsonl`
+for anything but an append.
+
+### What was built
+
+`src/recall.py` + `scripts/recall.py` join the three layers that hold this
+project's history — 64 sections of record, 55 registrations, 59 verdict rows —
+and quote them. The constraint is `gen_research_index.py`'s own: *"an index
+that formed its own opinion of the record would be a second source of truth."*
+So every string the tool emits is a byte-exact span of a named file, an
+identifier or number, or a member of a fixed `LABELS` set;
+`tests/test_recall_quotes.py` walks the output and fails on a fourth category.
+
+### The finding
+
+All 55 priors were read and scored. Each reading quotes its prior byte-exact
+and is refused if it does not.
+
+| | passed | failed |
+|---|---|---|
+| **expected_pass** | 0 | 0 |
+| **expected_fail** | 10 | 41 |
+
+mixed 3 · no expectation stated 1 · unread 0 · scored 51 of 55
+
+```
+hit rate    80.4%
+base rate   80.4%   (a constant "it fails", same 51 specs)
+```
+
+**The two numbers are identical, and that is the result.** Not one prior in
+this project's history predicted its own hypothesis would pass. The author's
+forecasts and a rubber stamp reading "it fails" are arithmetically the same
+strategy, so the 80.4% measures the base rate of failure in this record and
+nothing about anyone's judgement.
+
+The confounder is structural and is not corrected for: the author of a prior
+also sets the pass mark. Printing the base rate beside the hit rate is what
+makes a pessimist and a forecaster distinguishable, and here they are not.
+
+This does not say the priors were dishonest — they were unusually specific, and
+several (§43, §50) computed the failing number *before* the run from figures
+already published, which is a stronger act than a forecast. It says the
+aggregate carries no signal, and that a prior earns its place only when it says
+something a constant pessimist would not.
+
+### Three defects the record had, found by building the tool
+
+1. **`research/INDEX.md` was missing 13 of 64 sections** — §1–§4 (written
+   `## 1.`), the five METHOD NOTEs, PHASE 0, ALREADY-SEEN OBSERVATION, and §30
+   (an H3). `## §14–§17` produced `| §14– | §17 | ... |`, the range split across
+   two columns. Its guard re-implemented the generator's own regex, so it could
+   not fail for any of them — the standard `ci.yml:55-69` names.
+
+2. **§30's verdict was inverted.** `### §30 CANDIDATE — tighter down-regime
+   gross cap. NOT ADOPTED.` scored **`adopted`**, because the matcher tested
+   `"ADOPTED" in title` and dropped the negation. It had been wrong for as long
+   as the generator existed and nobody saw it, because §30 was never indexed.
+   Negations now come first in the match order.
+
+3. **Nothing enforced that this file is append-only.** Its whole evidentiary
+   value is that a claim written before its result cannot be quietly reworded
+   afterwards, and that was an honour system. `research/anchors.json` now pins a
+   sha256 per section. A retroactive edit turns the suite red; appending a new
+   section does not.
+
+### What the index says now
+
+`heading says` and `gate result` sit side by side and are allowed to disagree.
+§57, §58 and §59 read `pre-registered` in the first — that phrase is in their
+headings — and `0/4`, `0/8`, `0/8` in the second. Neither column was corrected.
+`tests/test_research_index.py` fails if `classify()` ever starts consulting
+verdicts, which is the helpful change that would collapse the two.
+
+A ratio is a count of rows and is **not** a section verdict: §48 reads `4/4`
+and is the survivorship finding, §51 reads `3/3` and sized the inflation at
++200.28pp, §44 reads `3/4` and the claim failed on a conjunction nothing
+machine-readable records.
+
+### What it does not solve
+
+Search is BM25 over literal tokens with no stemming and no synonyms, so a query
+for "volatility squeeze" will not surface §17's Donchian breakout. False
+negatives are the expensive direction and this tool cannot bound them; every
+search says so. And `divergences --as-of` reports what the register *said*,
+which this file has already documented being wrong about by nineteen days.
+
+### State
+
+Nothing enabled. No threshold moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** Both venues remain frozen — §52 on
+`data/snapshots/`, §57's own reading rule on `data/pit/`.
+
+<!-- recall: section=§60 specs= -->
+
+## §61 — THE JUDGE HAD NOT BEEN SEEING ITS OWN SCOREBOARD (2026-08-11, tooling — not a claim)
+
+Registers nothing, spends no Bonferroni budget, enables no strategy. **K stays
+15.** Both EDGE venues remain frozen.
+
+**This one DID change the live path**, unlike §60. `config.yaml`,
+`src/memory.py`, `src/ledger.py`, `src/preflight.py` and `src/main.py` all
+moved. Stated here rather than buried, because every other recent section could
+claim an empty diff against the trading loop and this one cannot.
+
+### What was asked, and what was actually wrong
+
+The owner asked to "fix the principles.md budget so knowledge can actually
+grow." Measurement moved the target twice.
+
+**`principles.md` was not truncating.** It is 1001 bytes on disk, but
+`knowledge_block()` calls `.strip()` before slicing, so it was **1000 chars
+against a 1000-char budget** — at the boundary, nothing dropped, and the last
+principle did reach the judge. A prior session reported "1001 against 1000" and
+implied overflow. That was wrong, and the correction matters: the file had zero
+headroom, which is a different and quieter problem than being over.
+
+**The constraint that actually bound was one level up.** Measured against the
+live memory files:
+
+```
+assembled judge context   5,613 chars
+learning.max_context_chars 4,000
+                          ------
+dropped, every judge call  1,613   (29%)
+```
+
+| block | state in the judge prompt |
+|---|---|
+| VALIDATED LESSONS | present |
+| KNOWLEDGE | present — all 10 principles survived |
+| TODAY'S MARKET CONTEXT | **cut mid-word**, at `"Iran deal h"` |
+| NEWS MEMORY | **absent** |
+| YOUR LAST RESOLVED CALLS | **absent** |
+| YOUR RECENT CALIBRATION | **absent** |
+| CURRENT REGIME | **absent** |
+
+The judge had not been seeing its own scoreboard, its own calibration, or the
+regime label. `context_for_llm` ended in a bare `ctx[:4000]`: it returned
+happily, nothing marked the prompt, nothing logged, and no test could fail.
+
+### The arithmetic nobody had summed
+
+Three sub-budgets were DERIVED SHARES of the total:
+
+```
+lessons          max_context_chars // 2 = 2,000
+market context                    // 4 = 1,000
+scoreboard                        // 4 = 1,000
+                                        -------
+                                          4,000   = 100% of the cap
+```
+
+Exactly 100%, before knowledge (1,066), news memory (600), the book, the trade
+block, calibration and the regime label got anything. **The oversubscription
+was scale-invariant** — doubling the total leaves it at exactly 100% — so
+raising `max_context_chars` alone would have fixed nothing. That is why the fix
+had to be named budgets rather than a bigger number.
+
+The largest unbudgeted block was the book: `max_open_positions: 0` means
+UNCAPPED (§29), so it can list every name in the universe.
+
+### What changed
+
+Every block now has a **named** budget (`memory.context_budgets`), the pattern
+`news.memory.max_context_chars` and `llm.knowledge_max_context_chars` had
+already established twice. `learning.max_context_chars` 4,000 → 12,000 covers
+their sum (~10,966) with headroom. `llm.knowledge_max_context_chars` 1,000 →
+1,500, which is the growth the owner asked for.
+
+Three signals where there were none: `preflight.warnings()` reports an
+oversubscription at startup — **non-blocking, deliberately**, since this makes
+the bot worse rather than unsafe and a config edit must not be able to stop it
+trading at 09:25; a `context_evicted` ledger record fires on any cycle where
+the cap actually bites, naming the blocks lost; and
+`tests/test_context_budget.py` fails on a shipped config that oversubscribes.
+
+**The old config's advice was right and is kept, not deleted.** The comment at
+`config.yaml` said "DO NOT RAISE IT casually… widening this buys principles by
+losing the regime label." True at the time, and the regime label had already
+lost. It now records what changed and why the warning was correct.
+
+### Two guards that could not have caught this
+
+`test_principles_do_not_shrink_the_lesson_block` and
+`test_unset_knowledge_path_gives_byte_identical_context` both build a `Memory`
+on an **empty `tmp_path`** with news memory disabled. The assembled context is a
+few hundred chars against a 4,000 cap, so eviction is impossible in that fixture
+at any budget. They were green throughout. Every eviction case in the new file
+carries a vacuity guard, the shape `tests/test_news_memory.py:229` already used.
+
+And `test_the_shipped_principles_file_fits_its_budget`, which calls itself THE
+LOAD-BEARING ONE, read its budget from `tests/conftest.py`'s fixture — which has
+no `knowledge_max_context_chars` and so derived 1000 — and **never read
+`config.yaml` at all**. It now reads the shipped config, and a companion asserts
+300 chars of headroom so "the file is full" is a red build.
+
+### The costs, both accepted
+
+1. **§47's decay monitor is at n=11 of a pre-registered 20.** Trades 12–20 run
+   on a judge that sees four blocks trades 1–11 did not, so that sample is not
+   homogeneous. A measurement-validity cost, not a safety one —
+   `src/decaycheck.py` cannot halt trading and `test_monitor_cannot_halt_trading`
+   pins it. Owner decision, taken with the number in front of them.
+2. **The effect on trading is unmeasurable here.** Divergences #14 and #15 are
+   open by construction; `backtest.py` never imports `llm` and `judge_model` has
+   no prompt for text to attach to. No backtest can score this. The argument is
+   not that it trades better — it is that these blocks were designed to be seen,
+   budgets were set for them, and four were being dropped in silence.
+
+### State
+
+Nothing enabled. No risk rail moved. `mode: paper` unchanged. EDGE stands at
+**1 pass in 15; K stays 15.** Rollback is removing `learning.context_budgets`
+and restoring the two numbers, byte-identical and asserted.
+
+<!-- recall: section=§61 specs= -->
+
+## §62 — SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE (DIAGNOSTIC, K=15, pre-registered 2026-08-11)
+
+**Registered before running:** s62a–h, eight specs frozen together (registration
+commit precedes the run in this branch's history). Two families so the
+flattering question was removed along with the flattering period: a–d score
+the strategy ALONE against SPY on `data/pit/`'s certified funds; e–h score the
+ADDITION of the strategy to the shipped ensemble. DIAGNOSTIC — data/pit
+refuses EDGE (§57), and the reading rule spends none of the licence.
+
+**What ran:** the four certified periods (2000-2006, 2007-2013, 2014-2019,
+2022-2026), judge model on, K=15 reported throughout.
+
+### The strategy alone (s62a–d): REJECTED, four of four
+
+| period | ret | PF | maxDD | trades | deploy | SPY |
+|---|---|---|---|---|---|---|
+| 2000-2006 | +0.58% | 1.094 | 3.75% | 42 | 2.60% | +10.01% |
+| 2007-2013 | +1.09% | 1.134 | 4.56% | 50 | 2.56% | +51.30% |
+| 2014-2019 | +2.57% | 1.979 | 1.40% | 22 | 2.26% | +97.39% |
+| 2022-2026 | +1.32% | 2.101 | 0.85% | 15 | 1.23% | +67.06% |
+
+Clause (b) `beats_benchmark_symbol` failed in ALL FOUR periods, and the
+risk-adjusted form (§51) failed alongside it in all four — levered to SPY's
+own drawdown the best period reaches +37.92% against SPY's +67.06%. min_trades
+passed everywhere, so this is not an unreadable result: the strategy traded,
+profitably, at trivial size, and lost to the index by a mile.
+
+**The pre-committed reading rule, clause (1): failing (b) in three or more of
+four resolves against the strategy — the recommendation to the owner is DO
+NOT ENABLE, and this recommendation is not negotiable after the fact.** It
+fired at four of four.
+
+### The addition (s62e–h): three of four pass, and every pass is a shrug
+
+| period | baseline PF | +swing PF | ΔmaxDD | paired diff/trade | shared |
+|---|---|---|---|---|---|
+| 2000-2006 | 0.657 | 0.671 | −0.03pp | +$0.62, CI [−15.03, +13.05] | 94% |
+| 2007-2013 | 0.583 | 0.620 | −0.72pp | +$7.36, CI [−66.37, +47.40] | 92% |
+| 2014-2019 | 1.645 | 1.650 | +0.13pp | +$0.31, CI [−2.71, +3.82] | 98% |
+| 2022-2026 | 1.816 | 1.814 | +0.20pp | −$0.09, CI [−5.30, +4.58] | 97% |
+
+s62h failed `pf_gt_baseline` by 0.002. Every `not_worse_paired` interval
+straddles zero. The addition changes 2–6% of the book's trades and moves its
+profit factor at the third decimal — **harmless because it is nearly inert**.
+
+### Why it is inert, stated plainly
+
+Deployment never exceeded 2.6%. The entry demands a ≥12% sector drawdown AND
+a stabilized, no-longer-falling 20-day base AND a pullback into a 0.75·ATR
+zone — three conditions that rarely hold at once — and stop-distance sizing
+against a 3.5×ATR stop cuts each position further. The strategy as
+parameterized is a small, well-behaved trickle of trades, not a book.
+
+### What this licenses, per the frozen rule
+
+- `enabled: false` stands; the recommendation is DO NOT ENABLE this
+  parameterization.
+- No EDGE claim on any venue (rule 4), and none of the e–h passes may be
+  quoted as one.
+- Re-parameterizing (looser floor, larger size, more positions) is a NEW
+  registration — §63, specs frozen before running — not a tweak to this one.
+  Choosing new parameters AFTER reading this table is exactly the in-sample
+  selection the apparatus exists to prevent, so any §63 must argue its
+  parameters from mechanism, not from these results.
+- The live swingscan job stays useful regardless: it ledgers dry-run
+  candidates (`swing_scan_candidate` events), which is forward evidence the
+  next registration can cite without touching the frozen data.
+
+### Divergence noted alongside (see docs/divergences.md #21)
+
+The intraday trigger is unmodelled: live, swing_scan fills INSIDE the zone
+intraday; the simulator fills at the next open after a close inside the zone.
+Same conditions, one price feed apart. Direction ambiguous — intraday fills
+catch deeper pullbacks and also catch knives the daily close would have
+dodged. Open by construction until an hourly-resolution arm is registered on
+§25's data.
+
+<!-- recall: section=§62 specs=s62a,s62b,s62c,s62d,s62e,s62f,s62g,s62h -->
+
+---
+## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS
+
+*(Numbering note: this section was written 2026-08-10 on branch
+`feature/alfred-edgar-lookahead-probes` as §60, before §60–§62 merged to
+main and took those numbers. Renumbered §63 at merge, 2026-08-12; content
+otherwise unchanged.)*
+
+
+**No claim type.** Nothing is registered here and **K stays 15**. These are
+probes, not gates: they decide whether a claim on either source *may later be
+written*, and they are deliberately run before any ingest code exists.
+
+### Why now, and why this is not a new idea
+
+§31 already decided this and wrote down the reasoning. Choosing cross-asset
+prices over FRED, it said: *"FRED serves CURRENT values and most macro series
+are revised. Backtesting against revised data is lookahead, and it would
+quietly invalidate this gate rather than fail it loudly. ALFRED vintages are
+the correct fix and are a separate project."*
+
+This is that separate project. The value of recording it that way is that the
+conclusion was reached before the work was wanted, not after — the reasoning
+carries no hindsight.
+
+The governing precedent for the *shape* is §46's FMP probe: data carrying
+lookahead cannot be gated on, because a claim scored against it would be
+inflated and indistinguishable from a genuine edge. §28 is the harder
+precedent — a fully drafted gate that was **never registered** because a probe
+refused it.
+
+### What each probe decides
+
+`scripts/probe_alfred_vintages.py` — three checks, each fatal alone:
+
+1. **VINTAGE AVAILABILITY** — more than one vintage for a revised series, or it
+   is FRED-current wearing ALFRED's name.
+2. **REVISION DIVERGENCE** — vintage values must actually differ for a revised
+   series, **and must not differ** for a never-revised market rate. The second
+   half is a negative control, and it is the reason the check means anything:
+   without it, a divergence could be noise, and the probe returns UNDETERMINED
+   rather than PASS.
+3. **RELEASE LAG** — the first vintage must postdate the period it describes.
+   Payrolls for January are not public until February; a zero lag is the period
+   date wearing another name.
+
+`scripts/probe_edgar_pit.py` — three checks, each fatal alone:
+
+1. **ACCEPTANCE TIMESTAMP** — `acceptanceDateTime` present on every row *and*
+   carrying a real time of day. An 8-K accepted at 18:05 ET is not tradeable
+   that session, and an all-midnight column is the filing date wearing a clock.
+2. **RETROACTIVE EDIT** — amendments must ADD a filing, not replace the
+   original. If history is rewritten in place, a backtest reads today's
+   corrected story as though it were known then.
+3. **SURVIVORSHIP** — filing histories retained for issuers that failed.
+
+The restatement names (KHC, UAA) and failed issuers (SIVB, FRC) are
+deliberately **the same names the FMP probe uses**, so the two are comparable
+rather than each picking a convenient universe.
+
+### Verdict semantics
+
+All three pass → a claim on that source MAY be pre-registered, with the usual
+discipline (canonical-hash the spec, count it against K, exposure-matched
+benchmark). Any one fails → that source is **LIVE JUDGE CONTEXT ONLY** — the W7
+shape: judge-only, so under invariant #2 it can veto or shrink and can never
+create a trade — and no spec may reference it. Both probes exit non-zero on
+refusal rather than leaving the reader to infer it.
+
+**A refusal is a successful run.** It is the outcome the probes exist to
+produce cheaply.
+
+### What is NOT claimed
+
+Passing says a test *would be meaningful*, not that macro or filings help.
+Nothing in `src/` reads either source; no strategy, rail, threshold or
+`config.yaml` value is touched; `mode: paper`. EDGE stands at **1 pass in 15**,
+and that single pass (§51) its own write-up showed to be explicable by
+survivorship.
+
+One coverage limit worth stating in advance: EDGAR's `submissions` endpoint
+returns a RECENT window, not all history. A claim reaching further back needs
+the full index, and the retained window is a separate question this probe does
+not settle.
+
+<!-- recall: section=§63 specs= -->
+
+---
+
+## §64 — TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+First of the four beat-SPY-wave families (§64-§67, sixteen specs s64a-e,
+s65a-d, s66a-d, s67a-c registered TOGETHER, design frozen in
+`research/specs/drafts/s64-wave-design.md` at commit 0b0b08a before the
+margin model or any strategy in the wave existed; dossier
+`research/candidates_2026-08.md`; transcripts
+`research/s6*_run_2026-08-12.txt`). Registers nothing further, spends no
+Bonferroni budget, enables nothing. **K stays 15** for the whole wave.
+
+New under all sixteen: the §64 simulator margin model — leverage via
+`risk.margin.multiplier`, financing charged per bar at the ^IRX as-of rate
++150bps, FAIL-CLOSED to 6% flat (divergence #16 made structural) — so every
+levered number in this wave pays for its borrow, unlike every published
+figure the dossier reviewed.
+
+**Verdict: clause (b) beats_benchmark_symbol 0 of 4 on the lev150
+candidate → CLOSED by its own rule (3).** s64e's grid failed
+no_interior_optimum: on 2014-2019 at 1.5x, total return peaks AT ma_days
+200 (+0.71%) against −18.67% at 250 — an interior optimum, the signature
+of a fitted parameter, so the promotion path was closed from both ends.
+
+**The finding that outranks the verdict: a single-symbol, full-equity
+strategy plus the portfolio drawdown latch is a one-way trapdoor.** s64a's
+census: 869 of 876 signals blocked, 867 by `drawdown`. Deployment 2.5%
+(2000-06) to 23% (2014-19) on a strategy meant to be ~80-100% invested.
+Mechanism: the latch blocks entries once equity falls ~10% from its
+high-water mark; with ONE symbol and the book forced to cash, equity
+cannot recover to un-latch — the first ~10% drawdown is permanent cash.
+The latch was built for a 38-name book where other positions keep equity
+moving (§48 measured it MASKING measurement; §58 measured filters THROUGH
+it). Here it does not mask the candidate — it replaces it.
+
+These verdicts therefore measure "candidate inside the shipped rails",
+which is exactly what the specs declared (the §62 convention), and the
+frozen rules count them — but what they closed is the candidates AS
+WIRED, not the mechanisms. A re-test with the latch configuration DECLARED
+IN THE ARMS is a different experiment needing its own pre-registration
+(§53's precedent: relief cannot be claimed by arguing the config would
+have changed it). Whether to spend one is an owner decision.
+
+`mode: paper` unchanged; every wave strategy ships `enabled: false`;
+ensemble-unmoved proven in `tests/test_margin_model.py`.
+
+<!-- recall: section=§64 specs=s64a,s64b,s64c,s64d,s64e -->
+
+---
+
+## §65 — TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Second wave family; wave header and the latch-trapdoor finding are in §64.
+
+**Verdict: every clause failed in all four periods → CLOSED by its own
+rule (3).** min_trades 15 vs 40 even in the calm 2014-2019 window (the
+unlevered baseline managed 49 entries; the levered candidate latched out
+after its first losing window and stayed out). The McConnell-Xu window was
+never actually measured here — what was measured is that a strategy which
+is deliberately 80% in cash still trips a high-water-mark latch on the
+20% it does trade, and then cannot recover it. The window itself remains
+untested on this apparatus; the candidate as wired is closed.
+
+<!-- recall: section=§65 specs=s65a,s65b,s65c,s65d -->
+
+---
+
+## §66 — VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Third wave family; wave header in §64. EDGE was PRE-EXCLUDED for this
+candidate in its own frozen prior, whatever the outcome.
+
+**Verdict: clause (b) 1 of 4 → CLOSED by its own rule (3).** The one pass
+is s66a (2000-2006): **+68.44% vs SPY +10.01% at a quarter of SPY's
+drawdown (10.89% vs 47.52%)** — and it sits in the one spec of the four
+whose own min_trades clause FAILED: two trades in seven years. The
+discrete vol switch sat out both halves of the dot-com bust and rode the
+middle, twice. That is either the mechanism working exactly as Moreira-
+Muir describe, or two lucky episodes — and on n=2 those are the same
+observation, which is why the reading rule pre-committed that no outcome
+here licenses anything. Periods b-d: min_trades passed, benchmark failed.
+The b-d results carry the same latch suffocation as the rest of the wave
+(deployment 24-31% in 2014-19).
+
+<!-- recall: section=§66 specs=s66a,s66b,s66c,s66d -->
+
+---
+
+## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Fourth wave family; wave header in §64. Registered explicitly as a
+falsification candidate: one arm, the exact Antonacci book spec, NO grid
+(ReSolve's 1,226-sibling study is why a grid here would be spec-shopping).
+
+**Verdict: clause (b) 0 of 3 → the dual-momentum family is CLOSED by its
+own rule (1).** In its structurally favorable window (2007-2013, the long
+bear its reputation rests on) it returned −8.79% against SPY's +51.30%.
+2022-2026 (+45.41% vs +67.06%) is its best showing and still loses. The
+first run of s67 CRASHED on a units bug (bars passed where closes were
+wanted — fixed with a regression test; the reachability fixture carries no
+SPY spine and could not have caught it); the verdicts above are from the
+fixed rerun, same frozen specs.
+
+Future GEM-shaped proposals get this section as the one-paragraph answer.
+**s68 (macro gate on ALFRED vintages) remains UNREGISTERED** — blocked on
+a FRED API key and a passing `probe_alfred_vintages.py` (§63). That venue
+stays open and unspent, and it is the only one in the wave that still is.
+
+<!-- recall: section=§67 specs=s67a,s67b,s67c -->
+
+---
+
+## §68 — TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+The latch wave (s68-s71, fifteen specs frozen together, owner-directed
+after §64-§67: "rerun with the latch declared per-arm"). Baseline = the
+§64 candidate exactly (lev150, latch 10%); candidate = identical twin with
+`risk.max_drawdown_pct: 0` — the latch's whole cost is the arm delta.
+
+**Verdict: latch_off beats SPY total return in 3 of 4 periods** — 2000-06
++51.76% vs +10.01%, 2007-13 +55.08% vs +51.30%, 2022-26 +75.57% vs
++67.06%; FAILS 2014-19 (+69.97% vs +97.39%), exactly where the dossier
+said it would. All financing paid at ^IRX+150bps. **The frozen promotion
+rule FIRED: one EDGE registration at K=16 is licensed** via the audited
+`--override-freeze` supersession argument (wave-design doc). It has NOT
+been registered yet — spending it is the next act, recorded when it
+happens. The latch's measured cost vs §64: deployment 2.5-23% → 71-106%.
+Cautions stand: three bear-containing periods carried it; the strategy
+lost to SPY in the one grind-up window; a latchless single-symbol config
+has no drawdown brake and is not shippable as-is (failure_modes).
+
+<!-- recall: section=§68 specs=s68a,s68b,s68c,s68d -->
+
+---
+
+## §69 — TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 (2000-06 only) → CLOSED for good by its own rule.**
+With the latch off it traded 40+ windows per period; the McConnell-Xu
+window beat exposure-matched SPY in 3 of 4 (the window itself retains
+some edge) but total-return lost everywhere post-2007. The 2026
+international persistence does not survive on US large-caps here.
+
+<!-- recall: section=§69 specs=s69a,s69b,s69c,s69d -->
+
+---
+
+## §70 — VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 → CLOSED per its rule; EDGE was pre-excluded both
+waves.** The 2000-06 pass repeats (min_trades failing again — the discrete
+switch makes single-digit decisions); 2007-26 all lose total return.
+Matches Moreira-Muir's own Table V: the 1.5x cap keeps the defense, loses
+the offense.
+
+<!-- recall: section=§70 specs=s70a,s70b,s70c,s70d -->
+
+---
+
+## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 0 of 3, now measured both wired (§67) and unwired.** Per
+the frozen rule: no further GEM registration of any kind in this repo.
+The book spec loses to SPY in every window including its structurally
+favorable long bear.
+
+<!-- recall: section=§71 specs=s71a,s71b,s71c -->
+
+---
+
+## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)
+
+The one registration §68's promotion rule licensed, spent on owner
+direction, registered with the audited `--override-freeze` (argument in
+the registration rows) and run as a deterministic re-scoring of s68's
+exact configuration. **Every number reproduced byte-identically**, so the
+frozen confirmation rule resolves: **EDGE CONFIRMED — beats SPY total
+return in 3 of 4 periods** (2000-06 +51.76% vs +10.01%; 2007-13 +55.08%
+vs +51.30%; 2022-26 +75.57% vs +67.06%; FAILS 2014-19 +69.97% vs
++97.39%), at 1.5x with financing paid at ^IRX+150bps, on the
+survivorship-certified universe.
+
+**The EDGE tally is now 2 passes in 16 — and this is the first pass on
+clean data.** (§51's pass was explained by +200pp of survivorship.) The
+venue RE-FREEZES with this registration; the licence was for one spend.
+
+What this is NOT: an enablement, or a config change. The caveats are part
+of the claim: three bear-containing periods carry it; it LOST to SPY in
+the grind-up window (regime dependence is the mechanism, not a flaw to
+fix); and a latchless single-symbol book has no drawdown brake — running
+it live requires a risk design (per-strategy latch? wider portfolio
+latch? separate sleeve?) that does not exist and is its own future,
+separately-registered work. `mode: paper` unchanged; every §64-wave
+strategy still ships `enabled: false`.
+
+<!-- recall: section=§72 specs=s72a,s72b,s72c,s72d -->

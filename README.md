@@ -34,8 +34,8 @@ Reformatting is deliberately *not* tampering: the hash tracks meaning, so a
 freeze that cried wolf would be one people learned to bypass.
 
 **A divergence register.** `docs/divergences.md` lists every place the simulator
-and the live bot were found to differ — **17 as of 2026-08-05**, thirteen closed
-by a **named test** and four open by construction, because "fixed in code" has been
+and the live bot were found to differ — **21 as of 2026-08-11**, fourteen closed
+by a **named test** and seven open, because "fixed in code" has been
 wrong here before. Three of them were found within four days by reading code for
 an adjacent task, which is the honest reason the file does not claim to be
 complete.
@@ -44,10 +44,75 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**1,881 tests as of 2026-08-05**, offline by design — no credentials, ever, in CI.
+**2,509 tests as of 2026-08-12**, offline by design — no credentials, ever, in CI.
+
+**Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
+regenerates the test count, the divergence total and the open/closed split, and
+fails when any drifts — including the numbers in this very paragraph. It exists
+because the test figure went stale three times, and on the day it was written it
+caught the divergence register's own summary table missing four entries, three
+of them open.
 
 **The record is append-only.** `memory/ledger.jsonl` is the source of truth;
 the dashboard, blog and journal are views rendered from it.
+
+---
+
+## One cycle, 15:45 ET
+
+The thing worth reading off this diagram is the **polarity** of each guard.
+Fail-CLOSED guards stop the trade; fail-OPEN guards let it through and log a
+`degradation` against a daily budget. Getting one of those backwards is the most
+expensive mistake available here, so they are drawn differently.
+
+```mermaid
+flowchart TD
+    A[launchd 15:45 ET] --> B[preflight<br/><i>config sane?</i>]
+    B -->|fail| BX([cycle refused<br/>no order placed])
+    B -->|pass| C[fetch bars, 38 symbols]
+
+    C --> D{SPY stale?}
+    D -->|yes| DX([cycle aborted])
+    D -->|no| E{universe floor<br/>≥80% usable?}
+
+    E -->|no| R1[/entries blocked<br/>rail = universe/]
+    E -->|yes| F{two vendors agree<br/>on SPY close?}
+    F -->|no| R2[/entries blocked<br/>rail = datacheck/]
+    F -->|yes| G[regime + signals]
+    R1 --> G
+    R2 --> G
+
+    G --> H{operator HALT?}
+    H -->|exits mode| R3[/entries blocked<br/>rail = halt/]
+    H -->|freeze| DX
+    H -->|none| I
+    R3 --> I
+
+    I[LLM judge<br/><i>may only veto or shrink</i>] --> J[risk rails<br/>heat · correlation · sector · drawdown]
+    J -->|rejected| K([blocked, reasoned,<br/>written to ledger])
+    J -->|passed| L{entry drift<br/>vs live quote}
+    L -->|> cap| K
+    L -->|ok / quote down| M[bracket order<br/>+ protective stop leg]
+    M --> N[(memory/ledger.jsonl<br/>append-only)]
+    K --> N
+    N --> O[dashboard · blog · journal<br/><i>views, never sources</i>]
+
+    classDef closed fill:#7f1d1d,stroke:#dc2626,color:#fff
+    classDef open fill:#78350f,stroke:#f59e0b,color:#fff
+    class B,D,J,M closed
+    class E,F,L open
+```
+
+**Red = fail-closed** (refuses to trade when it cannot verify). **Amber =
+fail-open** (proceeds and logs a `degradation`, counted against
+`ops.max_degradations_per_day`). The drift guard is amber on purpose: a quote
+outage is not a bad price, and bar freshness already covers that class — which
+is precisely why a test fake silently omitting `latest_price` was able to hide
+in nine files until 2026-08-06.
+
+Exits are **never** blocked by a data rail. Every one of the three entry blocks
+above leaves position management running, because a stranded position is worse
+than a missed entry.
 
 ---
 
@@ -56,7 +121,7 @@ the dashboard, blog and journal are views rendered from it.
 This is the section most repos leave out.
 
 **One EDGE claim in fifteen has passed — and it does not mean what it looks
-like.** As of 2026-08-04 the tally is **1 pass in 15**. The §51 pass ran on the
+like.** As of 2026-08-12 the tally is **2 passes in 16** — §72 (trend_hold, latch-off, financed 1.5x) is the first pass on survivorship-clean data; the earlier §51 pass was explained by survivorship. The §51 pass ran on the
 most survivor-selected universe in the project, carrying **+200.28pp** of
 survivorship inflation — large enough to explain the result. Every spec froze the
 asymmetry before the run — *a FAIL is decisive, a PASS is not* — so the caveat
@@ -99,11 +164,17 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 8 closed round-trips as of 2026-08-04**, since 2026-07-14 —
-+16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.05%. **n=8 decides
-nothing** in either direction, and no average of eight numbers belongs in a
-README. Going live is gated behind **≥30 closed trades, ≥60 days, and attorney
-review**, and at the current rate that is months away.
+**Live record: 11 closed round-trips as of 2026-08-11**, first close 2026-07-21 —
++16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
+−1.63%. Realized **−$416.28**, profit factor **0.49**.
+
+**Six of the eleven won, and it still lost money** — the losers were bigger. That
+pair of facts is why a win rate is not reported here on its own, and it is the
+kind of number a hit-rate headline is built to hide.
+
+**n=10 decides nothing** in either direction, and no average of ten numbers
+belongs in a README. Going live is gated behind **≥30 closed trades, ≥60 days,
+and attorney review**, and at the current rate that is months away.
 
 > **No performance number appears in this repo without its benchmark and its
 > sample size.** That rule is why the table above has a bar column and why the
@@ -116,6 +187,8 @@ review**, and at the current rate that is months away.
 | path | what it is |
 |---|---|
 | `GUIDE.md` | build-from-zero setup walkthrough |
+| [`GLOSSARY.md`](GLOSSARY.md) | §N, divergence, enablement gate, exposure-matched bar, fail-open vs fail-closed |
+| [`research/INDEX.md`](research/INDEX.md) | generated one-line-per-§ table of the research record |
 | `knowledge/backtest_candidates.md` | the research record — every claim, prior, and verdict |
 | `knowledge/principles.md` | the rules the project holds itself to |
 | `research/specs/`, `registrations.jsonl`, `verdicts.jsonl` | frozen specs, their hashes, and what they returned |
@@ -132,7 +205,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 1881, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2509, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

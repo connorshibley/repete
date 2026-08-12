@@ -11,7 +11,10 @@ closed trades, and posts trade recaps to X. Built from an evidence-based design
 ```
 src/broker.py    Alpaca wrapper. Paper-mode double interlock lives here. Orders carry a
                  deterministic client_order_id (ta-SYM-side-YYYYMMDD, 2026-07-21) so a
-                 crashed cycle rerun cannot double-submit.
+                 crashed cycle rerun cannot double-submit. Socket timeout installed on
+                 both alpaca-py clients (2026-08-06 — the SDK sets NONE anywhere, which
+                 cost 246s on three dead sockets on 2026-08-05). READS retry on
+                 connection-class errors inside a per-cycle budget; WRITES never do.
 src/preflight.py Fail-SAFE startup validation (2026-07-21): risk params, interlock, env
                  keys, ledger-tail integrity, timeframe. Any failure = no trading this
                  cycle + ledger preflight_failure + macOS alert. Opposite polarity from
@@ -195,9 +198,25 @@ docs/            Ops docs (Phase D, 2026-07-22): runbooks.md, incident_response.
                  compliance claim), go_live_checklist.md (the ordered laptop->live-product
                  list — gates are never waived by enthusiasm).
 scripts/backup.sh + scripts/restore_drill.py  State backup (scheduler 17:00 ET, keeps
-                 14; .env never archived) + weekly restore drill (Sat 10:00) — a backup
-                 that has never been restored is a hope, not a backup. In the container,
+                 14 local + 30 in iCloud; .env never archived) + weekly restore drill
+                 (Sat 10:00) — a backup that has never been restored is a hope, and a
+                 backup on the same disk as the thing it protects is not off-site. The
+                 drill also checks content HASHES (a corruption can preserve both line
+                 count and JSON validity), that each archived stream is a byte-PREFIX of
+                 live (append-only means live may only have GROWN — divergence means
+                 history was rewritten), and that the newest archive exists off-host with
+                 a matching hash. REPETE_OFFHOST_DIR overrides the mirror; the test
+                 suite sets it so no test can write into real iCloud. In the container,
                  backups/ is a mounted volume so archives survive rebuild/redeploy.
+scripts/rotate_logs.sh  Bounds logs/ (daily 17:05, 5 MB x 5 generations). COPYTRUNCATE,
+                 not rename, and that is the whole design: FOUR processes write
+                 logs/agent.log (main, watchdog, daily_posts, backfill) and renaming
+                 would leave three of them appending into an orphaned inode. Truncating
+                 in place keeps the inode, so no Python handler needed changing — and
+                 it is the only thing that can bound cron.log (13 shell `>>` redirects)
+                 and launchd.err.log (StandardErrorPath in 12 plists), which Python
+                 cannot reach at all. Growth is ~17 KB/trading-day, so this is insurance
+                 against a crash loop, not a volume problem.
 scripts/install_launchd.sh  Renders the launchd plist templates ({{AGENT_ROOT}}
                  placeholder) for the current checkout, plutil-lints, installs to
                  ~/Library/LaunchAgents, optional --load. The plists ship path-agnostic

@@ -33,6 +33,7 @@ import postexit
 import preflight
 import regime as regime_mod
 import risk
+import statepaths
 import store
 import strategies
 import strategy
@@ -48,7 +49,7 @@ def journal_and_link(trade: dict, cfg: dict) -> str | None:
         journal.render(cfg)
         base = cfg.get("x_posting", {}).get("journal_url_base")
         if entry and base:
-            return f"{base}#{entry['trade_id']}"
+            return journal.permalink(base, entry["trade_id"])
     except Exception as e:  # noqa: BLE001
         log.warning("journal failed: %s", e)
     return None
@@ -424,18 +425,44 @@ def update_trailing_stops(broker, ledger, cfg: dict, open_trades: dict,
             log.warning("trailing pass failed for %s: %s", symbol, e)
 
 
-HEARTBEAT_FILE = "memory/heartbeat"
+HEARTBEAT_FILE = statepaths.DEFAULT_HEARTBEAT_PATH
 
 
-def write_heartbeat():
+def _cfg_or_empty() -> dict:
+    """config.yaml, or {} if it cannot be read for any reason at all.
+
+    Total on purpose: write_heartbeat() must not lose proof-of-life because the
+    config is the thing that broke.
+    """
+    try:
+        import yaml
+        with open("config.yaml") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:                       # noqa: BLE001 — see the docstring
+        return {}
+
+
+def write_heartbeat(cfg: dict | None = None):
     """Proof-of-life for the watchdog: written on EVERY cycle exit path
     (normal, halted, stale-data abort, crash) — it means 'the process ran',
-    not 'trading happened'."""
+    not 'trading happened'.
+
+    `cfg` is optional because the sole production call site is run_cycle's
+    `finally:`, which has no cfg in scope. A missing config degrades to the
+    documented default rather than skipping the write.
+
+    The except is deliberately broad, not OSError. This runs in a `finally:`
+    while an exception may already be in flight, so anything raised here
+    replaces a real crash with a path error — and a malformed `memory:` block
+    raises AttributeError, not OSError. statepaths' resolvers are total for the
+    same reason; this is the second line.
+    """
     try:
-        os.makedirs(os.path.dirname(HEARTBEAT_FILE), exist_ok=True)
-        with open(HEARTBEAT_FILE, "w") as f:
+        path = statepaths.heartbeat_path(_cfg_or_empty() if cfg is None else cfg)
+        statepaths.ensure_parent(path)
+        with open(path, "w") as f:
             f.write(datetime.now(timezone.utc).isoformat() + "\n")
-    except OSError as e:
+    except Exception as e:                  # noqa: BLE001 — see the docstring
         log.warning("heartbeat write failed: %s", e)
 
 
@@ -508,6 +535,109 @@ def log_cycle_crash(exc: BaseException) -> None:
                      exc)
 
 
+_MARKET_CLOSE_ET_HOUR = 16
+_ET = "America/New_York"
+
+
+def record_cycle_timing(started_monotonic: float) -> None:
+    """How long the cycle took, and — the number that matters — how much room
+    was left before the close (2026-08-06).
+
+    WHY MARGIN AND NOT DURATION. The cycle fires at 15:45 ET against a 16:00
+    close, so the budget is 15 minutes. Duration alone misses the dangerous
+    case: on 2026-07-30 the laptop woke and launchd fired three backlogged jobs
+    at once — a cycle that STARTS at 15:58 and takes two minutes is fast and
+    still finishes after the bell. What you want alarmed is the margin.
+
+    Measured before this existed (7 launchd cycles): min 1.63 min, median ~2.6,
+    max 7.72 on 2026-08-05, which spent a 54 s stall and two ~90-100 s broker
+    socket hangs. Nothing had ever recorded any of it — `grep` for `duration`,
+    `elapsed`, `time.monotonic` across `src/` returned nothing about wall clock.
+
+    Written in `run_cycle`'s `finally:`, so a CRASHED cycle records its timing
+    too. That is precisely the cycle whose duration you want to see.
+
+    Deliberately NOT a field on `cycle_complete`: that event's position is
+    load-bearing (see `_finalize_cycle`) and the watchdog keys off it. A
+    separate event sits outside that contract and cannot disturb it.
+
+    Best-effort by construction — this runs in a `finally:` that may already
+    have an exception in flight, and instrumentation must never replace it.
+    """
+    try:
+        import json as _json
+        from zoneinfo import ZoneInfo
+
+        import yaml
+
+        duration_s = round(time.monotonic() - started_monotonic, 1)
+        now_et = datetime.now(ZoneInfo(_ET))
+        close_et = now_et.replace(hour=_MARKET_CLOSE_ET_HOUR, minute=0,
+                                  second=0, microsecond=0)
+        margin_min = round((close_et - now_et).total_seconds() / 60.0, 1)
+
+        with open("config.yaml") as fh:
+            cfg = yaml.safe_load(fh)
+        ledger = Ledger(cfg["memory"]["ledger_path"])
+        ledger.log_event("cycle_timing", _json.dumps({
+            "duration_s": duration_s,
+            "finished_at_et": now_et.isoformat(timespec="seconds"),
+            "margin_min": margin_min,
+        }))
+        _alarm_on_thin_margin(cfg, ledger, margin_min, duration_s, now_et)
+    except BaseException as e:  # noqa: BLE001 — measurement never kills a cycle
+        log.warning("cycle timing not recorded: %r", e)
+
+
+def _alarm_on_thin_margin(cfg: dict, ledger: Ledger, margin_min: float,
+                          duration_s: float, now_et) -> None:
+    """One alert per day when the cycle finished too close to the bell.
+
+    `ops.min_close_margin_min` (default 5, `0` disables) follows the `ops`
+    convention: escalate to a human, never HALT.
+
+    NOT a `degradation` event. Those are counted against
+    `ops.max_degradations_per_day` and a timing signal has no business
+    spending the fail-open error budget — it would also shift
+    `tests/test_main_cycle.py::test_degradation_slo_breach_logged_once`.
+
+    THE OFF-SCHEDULE GUARD is the fiddly part. A manual run at 22:00 ET has a
+    margin of -360 minutes, which is not a finding, it is a person at a
+    keyboard. So the alarm only fires inside a band that a real scheduled
+    cycle could occupy, and only on a weekday. A cycle that genuinely ran long
+    and crossed the bell lands at a small negative margin and still alarms —
+    that case is the whole point.
+    """
+    limit = float((cfg.get("ops") or {}).get("min_close_margin_min", 5))
+    if limit <= 0 or margin_min >= limit:
+        return
+    if margin_min < -120 or now_et.weekday() >= 5:
+        return
+
+    # Dedupe on the UTC date, matching `check_deploy_drift` exactly, because
+    # that is what `ts` is stamped in. The margin arithmetic is ET; the dedupe
+    # key is UTC. Mixing the two would silently reset the dedupe at 20:00 ET.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    already = any(r.get("event") == "cycle_margin_low"
+                  and (r.get("ts") or "")[:10] == today
+                  for r in ledger.all_records() if r.get("type") == "event")
+    if already:
+        return
+
+    msg = (f"cycle finished {margin_min:.1f} min before the 16:00 ET close "
+           f"(took {duration_s:.0f}s; threshold {limit:.0f} min). An order "
+           f"submitted after the bell is QUEUED FOR THE NEXT OPEN, not "
+           f"rejected — see divergence #18.")
+    # Ledger first, alert second: the record must survive a dead channel.
+    ledger.log_event("cycle_margin_low", msg)
+    try:
+        import alerting
+        alerting.send("trading-agent: thin margin to the close", msg)
+    except Exception:  # noqa: BLE001 — monitoring never kills a cycle
+        pass
+    log.warning("%s", msg)
+
+
 def run_cycle(completed_bars_only: bool = False):
     """One trading cycle.
 
@@ -517,6 +647,7 @@ def run_cycle(completed_bars_only: bool = False):
     close, which is what every gate measured. The 09:35 open cycle sets it
     True, because a five-minute-old stub is not a daily bar."""
     completed = False
+    started = time.monotonic()
     try:
         completed = bool(_run_cycle(completed_bars_only=completed_bars_only))
     except BaseException as e:  # noqa: BLE001 — recorded, then re-raised
@@ -543,6 +674,11 @@ def run_cycle(completed_bars_only: bool = False):
             alerting.heartbeat_ping(success=completed)
         except Exception as e:  # noqa: BLE001 — never break a cycle to alert
             log.warning("heartbeat ping failed: %s", e)
+        # LAST, deliberately. Liveness (heartbeat file, external ping) is what
+        # someone needs when this host dies; timing is instrumentation. If the
+        # two ever contend, instrumentation loses. Measuring here also makes
+        # `finished_at_et` honest — it is genuinely the end of the cycle.
+        record_cycle_timing(started)
 
 
 def check_deploy_drift(ledger: Ledger) -> dict:
@@ -663,6 +799,17 @@ def _bootstrap_cycle():
     # rulebook version, so the track record segments honestly by model.
     ledger.set_model_version(modelver.current_version())
     memory = Memory(cfg, ledger)
+
+    # Non-blocking, unlike the preflight above: these are faults that make the
+    # bot WORSE, not unsafe, and must not be able to stop it trading. §61 — the
+    # judge silently lost four blocks of its prompt for months because nothing
+    # said so out loud.
+    for w_msg in preflight.warnings(cfg):
+        log.warning("PREFLIGHT: %s", w_msg)
+        try:
+            ledger.log_event("preflight_warning", w_msg[:500])
+        except Exception:  # noqa: BLE001 — observability never blocks a cycle
+            pass
 
     # Two halts, two behaviours. `freeze` is the original: nothing runs, which is
     # what you want when the bot or the broker is itself suspect. `exits` runs
@@ -869,16 +1016,19 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
                              scan_symbols: list, completed_bars_only: bool):
     """Fetch every symbol's bars, apply the data rails, and read the regime.
 
-    Returns `(all_bars, entries_blocked_reason, market_regime, regime_label)`,
-    or **None** when the cycle must abort because SPY itself is stale.
+    Returns `(all_bars, entries_blocked_reason, entries_blocked_rail,
+    market_regime, regime_label)`, or **None** when the cycle must abort
+    because SPY itself is stale.
 
-    Three distinct failure polarities live here, deliberately:
+    Five distinct failure polarities live here, deliberately:
       * a single symbol's fetch RAISES -> skip that symbol, log, carry on
       * a single symbol is STALE       -> drop that symbol
       * SPY is STALE                   -> abort the cycle (None)
+      * TOO MANY symbols were lost     -> block ENTRIES only; exits still run
       * the two vendors DISAGREE       -> block ENTRIES only; exits still run
 
-    Extracted from `_run_cycle` in W4-7 (2026-07-29), behaviour unchanged.
+    Extracted from `_run_cycle` in W4-7 (2026-07-29). The universe floor and
+    the returned `entries_blocked_rail` were added 2026-08-06.
     """
     # Ensemble needs the full cross-section; lookback sized to the most
     # demanding strategy.
@@ -913,6 +1063,52 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
             log.warning("%s: stale bars — symbol skipped this cycle", symbol)
             del all_bars[symbol]
 
+    # --- Universe floor (2026-08-06). Two tiers, because 1-of-38 and 12-of-38
+    # are not the same event. ---
+    #
+    # Tier 1 always fires and blocks nothing: a symbol silently leaving the
+    # universe used to be invisible. The ledger's ONLY data_error in its whole
+    # history is QQQ vanishing mid-cycle on 2026-08-05, after which the bot
+    # traded 37 of 38 names and nothing anywhere said the cross-section had
+    # shrunk. That is divergence #17 re-enacted inside live.
+    #
+    # Tier 2 blocks ENTRIES. It measures against what the cycle ASKED for, not
+    # a hard-coded 38: scan_symbols legitimately varies with open positions and
+    # news nominations, so a constant denominator would drift out of true and
+    # read as a floor while measuring something else.
+    #
+    # The total-outage case is NOT what this covers — the stale-SPY abort above
+    # already does. Measured 2026-07-31: DNS died, every symbol failed inside
+    # 40ms, SPY was missing, the cycle aborted. Claiming the floor covers that
+    # would be a check taking credit for someone else's work.
+    requested = len(scan_symbols)
+    missing = [s for s in scan_symbols if s not in all_bars]
+    universe_blocked_reason = None
+    if missing:
+        ledger.log_event(
+            "universe_truncated",
+            f"{len(all_bars)}/{requested} requested symbols have usable bars; "
+            f"missing: {', '.join(sorted(missing))}")
+        log.warning("Universe truncated: %d of %d requested symbols usable "
+                    "(missing %s)", len(all_bars), requested,
+                    ", ".join(sorted(missing)))
+    min_fraction = float(cfg["risk"].get("min_universe_fraction", 0.8) or 0)
+    if requested and min_fraction > 0:
+        kept_fraction = len(all_bars) / requested
+        if kept_fraction < min_fraction:
+            universe_blocked_reason = (
+                f"universe floor: only {len(all_bars)} of {requested} requested "
+                f"symbols have usable bars ({kept_fraction:.0%} < "
+                f"{min_fraction:.0%}) — entries blocked, exits still run")
+            # NOT a `degradation` event, and that is a deliberate departure
+            # from the datacheck block below. `degradation` is counted against
+            # ops.max_degradations_per_day, which is the budget for FAIL-OPEN
+            # events; this rail fails CLOSED. Spending the fail-open allowance
+            # on it would let a data outage quietly consume the budget meant
+            # for something else — the same reasoning cycle_margin_low used.
+            ledger.log_event("universe_floor_blocked", universe_blocked_reason)
+            log.critical("%s", universe_blocked_reason)
+
     # Second-vendor cross-check (2026-07-21): fresh-LOOKING bars can still be
     # wrong (the 07-16 class). If Alpaca and yfinance disagree on SPY's close,
     # one is lying and we can't know which — entries are blocked this cycle
@@ -923,13 +1119,26 @@ def _fetch_and_validate_bars(broker, cfg: dict, ledger: Ledger,
         ledger.log_event("degradation", entries_blocked_reason)
         log.critical("%s", entries_blocked_reason)
 
+    # Precedence when both fire: universe over datacheck, and the caller puts
+    # an operator HALT over both. The two block entries identically, so the
+    # choice is only about which fact appears against a refused trade — and a
+    # feed that lost a quarter of its symbols is the more actionable one. The
+    # datacheck verdict is separately recorded as a `degradation` event above,
+    # so nothing is lost by not being the label here. Same shape as the
+    # halt-over-datacheck override at the call site.
+    entries_blocked_rail = "datacheck"
+    if universe_blocked_reason:
+        entries_blocked_reason = universe_blocked_reason
+        entries_blocked_rail = "universe"
+
     # Market regime (deterministic, from SPY bars already fetched): tagged onto
     # every decision/judgment so the learning loop can discount off-regime evidence.
     market_regime = regime_mod.compute_regime(all_bars.get("SPY", []),
                                               cfg["learning"]["regime"])
     regime_label = market_regime["label"] if market_regime else None
     log.info("Regime: %s", regime_mod.describe(market_regime))
-    return all_bars, entries_blocked_reason, market_regime, regime_label
+    return (all_bars, entries_blocked_reason, entries_blocked_rail,
+            market_regime, regime_label)
 
 
 def _precompute(cfg: dict, all_bars: dict, open_trades: dict,
@@ -1154,7 +1363,12 @@ def _run_cycle(completed_bars_only: bool = False):
             # measured off that judgment would be scored against protective
             # exits that could never have been placed. `sig.action` is
             # exactly "buy" or "short" here — the guard above proved it.
-            direction=sig.action)
+            direction=sig.action,
+            # Per-strategy stop width (2026-08-11): the counterfactual must
+            # replay the stop THIS strategy would have placed, not the global
+            # default — a swing entry judged against a 2×ATR stop it would
+            # never have carried scores the judge on a fiction.
+            strategy=sig.strategy)
         return prices if prices else (None, None)
 
     def _process_signal(sig, symbol, bars, price, entry_ts, open_rec,
@@ -1170,10 +1384,11 @@ def _run_cycle(completed_bars_only: bool = False):
                 symbol, sig.action, sig.reason, sig.indicators, None,
                 executed=False,
                 detail=f"risk rejection: {entries_blocked_reason[:180]}",
-                # Which of the two entry blocks this was: "datacheck" for the
+                # Which of the three entry blocks this was: "datacheck" for the
                 # vendor divergence this guard was built for (named for its
                 # runbook entry, "Vendor divergence (datacheck blocking
-                # entries)"), or "halt" for an operator halt in exits mode.
+                # entries)"), "universe" for the 2026-08-06 truncation floor,
+                # or "halt" for an operator halt in exits mode.
                 # Neither is a RiskRejection — this guard is inline — but both
                 # ARE rails from the ledger's point of view, and a `rail` field
                 # that covered only the rails that happen to raise would read as
@@ -1270,7 +1485,8 @@ def _run_cycle(completed_bars_only: bool = False):
             bracket_prices = risk.bracket_prices(
                 price, strategy.atr(bars, bcfg.get("atr_period", 14)), cfg,
                 vol_bucket=(market_regime or {}).get("vol"),
-                direction=sig.action)
+                direction=sig.action,
+                strategy=sig.strategy)
             full_qty = risk.size_order(account, price, cfg, bars=bars,
                                        strategy=sig.strategy,
                                        stop_price=bracket_prices[0]
@@ -1567,18 +1783,18 @@ def _run_cycle(completed_bars_only: bool = False):
         broker, cfg, ledger, scan_symbols, completed_bars_only)
     if fetched_ctx is None:
         return                      # SPY stale — the whole feed is suspect
-    all_bars, entries_blocked_reason, market_regime, regime_label = fetched_ctx
-    entries_blocked_rail = "datacheck"
+    (all_bars, entries_blocked_reason, entries_blocked_rail,
+     market_regime, regime_label) = fetched_ctx
     if halted:
         # Reuses the vendor-divergence mechanism rather than adding a second
         # entry-blocking path, because it already means precisely this: entries
         # refused, exits untouched. A parallel implementation would be a second
         # place for the exit exemption to be got wrong.
         #
-        # Overrides any datacheck reason rather than appending to it. Both block
-        # entries identically, the datacheck verdict is separately recorded as a
-        # `degradation` event, and the operator's own halt is the fact that
-        # should appear against a refused trade.
+        # Overrides any datacheck OR universe-floor reason rather than appending
+        # to it. All three block entries identically, each is separately
+        # recorded as its own ledger event, and the operator's own halt is the
+        # fact that should appear against a refused trade.
         entries_blocked_reason = ("HALT engaged (exits mode) — entries blocked, "
                                   "exits still run")
         entries_blocked_rail = "halt"
@@ -1587,13 +1803,30 @@ def _run_cycle(completed_bars_only: bool = False):
     update_trailing_stops(broker, ledger, cfg, open_trades, all_bars)
 
     # Same-ticker re-entry cooldown (§9 — adopted for meanrev only):
-    # symbol -> most recent exit ts, checked per strategy in the entry loop.
+    # (strategy, symbol) -> most recent exit ts, checked in the entry loop.
+    #
+    # DIVERGENCE #20, fixed 2026-08-10. This was keyed by SYMBOL ALONE while
+    # `backtest.simulate_ensemble` has always keyed it by `(strategy, symbol)`,
+    # matching `risk.cooldown_days_for`, which is per-strategy. So live let one
+    # strategy's exit block a DIFFERENT strategy's entry and the simulator did
+    # not — the two disagreed about what "the cooldown" means.
+    #
+    # Latent only because `risk.reentry_cooldown.strategies` lists meanrev and
+    # nothing else: with one scoped strategy the two keyings cannot differ. It
+    # would have gone live silently on the day a second strategy was scoped,
+    # and the gate that scoped it would have been run under the simulator's
+    # rule — so the evidence would have described a bot that was not running.
+    #
+    # DEFAULT_OWNER for untagged rows: legacy ledger records predate the
+    # strategy tag. Dropping them instead would silently shorten the cooldown
+    # on exactly the oldest positions.
     last_exit: dict = {}
     if (cfg["risk"].get("reentry_cooldown") or {}).get("days"):
         for t in ledger.closed_trades():
             ets = t.get("exit_ts")
-            if ets and ets > last_exit.get(t["symbol"], ""):
-                last_exit[t["symbol"]] = ets
+            key = (t.get("strategy") or strategies.DEFAULT_OWNER, t["symbol"])
+            if ets and ets > last_exit.get(key, ""):
+                last_exit[key] = ets
 
     # --- Phase 2: cross-sectional precompute + the earnings blackout ---
     xs_ctx, earnings_blackouts, ebd = _precompute(
@@ -1687,11 +1920,14 @@ def _run_cycle(completed_bars_only: bool = False):
                                                 f"universe"}
                 continue
             cd = risk.cooldown_days_for(cfg, name)
+            # (name, symbol) — divergence #20. `cooldown_days_for` is already
+            # per-strategy, so the key it is looked up by has to be too.
             if cd and risk.cooldown_blocked(
-                    last_exit.get(symbol),
+                    last_exit.get((name, symbol)),
                     datetime.now(timezone.utc).isoformat(), cd):
                 hold_reasons[name] = {"reason": f"re-entry cooldown ({cd}d) — "
-                                                f"exited {last_exit[symbol][:10]}"}
+                                                f"exited "
+                                                f"{last_exit[(name, symbol)][:10]}"}
                 continue
             if symbol in earnings_blackouts.get(name, ()):
                 hold_reasons[name] = {"reason": "earnings within "
@@ -1717,13 +1953,23 @@ def _run_cycle(completed_bars_only: bool = False):
                                                 "volume entry threshold",
                                       **sig.indicators}
                 continue
+            # §58 volatility-contraction precondition. Same rail, same helper,
+            # same fail-open semantics and the same entries-only placement as
+            # rvol directly above — deliberately adjacent so the pair is read
+            # and moved together.
+            if risk.contraction_blocked(bars, cfg, name):
+                hold_reasons[name] = {"reason": "recent range is wider than "
+                                                "the contraction threshold",
+                                      **sig.indicators}
+                continue
             # A name whose ATR-derived stop would land at or below zero cannot
             # be bracket-protected: risk.brackets() returns None and the caller
             # degrades to a plain market order — an UNPROTECTED position, on the
             # most volatile name in the universe. Refuse the entry instead.
             # Provable no-op as shipped (0 of 61,104 bars); 25 of 803,787 on the
             # wide universe. Same helper in both simulators.
-            if risk.unprotectable_entry(price, strategies.atr(bars, 14), cfg):
+            if risk.unprotectable_entry(price, strategies.atr(bars, 14), cfg,
+                                        strategy=sig.strategy):
                 hold_reasons[name] = {"reason": "ATR-derived stop would be "
                                                 "non-positive — this position "
                                                 "could not be protected",

@@ -1,0 +1,32 @@
+s68d — trend_hold lev150 latch-off vs latch-on (2022-2026)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T15:04:19 | sha 7b57c9cec6afbf30… | judge OFF
+
+prior: Candidate is the latch_off arm at 1.5x. Expected per the dossier even latchless: trails SPY TR in grind-up periods (the 2016-2026 replication trailed by 2.2pp/yr), passes at most in bear windows. READING RULE, frozen before any run, for s68a-d: (b) passing on latch_off in 3 or more of 4 periods licenses exactly ONE EDGE registration at K=16 via the audited override-freeze supersession argument in the s64 wave-design doc; 2 of 4 is regime-dependent, recorded, no EDGE; 1 or fewer closes the mechanism too and the family is finished in this repo. Latch-cost attribution (baseline vs latch_off deltas) is REPORTED for the risk-design conversation whatever the verdict.
+
+  verified bars_etf_2022-01-01_2026-07-10.json.gz  sha256 d84f9ce13ee58187…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  15 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret  -11.20%  PF 0.000  maxDD 11.20%  trades     3  symbols   1  deploy   1.06%  (0s)
+                           signals    811  blocked    808  |  drawdown 807  expired_unfilled 1
+  latch_off                ret  +75.57%  PF 6.567  maxDD 15.80%  trades     8  symbols   1  deploy 100.70%  (0s)
+                           signals     20  blocked     12  |  regime_exposure 12
+
+  buy-and-hold on this universe: +52.98%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [PASS] (a) min_trades  8 vs 8
+  [PASS] (b) beats_benchmark_symbol  +75.57% vs SPY +67.06% | maxDD 15.80% vs SPY 24.50% (reported, not gated)
+  [PASS] (d) beats_benchmark_risk_adjusted  +75.57% at 15.80% maxDD -> +117.13% levered to SPY's 24.50% maxDD, vs SPY +67.06%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: PASS  (1s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl

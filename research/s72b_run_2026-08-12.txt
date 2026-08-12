@@ -1,0 +1,27 @@
+s72b — EDGE: trend_hold lev150 latch-off vs latch-on (2007-2013)
+claim EDGE | K=16 | frozen 2026-08-12T15:20:54 | sha 6bc08bdde942a46d… | judge OFF
+
+prior: THE LICENSED SPEND. s68's frozen promotion rule fired (latch_off beat SPY total return 3 of 4, failing only 2014-2019) and licensed exactly one EDGE registration at K=16. This is that registration, and it is deliberately a DETERMINISTIC RE-SCORING of s68's exact configuration - same snapshots, same arms, same clauses - because the claim being made is the one already measured, now carried at EDGE weight with the Bonferroni column advanced. Any numeric divergence from s68 voids the promotion (nondeterminism). READING RULE, frozen: (b) passing on latch_off in the same 3 periods and failing 2014-2019 CONFIRMS the claim at K=16 - the EDGE tally becomes 2 passes in 16, the first on survivorship-clean data with financed leverage; any other pattern VOIDS the promotion and re-freezes this venue. Either way the venue re-freezes after this registration: the licence was for one spend. A confirmed EDGE is an evidence bundle for an owner conversation about risk design (a latchless single-symbol book has no drawdown brake) - it is NOT an enablement and licenses no config change.
+
+  verified bars_etf_2007-01-01_2013-12-31.json.gz  sha256 37e2609b8515998a…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  13 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret  -10.07%  PF 0.000  maxDD 10.07%  trades     3  symbols   1  deploy   1.70%  (1s)
+                           signals   1018  blocked   1015  |  drawdown 1010  regime_exposure 4  expired_unfilled 1
+  latch_off                ret  +55.08%  PF 2.293  maxDD 26.18%  trades    17  symbols   1  deploy  81.33%  (3s)
+                           signals     46  blocked     29  |  regime_exposure 29
+
+  buy-and-hold on this universe: +65.05%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [PASS] (a) min_trades  17 vs 8
+  [PASS] (b) beats_benchmark_symbol  +55.08% vs SPY +51.30% | maxDD 26.18% vs SPY 55.19% (reported, not gated)
+  [PASS] (d) beats_benchmark_risk_adjusted  +55.08% at 26.18% maxDD -> +116.12% levered to SPY's 55.19% maxDD, vs SPY +51.30%
+
+VERDICT: PASS  (3s wall)
+  PROVISIONAL PASS — a recommendation, not an action. Enabling is the owner's
+  call and every registered constraint still applies.
+
+recorded -> research/verdicts.jsonl

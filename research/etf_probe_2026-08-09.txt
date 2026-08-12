@@ -1,0 +1,41 @@
+ETF-UNIVERSE SURVIVORSHIP PROBE
+==============================================================================
+control AAPL: 8436 rows
+
+THE CANDIDATE UNIVERSE
+ticker  inception   first bar   last bar      rows  status
+XLB     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLE     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLF     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLI     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLK     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLP     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLU     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLV     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLY     1998-12-22  1998-12-22  2026-07-09    6927  ok
+XLRE    2015-10-08  2015-10-08  2026-07-09    2702  ok
+XLC     2018-06-19  2018-06-19  2026-07-09    2024  ok
+SPY     1993-01-29  1993-01-29  2026-07-09    8417  ok
+DIA     1998-01-20  1998-01-20  2026-07-09    7161  ok
+QQQ     1999-03-10  1999-03-10  2026-07-09    6875  ok
+IWM     2000-05-26  2000-05-26  2026-07-09    6567  ok
+
+NEGATIVE CONTROL — every one of these MUST be detected as not healthy
+ticker  inception   first bar   last bar      rows  status
+SBNY    2004-03-23  2024-08-15  2026-07-09     475  NOT HEALTHY — history starts 2024-08-15, 7450 days after the declared inception 2004-03-23 — these bars are not this fund's own
+SIVB    1988-01-01  -           -                0  NOT HEALTHY — no history at all
+FRC     2010-12-08  -           -                0  NOT HEALTHY — no history at all
+TWTR    2013-11-07  -           -                0  NOT HEALTHY — no history at all
+
+  check 1  continuous from inception : PASS
+  check 2  detects the known dead    : PASS
+
+NOT CHECKED, AND IT MATTERS: that the fifteen above are a COMPLETE
+enumeration. 'No Select Sector SPDR was ever launched and closed' is an
+external sourced fact; prices cannot prove a negative. The list is a
+DECLARED ASSUMPTION — see UNIVERSE in this file for its sources and for the
+early-2000s GICS remapping caveat.
+
+PASS — current membership and point-in-time membership are the same set for
+this universe, so a snapshot built from it carries no survivorship. It may be
+written to data/pit/ and EDGE claims registered against it.
