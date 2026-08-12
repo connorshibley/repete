@@ -6523,3 +6523,88 @@ dodged. Open by construction until an hourly-resolution arm is registered on
 §25's data.
 
 <!-- recall: section=§62 specs=s62a,s62b,s62c,s62d,s62e,s62f,s62g,s62h -->
+
+---
+## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS
+
+*(Numbering note: this section was written 2026-08-10 on branch
+`feature/alfred-edgar-lookahead-probes` as §60, before §60–§62 merged to
+main and took those numbers. Renumbered §63 at merge, 2026-08-12; content
+otherwise unchanged.)*
+
+
+**No claim type.** Nothing is registered here and **K stays 15**. These are
+probes, not gates: they decide whether a claim on either source *may later be
+written*, and they are deliberately run before any ingest code exists.
+
+### Why now, and why this is not a new idea
+
+§31 already decided this and wrote down the reasoning. Choosing cross-asset
+prices over FRED, it said: *"FRED serves CURRENT values and most macro series
+are revised. Backtesting against revised data is lookahead, and it would
+quietly invalidate this gate rather than fail it loudly. ALFRED vintages are
+the correct fix and are a separate project."*
+
+This is that separate project. The value of recording it that way is that the
+conclusion was reached before the work was wanted, not after — the reasoning
+carries no hindsight.
+
+The governing precedent for the *shape* is §46's FMP probe: data carrying
+lookahead cannot be gated on, because a claim scored against it would be
+inflated and indistinguishable from a genuine edge. §28 is the harder
+precedent — a fully drafted gate that was **never registered** because a probe
+refused it.
+
+### What each probe decides
+
+`scripts/probe_alfred_vintages.py` — three checks, each fatal alone:
+
+1. **VINTAGE AVAILABILITY** — more than one vintage for a revised series, or it
+   is FRED-current wearing ALFRED's name.
+2. **REVISION DIVERGENCE** — vintage values must actually differ for a revised
+   series, **and must not differ** for a never-revised market rate. The second
+   half is a negative control, and it is the reason the check means anything:
+   without it, a divergence could be noise, and the probe returns UNDETERMINED
+   rather than PASS.
+3. **RELEASE LAG** — the first vintage must postdate the period it describes.
+   Payrolls for January are not public until February; a zero lag is the period
+   date wearing another name.
+
+`scripts/probe_edgar_pit.py` — three checks, each fatal alone:
+
+1. **ACCEPTANCE TIMESTAMP** — `acceptanceDateTime` present on every row *and*
+   carrying a real time of day. An 8-K accepted at 18:05 ET is not tradeable
+   that session, and an all-midnight column is the filing date wearing a clock.
+2. **RETROACTIVE EDIT** — amendments must ADD a filing, not replace the
+   original. If history is rewritten in place, a backtest reads today's
+   corrected story as though it were known then.
+3. **SURVIVORSHIP** — filing histories retained for issuers that failed.
+
+The restatement names (KHC, UAA) and failed issuers (SIVB, FRC) are
+deliberately **the same names the FMP probe uses**, so the two are comparable
+rather than each picking a convenient universe.
+
+### Verdict semantics
+
+All three pass → a claim on that source MAY be pre-registered, with the usual
+discipline (canonical-hash the spec, count it against K, exposure-matched
+benchmark). Any one fails → that source is **LIVE JUDGE CONTEXT ONLY** — the W7
+shape: judge-only, so under invariant #2 it can veto or shrink and can never
+create a trade — and no spec may reference it. Both probes exit non-zero on
+refusal rather than leaving the reader to infer it.
+
+**A refusal is a successful run.** It is the outcome the probes exist to
+produce cheaply.
+
+### What is NOT claimed
+
+Passing says a test *would be meaningful*, not that macro or filings help.
+Nothing in `src/` reads either source; no strategy, rail, threshold or
+`config.yaml` value is touched; `mode: paper`. EDGE stands at **1 pass in 15**,
+and that single pass (§51) its own write-up showed to be explicable by
+survivorship.
+
+One coverage limit worth stating in advance: EDGAR's `submissions` endpoint
+returns a RECENT window, not all history. A claim reaching further back needs
+the full index, and the retained window is a separate question this probe does
+not settle.
