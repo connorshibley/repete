@@ -70,11 +70,21 @@ class SimAccount:
                    for s, p in self.positions.items())
         return self.cash + held
 
+    # §64: 1.0 = cash account, and the 1.0 path below must stay byte-identical
+    # to the pre-margin code — every recorded verdict was scored through it.
+    margin_multiplier: float = 1.0
+
     def account_dict(self, prices: dict) -> dict:
         """Shape risk.size_order / risk.pure_checks expect."""
         eq = self.equity(prices)
+        if self.margin_multiplier > 1.0:
+            gross = sum(abs(p["qty"]) * prices.get(s, p["avg_entry"])
+                        for s, p in self.positions.items())
+            bp = max(eq * self.margin_multiplier - gross, 0.0)
+        else:
+            bp = self.cash
         return {"equity": eq, "cash": self.cash, "last_equity": eq,
-                "buying_power": self.cash}
+                "buying_power": bp}
 
     def positions_dict(self, prices: dict) -> dict:
         return {s: {"qty": p["qty"],
@@ -135,6 +145,11 @@ class Result:
     benchmark_symbol: str = ""
     benchmark_return_pct: float | None = None
     benchmark_max_drawdown_pct: float | None = None
+    # §64: cumulative dollars paid to borrow (margin financing). Zero on the
+    # 1.0-multiplier path and in simulate(), which cannot lever. A levered
+    # result quoting returns without this number is quoting someone else's
+    # strategy — divergence #16 is the standing warning.
+    financing_paid_usd: float = 0.0
     equity_curve: list = field(default_factory=list)
     trades: list = field(default_factory=list)
 
@@ -723,7 +738,9 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                       strategy_overrides: dict | None = None,
                       hour_index: dict | None = None,
                       fill_hour: int | None = None,
-                      credit: dict | None = None) -> Result:
+                      credit: dict | None = None,
+                      rate_bars: dict | None = None,
+                      macro: dict | None = None) -> Result:
     """Replay bars through ALL enabled strategies at once, sharing the rails.
 
     Why this exists (2026-07-23)
@@ -800,7 +817,13 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                      if (cfg["risk"].get("regime_exposure") or {}).get("enabled")
                      else {})
 
-    acct = SimAccount(cash=start_cash)
+    # §64: the multiplier reaches SimAccount at construction, not per call —
+    # buying power is a property of the account, and threading cfg into
+    # account_dict would put a config read on the hottest path in the file.
+    _margin_mult = float(((cfg.get("risk") or {}).get("margin") or {})
+                         .get("multiplier", 1.0))
+    acct = SimAccount(cash=start_cash, margin_multiplier=_margin_mult)
+    financing_paid = 0.0
     closed: list = []
     curve: list = []
     deployment: list = []
@@ -1258,6 +1281,12 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 if risk.credit_blocked(credit, ts, cfg):
                     _blocked("credit")
                     break
+                # §64 macro regime gate (entries only; fails open). `break`
+                # for the credit gate's reason exactly: market-wide, no
+                # per-strategy component, same answer for every strategy.
+                if risk.macro_blocked(macro, ts, cfg):
+                    _blocked("macro")
+                    break
                 # Unprotectable entry (2026-07-27). `continue`, not `break`:
                 # this is a PER-SYMBOL property, so another strategy scanning a
                 # different symbol is unaffected — unlike the market-wide credit
@@ -1279,6 +1308,17 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
                 buys_queued[name] += 1
                 break                 # first strategy to claim the symbol wins
 
+        # §64 margin financing, charged BEFORE the equity mark so the curve
+        # (and every drawdown read off it) carries the cost on the day it
+        # accrued. Guarded on the multiplier because on the 1.0 path cash
+        # cannot go negative through longs, and the guard keeps that path
+        # byte-identical. Shorts' proceeds-borrow stays uncharged — that is
+        # divergence #16, recorded, and out of scope here.
+        if _margin_mult > 1.0 and acct.cash < 0:
+            _rate = risk.financing_rate_pct(rate_bars, ts, cfg)
+            _charge = abs(acct.cash) * _rate / 100.0 / 252.0
+            acct.cash -= _charge
+            financing_paid += _charge
         eq = acct.equity(last_close)
         curve.append(round(eq, 2))
         # `avg_deployment_pct` KEEPS ITS MEANING. `(equity - cash) / equity` is
@@ -1408,6 +1448,7 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
         n_short_trades=sum(1 for t in closed if t.qty < 0),
         n_short_symbols=len({t.symbol for t in closed if t.qty < 0}),
         n_fill_fallback=n_fill_fallback,
+        financing_paid_usd=round(financing_paid, 2),
         total_return_pct=round(total_ret, 3),
         buy_hold_return_pct=round(bh, 3),
         buy_hold_max_drawdown_pct=round(buy_and_hold_drawdown(sym_bars), 3),

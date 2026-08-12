@@ -849,6 +849,24 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     period: 20                   # realized-vol lookback (daily bars)
     min_scale: 0.5               # clamp so sizing never swings more than 2x either way
     max_scale: 1.5
+  margin:                        # §64 SIMULATOR margin model — arms only.
+    multiplier: 1.0              # 1.0 = cash account, byte-identical to the
+                                 # pre-§64 code. >1.0 exists so a FROZEN SPEC
+                                 # ARM can test financed leverage; the live
+                                 # Alpaca account is cash-sized and nothing in
+                                 # main.py reads this block. Financing on
+                                 # negative cash is charged at the ^IRX aux
+                                 # rate + spread, and FAILS CLOSED to
+                                 # flat_rate_pct — a levered arm with free
+                                 # borrow is divergence #16 wearing a new name.
+    spread_bps_annual: 150       # broker spread over the T-bill rate
+    flat_rate_pct: 6.0           # punitive fallback when no rate aux is given
+  macro_gate:                    # §64 macro regime gate — OFF. Exists so a
+    enabled: false               # frozen spec arm can test entry-blocking on
+    series: UNRATE               # a first-print ALFRED vintage series. Same
+    ma_days: 252                 # four properties as the §31 credit gate:
+                                 # shared impl, ts-bounded, fails open,
+                                 # never applied to exits.
   regime_exposure:               # down-regime gross-exposure cap. Gate 2026-07-18:
     enabled: true                # §29 2026-07-26: ENABLED, on §18's own condition.
                                  # §18 rejected it as untestable — "at 1%/trade
