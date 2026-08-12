@@ -1139,12 +1139,26 @@
       "key": "§71",
       "heading": "## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
       "start_line": 6773,
-      "body_sha256": "3907874c855faa16947122883c06cd27a9bd71129417c4e82380e9d02d66be10",
+      "body_sha256": "0cbc6800ed56ff4ff3e6dcd70f63634703c23de0ebcc2dce8370f9afb71edde2",
       "subheadings": [],
       "specs": [
         "s71a",
         "s71b",
         "s71c"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§72",
+      "heading": "## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)",
+      "start_line": 6784,
+      "body_sha256": "539d58b66a2a5962eb443b40de271c9fb8293d2c47181c71a6b9e1bdb1774471",
+      "subheadings": [],
+      "specs": [
+        "s72a",
+        "s72b",
+        "s72c",
+        "s72d"
       ],
       "spec_source": "id+header+trailer"
     }
