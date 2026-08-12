@@ -1,0 +1,13 @@
+{
+  "irx_2000-01-01_2026-08-11.json.gz": {
+    "sha256": "44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade",
+    "symbol": "^IRX",
+    "rows": 6685,
+    "start": "2000-01-03",
+    "end": "2026-08-11",
+    "unit": "annualized discount rate, PERCENT",
+    "source": "yfinance ^IRX (CBOE 13-week T-bill index)",
+    "built": "2026-08-12",
+    "note": "market rate, never revised \u2014 PIT by construction; cross-check against FRED DTB3 vintages when a key exists"
+  }
+}
