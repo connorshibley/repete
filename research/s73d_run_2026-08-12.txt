@@ -1,0 +1,35 @@
+s73d — macro entry gate (UNRATE) on trend_hold lev150 latch-off (2022-2026)
+claim DIAGNOSTIC | K=16 | frozen 2026-08-12T16:51:23 | sha e8c05b6662519c0e… | judge OFF
+
+prior: NO OFFICIAL NBER RECESSION in this window. Unemployment sat near 50-year lows (roughly 3.4-3.7%) through 2023, then drifted up to about 4.3-4.4% through 2024 and into 2025 — a "soft landing with labor cooling," not a downturn. This is the genuinely open question of the four periods: a gradual, non-recessionary drift is a regime this gate has never been tested against, and neither the 2007-2013 lagging-indicator argument nor the 2014-2019 "should stay inert" argument transfers cleanly. No strong directional prior either way.
+DATA CAVEAT, disclosed rather than smoothed over: the 2025 federal shutdown delayed the September 2025 UNRATE release to Nov 20, 2025 and left October 2025 with no independent first-print release at all (`scripts/build_macro_aux.py`'s own verification log recorded and tolerated this gap explicitly, at a widened-but-documented 95-day threshold). The forward-filled aux therefore carried a stale August 2025 reading roughly two months longer than a normal release cadence would have. Point-in-time by construction still holds — nothing later than a given day's real information leaks in — but the INFORMATION ITSELF was genuinely stale for that stretch, exactly as it would have been for a live bot reading the same feed in real time.
+READING RULE — identical to s73a/s73b/s73c.
+
+  verified bars_etf_2022-01-01_2026-07-10.json.gz  sha256 d84f9ce13ee58187…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+  verified unrate_2000-01-01_2026-08-11.json.gz  sha256 289a7e296c2767ef…
+
+  15 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret  +75.57%  PF 6.567  maxDD 15.80%  trades     8  symbols   1  deploy 100.70%  (0s)
+                           signals     20  blocked     12  |  regime_exposure 12
+  macro_on                 ret   -1.97%  PF 1.122  maxDD 17.86%  trades     8  symbols   1  deploy  54.98%  (0s)
+                           signals    397  blocked    389  |  macro 380  regime_exposure 9
+
+  buy-and-hold on this universe: +52.98%
+
+-- PRE-REGISTERED PASS MARK (macro_on) --
+  [PASS] (a) min_trades  8 vs 8
+  [FAIL] (b) significantly_better_paired  INCONCLUSIVE: candidate $+276.80/trade (n=8) vs baseline $+10688.86/trade (n=8); diff $-10412.07, 99.69% CI [$-23059.35, $+14264.81] (Bonferroni K=16) [PAIRED, overlapping: 4 shared, 4 baseline-only, 4 candidate-only, 33% common]
+  [FAIL] (c) beats_benchmark_symbol  -1.97% vs SPY +67.06% | maxDD 17.86% vs SPY 24.50% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  -1.97% at 17.86% maxDD -> -2.70% levered to SPY's 24.50% maxDD, vs SPY +67.06%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (1s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

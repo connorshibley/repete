@@ -1,0 +1,35 @@
+s73a — macro entry gate (UNRATE) on trend_hold lev150 latch-off (2000-2006)
+claim DIAGNOSTIC | K=16 | frozen 2026-08-12T16:51:23 | sha c353deb0a9b09c21… | judge OFF
+
+prior: BOTH ARMS ARE §72's CONFIRMED-EDGE BASELINE (latch off, 1.5x financed); the only difference is macro_on adds the entry veto. Clause (b) is the real question — §55's paired estimator, exactly the shape it was built for: macro_on's trade set is a subset of baseline's (the gate only removes entries), so the variance the two arms share cancels instead of being counted twice.
+Unemployment ROSE through the 2001 recession and the "jobless recovery" that followed it — roughly 3.9% (Jan 2000) to a peak near 6.3% (mid-2003) before falling back under 4.5% by end-2006 — so the gate should engage for a long stretch of this window, not sit idle. The direction of that engagement on an ALREADY-WINNING baseline is genuinely uncertain rather than assumed favorable: a lagging indicator often stays elevated well past the point trend_hold's own 200-DMA has already re-entered, which means the gate can as easily strip real gains from the confirmed edge as avoid a false start. This is the same risk named plainly and without hedging in s73b's prior for 2007-2013, where it is sharper.
+READING RULE, frozen before any run, across s73a-d taken together: (b) passing (macro_on significantly beats baseline, paired) in 3 or more of 4 periods licenses exactly one future EDGE registration on this exact macro_on configuration, via an audited override under the same screen-then-promote supersession argument §68 used to license §72 — K would advance 16 -> 17 at that spend, not before. 2 of 4 is regime-dependent, recorded, no promotion. 1 or fewer, OR a clear reversal in 2007-2013 specifically (s73b — the period carrying baseline's strongest edge evidence), REFUTES the mechanism for trend_hold and closes the family, the same standard applied to GEM, tom_tilt and vol_lever.
+
+  verified bars_etf_2000-01-01_2006-12-31.json.gz  sha256 59a7e224cfcce0fc…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+  verified unrate_2000-01-01_2026-08-11.json.gz  sha256 289a7e296c2767ef…
+
+  13 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret  +51.76%  PF 3.912  maxDD 16.95%  trades    15  symbols   1  deploy  71.38%  (1s)
+                           signals     46  blocked     31  |  regime_exposure 31
+  macro_on                 ret  +64.21%  PF 6.117  maxDD 11.12%  trades    11  symbols   1  deploy  69.08%  (1s)
+                           signals     67  blocked     56  |  regime_exposure 30  macro 26
+
+  buy-and-hold on this universe: +38.39%
+
+-- PRE-REGISTERED PASS MARK (macro_on) --
+  [PASS] (a) min_trades  11 vs 8
+  [FAIL] (b) significantly_better_paired  INCONCLUSIVE: candidate $+6619.67/trade (n=11) vs baseline $+3992.58/trade (n=15); diff $+2627.10, 99.69% CI [$-10023.78, $+6575.07] (Bonferroni K=16) [PAIRED, nested: 11 shared, 4 baseline-only, 0 candidate-only, 73% common] | KEPT vs REMOVED (reported, not gated): SIGNIFICANT: candidate $+6619.67/trade (n=11) vs baseline $-1853.61/trade (n=4); diff $+8473.28, 99.69% CI [$+2946.82, $+13956.30] (Bonferroni K=16)
+  [PASS] (c) beats_benchmark_symbol  +64.21% vs SPY +10.01% | maxDD 11.12% vs SPY 47.52% (reported, not gated)
+  [PASS] (d) beats_benchmark_risk_adjusted  +64.21% at 11.12% maxDD -> +274.29% levered to SPY's 47.52% maxDD, vs SPY +10.01%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (1s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

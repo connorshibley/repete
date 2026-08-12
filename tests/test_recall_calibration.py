@@ -88,7 +88,9 @@ def test_no_expectation_is_excluded_from_both_sides():
     what makes a test falsifiable and s38 is not a test. Scoring it either way
     would invent a prediction nobody made."""
     out = recall.calibrate()
-    assert out["counts"]["no_expectation_stated"] == 1
+    # s38 (P13) plus s73d (2026-08-12): "No strong directional prior either
+    # way" is stated outright, not a hedge dressed as a prediction.
+    assert out["counts"]["no_expectation_stated"] == 2
     row = next(r for r in out["rows"] if r["id"] == "s38")
     assert row["direction"] == "no_expectation_stated"
     assert out["scored"] + out["counts"]["mixed"] \
@@ -136,7 +138,8 @@ def test_the_sidecar_is_append_only_json_lines():
     text = recall._read(recall.PRIOR_READINGS)
     rows = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
     # 55 at P13; 63 after s62a-h (Phase 15, 2026-08-11).
-    assert len(rows) == 98   # 55 at P13; 63 after s62; 79 after s64-s67 (2026-08-12)
+    assert len(rows) == 102  # 55 at P13; 63 after s62; 79 after s64-s67;
+                              # 98 after s72; 102 after s73a-d (2026-08-12)
     for r in rows:
         assert set(r) == {"id", "spec_sha256", "read_at", "read_by",
                           "approved_by", "direction", "quote"}
