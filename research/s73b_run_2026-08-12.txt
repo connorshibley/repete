@@ -1,0 +1,35 @@
+s73b — macro entry gate (UNRATE) on trend_hold lev150 latch-off (2007-2013)
+claim DIAGNOSTIC | K=16 | frozen 2026-08-12T16:51:23 | sha e1d4de60505acce6… | judge OFF
+
+prior: THE PERIOD THE PROMOTION RULE WEIGHTS MOST. Unemployment rose from 4.4% in early 2007 to 10.0% in October 2009 and did NOT fall back below its own trailing 252-day mean until well after that — the textbook case that labor is a LAGGING indicator. Equities bottomed in March 2009 and began a monster rally through 2009-2010 WHILE unemployment kept climbing to its own October 2009 peak. §72's confirmed EDGE pass draws real weight from this exact window.
+STATED PLAINLY, NOT HEDGED: this is the period where the gate is most likely to HURT, not help. If macro_on blocks trend_hold's 200-DMA re-entry signal in spring/summer 2009 because UNRATE is still elevated relative to its own trailing mean, it removes the single highest-value trade in the entire four-period dataset — the same trade that gives baseline its strongest evidence. That is the specific, falsifiable, unfavorable prediction for this spec, not a generic risk disclosure.
+READING RULE — identical language to s73a, repeated here because this is the period it names explicitly: (b) passing in 3 or more of 4 periods licenses one future EDGE registration via audited override, K 16 -> 17 at that spend and not before; 2 of 4 is regime-dependent, recorded, no promotion; 1 or fewer, OR a clear reversal specifically HERE (2007-2013), REFUTES the mechanism for trend_hold and closes the family — the same standard applied to GEM, tom_tilt and vol_lever.
+
+  verified bars_etf_2007-01-01_2013-12-31.json.gz  sha256 37e2609b8515998a…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+  verified unrate_2000-01-01_2026-08-11.json.gz  sha256 289a7e296c2767ef…
+
+  13 symbols | 2 arms | 1 worker(s)
+
+  baseline                 ret  +55.08%  PF 2.293  maxDD 26.18%  trades    17  symbols   1  deploy  81.33%  (1s)
+                           signals     46  blocked     29  |  regime_exposure 29
+  macro_on                 ret  +62.98%  PF 3.877  maxDD 21.73%  trades     9  symbols   1  deploy  59.78%  (1s)
+                           signals    309  blocked    300  |  macro 284  regime_exposure 16
+
+  buy-and-hold on this universe: +65.05%
+
+-- PRE-REGISTERED PASS MARK (macro_on) --
+  [PASS] (a) min_trades  9 vs 8
+  [FAIL] (b) significantly_better_paired  INCONCLUSIVE: candidate $+7251.91/trade (n=9) vs baseline $+3417.33/trade (n=17); diff $+3834.58, 99.69% CI [$-46279.41, $+13328.12] (Bonferroni K=16) [PAIRED, nested: 9 shared, 8 baseline-only, 0 candidate-only, 53% common] | KEPT vs REMOVED (reported, not gated): INCONCLUSIVE: candidate $+7251.91/trade (n=9) vs baseline $-498.78/trade (n=8); diff $+7750.70, 99.69% CI [$-5410.25, $+24840.29] (Bonferroni K=16)
+  [PASS] (c) beats_benchmark_symbol  +62.98% vs SPY +51.30% | maxDD 21.73% vs SPY 55.19% (reported, not gated)
+  [PASS] (d) beats_benchmark_risk_adjusted  +62.98% at 21.73% maxDD -> +160.00% levered to SPY's 55.19% maxDD, vs SPY +51.30%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (1s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

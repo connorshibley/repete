@@ -1152,13 +1152,27 @@
       "key": "§72",
       "heading": "## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)",
       "start_line": 6784,
-      "body_sha256": "539d58b66a2a5962eb443b40de271c9fb8293d2c47181c71a6b9e1bdb1774471",
+      "body_sha256": "3ee1f1eb955a9d915d7bd8575ddf06cc5eff3c39bc249ac19bd56efe99609d1a",
       "subheadings": [],
       "specs": [
         "s72a",
         "s72b",
         "s72c",
         "s72d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§73",
+      "heading": "## §73 — MACRO ENTRY GATE (UNRATE): 0 OF 4 — THE FAMILY IS CLOSED (DIAGNOSTIC, K=16, pre-registered 2026-08-12)",
+      "start_line": 6813,
+      "body_sha256": "6b72818890c0cd95240ddce9018fc32a316f1a690df997e2d229918aaa5bb33d",
+      "subheadings": [],
+      "specs": [
+        "s73a",
+        "s73b",
+        "s73c",
+        "s73d"
       ],
       "spec_source": "id+header+trailer"
     }

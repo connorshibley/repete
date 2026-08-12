@@ -6807,3 +6807,72 @@ separately-registered work. `mode: paper` unchanged; every §64-wave
 strategy still ships `enabled: false`.
 
 <!-- recall: section=§72 specs=s72a,s72b,s72c,s72d -->
+
+---
+
+## §73 — MACRO ENTRY GATE (UNRATE): 0 OF 4 — THE FAMILY IS CLOSED (DIAGNOSTIC, K=16, pre-registered 2026-08-12)
+
+The spend `probe_alfred_vintages.py` licensed. On 2026-08-12 the probe
+passed all three checks against a real FRED key (vintage axis exists,
+revisions genuinely diverge from a market-rate negative control, release
+lag postdates the observation period — `research/alfred_vintages_2026-08-12.txt`),
+closing the §31 deferral. `scripts/build_macro_aux.py` then built a
+daily, forward-filled, first-print-only UNRATE series
+(`data/aux/unrate_2000-01-01_2026-08-11.json.gz`) for `risk.macro_gate`
+(built §64, shipped disabled) to read.
+
+**What was tested.** Both arms are §72's CONFIRMED-EDGE configuration
+(trend_hold, latch off, 1.5x financed leverage) on the same four periods.
+`macro_on` additionally blocks an entry whenever UNRATE's latest as-of
+value sits above its own 252-day trailing mean — a filter that can only
+REMOVE trades the price signal already wanted, never add one. Clause (b),
+`significantly_better_paired` (§55's paired estimator, built for exactly
+this shape: the candidate's trade set is a subset of baseline's), is the
+frozen primary question.
+
+**Verdict: clause (b) failed in all four periods — 0 of 4.** Per the
+frozen reading rule, "1 or fewer... REFUTES the mechanism for trend_hold
+and closes the family, the same standard applied to GEM, tom_tilt and
+vol_lever." No promotion. K stays at 16.
+
+| Period | baseline TR | macro_on TR | vs SPY (macro_on) | clause (b) |
+|---|---|---|---|---|
+| 2000-06 | +51.76% | +64.21% | +64.21% vs +10.01% | FAIL (inconclusive) |
+| 2007-13 | +55.08% | +62.98% | +62.98% vs +51.30% | FAIL (inconclusive) |
+| 2014-19 | +69.97% | +70.25% | +70.25% vs +97.39% | FAIL (inconclusive) |
+| 2022-26 | +75.57% | **-1.97%** | -1.97% vs +67.06% | FAIL (inconclusive) |
+
+Two things worth carrying forward, neither of them the prior's own
+sharpest prediction:
+
+**The predicted failure mode did not fire where predicted.** s73b's
+frozen prior named the 2007-2013 GFC window as the period most likely to
+be HURT by the gate — labor lags the market, and blocking trend_hold's
+2009 re-entry while unemployment was still peaking would have removed
+the highest-value trade in the whole dataset. That specific mechanism did
+not materialize: `macro_on` DESCRIPTIVELY beat baseline in 2007-2013
+(+62.98% vs +55.08%), just not significantly (n=9, wide CI). The
+significance test failed everywhere for the more ordinary reason —
+underpowered n on an already-small trade count, the same s48/s49 pattern
+this whole program keeps re-finding.
+
+**The real damage landed in the one period with "no strong prior."**
+2022-2026 was written up as genuinely open — a non-recessionary labor
+drift the other three periods' arguments didn't transfer to. It produced
+the single worst result of the wave: 380 of 397 signals blocked, deployment
+cut from 100.7% to 55.0%, and the strategy fell from beating SPY by
++8.5pp to losing to it by 69pp. A soft-landing-shaped rise in UNRATE
+locked the gate almost fully shut through a period stocks kept rising —
+the mirror image of the 2007-2013 concern, and the sharper of the two in
+practice.
+
+What this is NOT: a claim that macro data is useless, or that UNRATE
+specifically is the wrong series — only that THIS mechanism (an
+entry-blocking veto keyed to trailing-mean unemployment) on THIS
+candidate (trend_hold) failed its own pre-committed test. The venue
+closure `probe_alfred_vintages.py` cleared stands; a different macro
+signal or a different role for it (judge-context shrink rather than a
+hard entry block, the shape invariant #2 originally scoped it for) is not
+foreclosed and is not licensed by this section either.
+
+<!-- recall: section=§73 specs=s73a,s73b,s73c,s73d -->

@@ -1,0 +1,144 @@
+# §73a — DIAGNOSTIC: macro entry gate (UNRATE) on the confirmed trend_hold
+# lev150 latch-off config (2000-2006)
+#
+# THE SPEND THIS ANSWERS. §31 deferred macro entirely: FRED serves current
+# values, and backtesting a revised series is lookahead that would quietly
+# invalidate any gate scored against it. `probe_alfred_vintages.py` was
+# written to close that deferral before any macro code was trusted, and on
+# 2026-08-12 it PASSED all three checks against a real key (vintage axis
+# exists, revisions actually diverge from a market-rate negative control,
+# release lag postdates the observation period) — see
+# `research/alfred_vintages_2026-08-12.txt`. This is the first spec that
+# spends that clearance.
+#
+# WHAT IS BEING TESTED. `risk.macro_gate` (built in §64, shipped disabled)
+# blocks an ENTRY when a configured series' latest as-of value sits above its
+# own trailing mean — UNRATE, first-print-only, in `data/aux/unrate_*.json.gz`
+# (`scripts/build_macro_aux.py`). It is JUDGE-CONTEXT SHAPED by construction:
+# fails open, ts-bounded, never touches an exit, can only REMOVE an entry the
+# price signal already wanted to take — the same four properties
+# `credit_blocked` pinned. The candidate here is the config §72 already
+# confirmed EDGE on (trend_hold, latch OFF, 1.5x financed leverage) with the
+# gate turned on, so the question is narrow and honest: does macro
+# regime-filtering improve the ALREADY-WINNING configuration, or does a
+# lagging indicator applied on top of a strategy whose own 200-DMA signal
+# already times regime cost it trades it needed?
+#
+# DIAGNOSTIC; K STAYS 16 (the value §72 advanced it to). This spends no
+# Bonferroni budget and licenses no enablement — CLAUDE.md invariant 2, same
+# as every prior wave.
+id: s73a
+claim: DIAGNOSTIC
+title: "macro entry gate (UNRATE) on trend_hold lev150 latch-off (2000-2006)"
+
+judge_model: false
+
+snapshot:
+  path: data/pit/bars_etf_2000-01-01_2006-12-31.json.gz
+  sha256: 59a7e224cfcce0fc5b750ba036c0a1db300d3569d6c555cb9be5d4540609dfc0
+
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+  macro:
+    path: data/aux/unrate_2000-01-01_2026-08-11.json.gz
+    sha256: 289a7e296c2767efe2438b0a2ef8cfee287b6cf56fdc03f9501f5503837304be
+
+cash: 100000.0
+bonferroni_k: 16
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 0
+  - name: macro_on
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 0
+      risk.macro_gate.enabled: true
+      risk.macro_gate.series: UNRATE
+      risk.macro_gate.ma_days: 252
+
+clauses:
+  - {id: a, rule: min_trades, n: 8}
+  - {id: b, rule: significantly_better_paired}
+  - {id: c, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: d, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+prior: >-
+  BOTH ARMS ARE §72's CONFIRMED-EDGE BASELINE (latch off, 1.5x financed);
+  the only difference is macro_on adds the entry veto. Clause (b) is the
+  real question — §55's paired estimator, exactly the shape it was built
+  for: macro_on's trade set is a subset of baseline's (the gate only
+  removes entries), so the variance the two arms share cancels instead of
+  being counted twice.
+
+  Unemployment ROSE through the 2001 recession and the "jobless recovery"
+  that followed it — roughly 3.9% (Jan 2000) to a peak near 6.3% (mid-2003)
+  before falling back under 4.5% by end-2006 — so the gate should engage
+  for a long stretch of this window, not sit idle. The direction of that
+  engagement on an ALREADY-WINNING baseline is genuinely uncertain rather
+  than assumed favorable: a lagging indicator often stays elevated well
+  past the point trend_hold's own 200-DMA has already re-entered, which
+  means the gate can as easily strip real gains from the confirmed edge as
+  avoid a false start. This is the same risk named plainly and without
+  hedging in s73b's prior for 2007-2013, where it is sharper.
+
+  READING RULE, frozen before any run, across s73a-d taken together: (b)
+  passing (macro_on significantly beats baseline, paired) in 3 or more of
+  4 periods licenses exactly one future EDGE registration on this exact
+  macro_on configuration, via an audited override under the same
+  screen-then-promote supersession argument §68 used to license §72 — K
+  would advance 16 -> 17 at that spend, not before. 2 of 4 is
+  regime-dependent, recorded, no promotion. 1 or fewer, OR a clear reversal
+  in 2007-2013 specifically (s73b — the period carrying baseline's
+  strongest edge evidence), REFUTES the mechanism for trend_hold and closes
+  the family, the same standard applied to GEM, tom_tilt and vol_lever.
+
+failure_modes:
+  - >-
+    THE GATE CAN ONLY REMOVE, NEVER ADD, an entry — any improvement has to
+    come entirely from what gets skipped. On a strategy that already takes
+    only a handful of trades per multi-year period, the degrees of freedom
+    available to help are small by construction.
+  - >-
+    LABOR LAGS THE MARKET — named directly because it is the sharpest,
+    most falsifiable risk this wave carries, not a generic caveat. See
+    s73b's prior for the period where it is most acute.
+  - >-
+    FEW INDEPENDENT EPISODES: same s48/s49 caveat as every prior wave — four
+    periods of regime switches are a handful of bets, and this diagnostic
+    does not change that.
+  - >-
+    LATCH OFF IS NOT SHIPPABLE AS-IS, REMAINING RAILS STAY ON, and
+    GAP-THROUGH/financing realism carry over from s64/s68/s72 verbatim —
+    this wave changes the entry gate only, nothing about those caveats.
+  - >-
+    THE AUX IS A MON-FRI STEP SERIES, NOT A TRUE NYSE CALENDAR
+    (`scripts/build_macro_aux.py`'s own documented simplification) — a
+    handful of U.S. market holidays per year are treated as ordinary
+    weekdays. For a series that moves at most once a month this changes a
+    252-row trailing mean negligibly, but it is a real, disclosed
+    approximation, not an exact calendar match.

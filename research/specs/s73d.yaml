@@ -1,0 +1,108 @@
+# §73d — DIAGNOSTIC: macro entry gate (UNRATE) on the confirmed trend_hold
+# lev150 latch-off config (2022-2026)
+#
+# See s73a for the full design rationale. This period carries a real data
+# caveat, named directly in the prior below rather than left implicit: the
+# 2025 federal shutdown left a genuine gap in the underlying release
+# cadence, and `scripts/build_macro_aux.py` forward-filled through it rather
+# than papering over it silently.
+id: s73d
+claim: DIAGNOSTIC
+title: "macro entry gate (UNRATE) on trend_hold lev150 latch-off (2022-2026)"
+
+judge_model: false
+
+snapshot:
+  path: data/pit/bars_etf_2022-01-01_2026-07-10.json.gz
+  sha256: d84f9ce13ee5818745d1a25ce4fbc32d558cc7cb29b268ab27c37e1841113a6d
+
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+  macro:
+    path: data/aux/unrate_2000-01-01_2026-08-11.json.gz
+    sha256: 289a7e296c2767efe2438b0a2ef8cfee287b6cf56fdc03f9501f5503837304be
+
+cash: 100000.0
+bonferroni_k: 16
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 0
+  - name: macro_on
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 0
+      risk.macro_gate.enabled: true
+      risk.macro_gate.series: UNRATE
+      risk.macro_gate.ma_days: 252
+
+clauses:
+  - {id: a, rule: min_trades, n: 8}
+  - {id: b, rule: significantly_better_paired}
+  - {id: c, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: d, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+prior: >-
+  NO OFFICIAL NBER RECESSION in this window. Unemployment sat near 50-year
+  lows (roughly 3.4-3.7%) through 2023, then drifted up to about 4.3-4.4%
+  through 2024 and into 2025 — a "soft landing with labor cooling," not a
+  downturn. This is the genuinely open question of the four periods: a
+  gradual, non-recessionary drift is a regime this gate has never been
+  tested against, and neither the 2007-2013 lagging-indicator argument nor
+  the 2014-2019 "should stay inert" argument transfers cleanly. No strong
+  directional prior either way.
+
+  DATA CAVEAT, disclosed rather than smoothed over: the 2025 federal
+  shutdown delayed the September 2025 UNRATE release to Nov 20, 2025 and
+  left October 2025 with no independent first-print release at all
+  (`scripts/build_macro_aux.py`'s own verification log recorded and
+  tolerated this gap explicitly, at a widened-but-documented 95-day
+  threshold). The forward-filled aux therefore carried a stale August 2025
+  reading roughly two months longer than a normal release cadence would
+  have. Point-in-time by construction still holds — nothing later than a
+  given day's real information leaks in — but the INFORMATION ITSELF was
+  genuinely stale for that stretch, exactly as it would have been for a
+  live bot reading the same feed in real time.
+
+  READING RULE — identical to s73a/s73b/s73c.
+
+failure_modes:
+  - >-
+    THE GATE CAN ONLY REMOVE, NEVER ADD, an entry — see s73a.
+  - >-
+    THE SHUTDOWN GAP IS THE SHARPEST DATA CAVEAT IN THIS WAVE: for
+    ~2 months in late 2025 the gate's own information was less current
+    than any other period tested. Any result attributable to that specific
+    stretch should be read with that in mind before generalizing it.
+  - >-
+    FEW INDEPENDENT EPISODES: same s48/s49 caveat as every prior wave, and
+    the shortest of the four windows to begin with.
+  - >-
+    LATCH OFF IS NOT SHIPPABLE AS-IS, REMAINING RAILS STAY ON, and
+    GAP-THROUGH/financing realism carry over from s64/s68/s72 verbatim.
+  - >-
+    THE AUX IS A MON-FRI STEP SERIES, NOT A TRUE NYSE CALENDAR — see s73a.
