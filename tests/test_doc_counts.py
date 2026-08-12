@@ -43,7 +43,9 @@ README = ROOT / "README.md"
 DIVERGENCES = ROOT / "docs" / "divergences.md"
 
 WORDS = {14: "Fourteen", 15: "Fifteen", 16: "Sixteen", 17: "Seventeen",
-         18: "Eighteen", 19: "Nineteen", 20: "Twenty"}
+         18: "Eighteen", 19: "Nineteen", 20: "Twenty", 21: "Twenty-one",
+         22: "Twenty-two", 23: "Twenty-three", 24: "Twenty-four",
+         25: "Twenty-five"}
 
 
 # --------------------------------------------------------------------------
@@ -68,6 +70,14 @@ def divergence_table_ids() -> list[int]:
     return [int(n) for n in rows]
 
 
+def divergence_section_ids() -> list[int]:
+    """The `## #N` deep-dive headings — where a divergence is actually written
+    up. The table is a summary OF these, so a section with no row is an entry
+    that exists and is uncounted."""
+    heads = re.findall(r"^## #(\d+)", DIVERGENCES.read_text(), re.M)
+    return [int(n) for n in heads]
+
+
 def divergence_open_ids() -> list[int]:
     m = re.search(r"\*\*Open as of [^:]+: ([^*]+)\*\*", DIVERGENCES.read_text())
     assert m, "the `Open as of ...` line is gone from docs/divergences.md"
@@ -75,7 +85,12 @@ def divergence_open_ids() -> list[int]:
 
 
 def divergence_prose_total() -> int:
-    m = re.search(r"^(\w+) such differences have been found",
+    # [\w-], not \w: the twenty-first divergence made the total a HYPHENATED
+    # word, and `\w+` cannot match one. The failure was not a wrong count — the
+    # regex missed entirely and the assert below fired with "the sentence is
+    # gone", which points at the wrong file. A guard that cannot express the
+    # next value it will be handed is a guard with an expiry date.
+    m = re.search(r"^([\w-]+) such differences have been found",
                   DIVERGENCES.read_text(), re.M)
     assert m, "the 'N such differences have been found' sentence is gone"
     word = m.group(1)
@@ -96,6 +111,28 @@ def test_the_table_lists_every_divergence_with_no_gaps():
     assert ids == sorted(ids), f"table rows are out of order: {ids}"
     assert ids == list(range(1, max(ids) + 1)), \
         f"gaps in the divergence table: {sorted(set(range(1, max(ids)+1)) - set(ids))}"
+
+
+def test_every_deep_dive_section_has_a_table_row():
+    """The check that was missing on 2026-08-11, when #21 was registered with a
+    full `## #21` section and no row.
+
+    The prose, the table and the `Open as of` line all agreed with each other
+    — which is precisely what the tests above assert — while a registered OPEN
+    divergence sat a few hundred lines below, absent from every count in the
+    repo including README's. Three artifacts were being compared and there were
+    four.
+
+    SUBSET, not equality, and the direction is load-bearing: #1-#7 and #9 have
+    rows and no sections because they predate the deep-dive convention.
+    Requiring a section for every row would fail on eight legitimate entries
+    and would be quietly deleted the first time someone hit it.
+    """
+    sections, rows = divergence_section_ids(), divergence_table_ids()
+    orphans = sorted(set(sections) - set(rows))
+    assert not orphans, (
+        f"divergence(s) {orphans} have a `## #N` section but no summary-table "
+        f"row — documented in full and invisible to every count in the repo")
 
 
 def test_the_prose_total_matches_the_table():
@@ -148,12 +185,23 @@ def test_the_readme_open_closed_split_is_current():
     text = README.read_text()
     total = len(divergence_table_ids())
     n_open = len(divergence_open_ids())
-    words = {3: "three", 4: "four", 5: "five", 6: "six", 12: "twelve",
-             13: "thirteen", 14: "fourteen", 15: "fifteen"}
-    assert f"{words[total - n_open]} closed" in text.lower(), \
-        f"README should say '{words[total - n_open]} closed' ({total}-{n_open})"
-    assert f"{words[n_open]} open" in text.lower(), \
-        f"README should say '{words[n_open]} open'"
+    # Contiguous 1-20, not the handful of values that happened to be in use.
+    # This dict skipped 7, so the day a seventh divergence went open the test
+    # raised `KeyError: 7` instead of asserting anything — a guard that fails
+    # by crashing tells you nothing about the thing it guards, and the crash
+    # points at the test rather than at the README.
+    words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+             7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
+             12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen",
+             16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
+             20: "twenty"}
+    n_closed = total - n_open
+    for n, label in ((n_closed, "closed"), (n_open, "open")):
+        assert n in words, (
+            f"no word for {n} {label} — extend `words` rather than letting "
+            f"this raise KeyError and read as a test bug")
+        assert f"{words[n]} {label}" in text.lower(), \
+            f"README should say '{words[n]} {label}' ({total} total, {n_open} open)"
 
 
 # --------------------------------------------------------------------------
