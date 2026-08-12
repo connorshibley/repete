@@ -121,7 +121,7 @@ than a missed entry.
 This is the section most repos leave out.
 
 **One EDGE claim in fifteen has passed — and it does not mean what it looks
-like.** As of 2026-08-04 the tally is **1 pass in 15**. The §51 pass ran on the
+like.** As of 2026-08-12 the tally is **2 passes in 16** — §72 (trend_hold, latch-off, financed 1.5x) is the first pass on survivorship-clean data; the earlier §51 pass was explained by survivorship. The §51 pass ran on the
 most survivor-selected universe in the project, carrying **+200.28pp** of
 survivorship inflation — large enough to explain the result. Every spec froze the
 asymmetry before the run — *a FAIL is decisive, a PASS is not* — so the caveat

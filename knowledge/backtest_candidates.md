@@ -6778,3 +6778,32 @@ The book spec loses to SPY in every window including its structurally
 favorable long bear.
 
 <!-- recall: section=§71 specs=s71a,s71b,s71c -->
+
+---
+
+## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)
+
+The one registration §68's promotion rule licensed, spent on owner
+direction, registered with the audited `--override-freeze` (argument in
+the registration rows) and run as a deterministic re-scoring of s68's
+exact configuration. **Every number reproduced byte-identically**, so the
+frozen confirmation rule resolves: **EDGE CONFIRMED — beats SPY total
+return in 3 of 4 periods** (2000-06 +51.76% vs +10.01%; 2007-13 +55.08%
+vs +51.30%; 2022-26 +75.57% vs +67.06%; FAILS 2014-19 +69.97% vs
++97.39%), at 1.5x with financing paid at ^IRX+150bps, on the
+survivorship-certified universe.
+
+**The EDGE tally is now 2 passes in 16 — and this is the first pass on
+clean data.** (§51's pass was explained by +200pp of survivorship.) The
+venue RE-FREEZES with this registration; the licence was for one spend.
+
+What this is NOT: an enablement, or a config change. The caveats are part
+of the claim: three bear-containing periods carry it; it LOST to SPY in
+the grind-up window (regime dependence is the mechanism, not a flaw to
+fix); and a latchless single-symbol book has no drawdown brake — running
+it live requires a risk design (per-strategy latch? wider portfolio
+latch? separate sleeve?) that does not exist and is its own future,
+separately-registered work. `mode: paper` unchanged; every §64-wave
+strategy still ships `enabled: false`.
+
+<!-- recall: section=§72 specs=s72a,s72b,s72c,s72d -->

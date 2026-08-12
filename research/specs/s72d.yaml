@@ -1,0 +1,94 @@
+# §72d — EDGE: trend_hold lev150 latch-off vs latch-on (2022-2026)
+#
+# THE ONE LICENSED EDGE SPEND (owner-directed 2026-08-12). §57 spent the
+# prior EDGE licence for the price-only incumbent question; §68's
+# pre-committed promotion rule - frozen before any latch-wave run - is what
+# reopens it for exactly one registration, via the audited override recorded
+# beside this row in registrations.jsonl. K advances 15 -> 16 here and
+# nowhere else. Caveats carried verbatim from §68: three bear-containing
+# periods carry the pass; the strategy LOST to SPY in 2014-2019; latch-off
+# is not shippable without its own risk design.
+id: s72d
+claim: EDGE
+title: "EDGE: trend_hold lev150 latch-off vs latch-on (2022-2026)"
+
+judge_model: false
+
+snapshot:
+  path: data/pit/bars_etf_2022-01-01_2026-07-10.json.gz
+  sha256: d84f9ce13ee5818745d1a25ce4fbc32d558cc7cb29b268ab27c37e1841113a6d
+
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+
+cash: 100000.0
+bonferroni_k: 16
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 10.0
+  - name: latch_off
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.trend_hold.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      risk.max_drawdown_pct: 0
+
+clauses:
+  - {id: a, rule: min_trades, n: 8}
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: d, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+prior: >-
+  THE LICENSED SPEND. s68's frozen promotion rule fired (latch_off beat SPY
+  total return 3 of 4, failing only 2014-2019) and licensed exactly one EDGE
+  registration at K=16. This is that registration, and it is deliberately a
+  DETERMINISTIC RE-SCORING of s68's exact configuration - same snapshots,
+  same arms, same clauses - because the claim being made is the one already
+  measured, now carried at EDGE weight with the Bonferroni column advanced.
+  Any numeric divergence from s68 voids the promotion (nondeterminism).
+  READING RULE, frozen: (b) passing on latch_off in the same 3 periods and
+  failing 2014-2019 CONFIRMS the claim at K=16 - the EDGE tally becomes 2
+  passes in 16, the first on survivorship-clean data with financed leverage;
+  any other pattern VOIDS the promotion and re-freezes this venue. Either
+  way the venue re-freezes after this registration: the licence was for one
+  spend. A confirmed EDGE is an evidence bundle for an owner conversation
+  about risk design (a latchless single-symbol book has no drawdown brake) -
+  it is NOT an enablement and licenses no config change.
+
+failure_modes:
+  - >-
+    LATCH OFF IS NOT SHIPPABLE AS-IS: the live book runs nine other strategies
+    under one latch; a candidate that only works latchless needs its own risk
+    design before any enablement conversation, and that design is not licensed
+    by these specs.
+  - >-
+    REMAINING RAILS STAY ON (regime cap, daily loss limit); the arm difference
+    isolates the latch only.
+  - >-
+    FEW INDEPENDENT EPISODES: same s48/s49 caveat as the first wave; four
+    periods of regime switches are a handful of bets.
+  - >-
+    GAP-THROUGH and financing realism carry over from s64 verbatim.

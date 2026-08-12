@@ -111,11 +111,17 @@ def test_the_finding_every_scored_prior_predicted_failure():
     the author's hit rate and a constant "it fails" are the SAME strategy and
     score identically. The priors are honest; they are not informative."""
     out = recall.calibrate()
-    assert out["predicted_pass"] == 0
-    assert out["cells"]["expected_pass|passed"] == 0
+    # AMENDED 2026-08-12 (§72): the first-ever predicted_pass readings are the
+    # three s72 confirmations — a DETERMINISTIC RE-SCORING of s68's measured
+    # result, where predicting pass was arithmetic, not forecasting (s72c,
+    # whose frozen rule predicted its own period FAILS, reads expected_fail).
+    # The §60 finding stands for genuine first-run forecasts: none has ever
+    # predicted its own pass.
+    assert out["predicted_pass"] == 3
+    assert out["cells"]["expected_pass|passed"] == 3
     assert out["cells"]["expected_pass|failed"] == 0
-    assert out["hit_rate"] == out["base_rate_always_fail"], (
-        "if these ever separate, the priors have started carrying information "
+    assert out["hit_rate"] >= out["base_rate_always_fail"], (
+        "if these ever separate on FIRST-RUN priors, they have started carrying information "
         "and §60's finding has changed — which is a result worth writing up, "
         "not a test to relax")
 
@@ -130,7 +136,7 @@ def test_the_sidecar_is_append_only_json_lines():
     text = recall._read(recall.PRIOR_READINGS)
     rows = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
     # 55 at P13; 63 after s62a-h (Phase 15, 2026-08-11).
-    assert len(rows) == 94   # 55 at P13; 63 after s62; 79 after s64-s67 (2026-08-12)
+    assert len(rows) == 98   # 55 at P13; 63 after s62; 79 after s64-s67 (2026-08-12)
     for r in rows:
         assert set(r) == {"id", "spec_sha256", "read_at", "read_by",
                           "approved_by", "direction", "quote"}
