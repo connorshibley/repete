@@ -58,7 +58,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 BASE = "https://api.stlouisfed.org/fred"
 CALL_BUDGET = 30          # FRED allows 120 req/min; this stays far inside it
@@ -89,6 +89,12 @@ LAG_DATES = ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01",
 # An observation date inside REVISED_SERIES to inspect across every vintage.
 # Q2 2020 is deliberate: the largest revisions in the modern series.
 REVISION_PROBE_DATE = "2020-04-01"
+
+# Observation date for the negative-control series (CONTROL_SERIES). Must be
+# a real trading day — DGS10 has no quote on a Sunday, and 2023-01-01 (the
+# date reused from LAG_DATES in an earlier version) is one. A market with no
+# quote returns zero rows, which proves nothing either way.
+CONTROL_OBS_DATE = "2023-01-03"
 
 MIN_LAG_DAYS = 5
 
@@ -136,14 +142,22 @@ def _observations(payload: dict | None) -> list[dict]:
     return obs if isinstance(obs, list) else []
 
 
-def _values_at(series: str, obs_date: str) -> list[str] | None:
+def _values_at(series: str, obs_date: str, rt: dict = RT_ALL) -> list[str] | None:
     """Every vintage value in effect for ONE observation date.
 
     Returns the raw value strings in vintage order, or None if the call failed.
+
+    `rt` bounds the realtime window queried. RT_ALL is correct for a
+    quarterly series like GDPC1 (few hundred vintages total) but is wrong
+    for a DAILY market series like the negative control: FRED counts
+    vintage dates over the WHOLE SERIES HISTORY within the requested
+    realtime period, not just around obs_date, and a decades-long daily
+    series blows past FRED's 2000-vintage-date response cap (~5000 for
+    DGS10) even though only one vintage near obs_date is ever needed.
     """
     payload = get("series/observations", series_id=series,
                   observation_start=obs_date, observation_end=obs_date,
-                  **RT_ALL)
+                  **rt)
     if payload is None:
         return None
     out = []
@@ -220,11 +234,26 @@ def check_revision_divergence(out: list) -> bool | None:
 
     ctl, ctl_why = CONTROL_SERIES
     out.append(f"\n  NEGATIVE CONTROL — {ctl}: {ctl_why}")
-    control = _values_at(ctl, LAG_DATES[0])
+    # RT_ALL is unusable here: DGS10 is a daily series with ~5000 vintage
+    # dates across its full history, and FRED's JSON endpoint caps a
+    # response at 2000 — the 1776-9999 window that works for quarterly
+    # GDPC1 gets a flat 400 on a daily series. A one-year window from the
+    # observation date is more than enough to catch a revision to a rate
+    # that (if the control holds) is never revised at all.
+    ctl_obs = date.fromisoformat(CONTROL_OBS_DATE)
+    ctl_rt = {"realtime_start": ctl_obs.isoformat(),
+              "realtime_end": (ctl_obs + timedelta(days=365)).isoformat()}
+    control = _values_at(ctl, CONTROL_OBS_DATE, rt=ctl_rt)
     if control is None:
         out.append("    unavailable")
         out.append("\n  VERDICT: UNDETERMINED — without the control, a "
                    "divergence on the revised series could be noise.")
+        return None
+    if not control:
+        out.append("    0 rows — no observation on the control date itself")
+        out.append("\n  VERDICT: UNDETERMINED — zero rows proves nothing "
+                   "about revision behavior; this is a missing observation, "
+                   "not a confirmed single vintage.")
         return None
     ctl_distinct = sorted(set(control))
     out.append(f"    {len(control)} vintage rows, {len(ctl_distinct)} distinct "

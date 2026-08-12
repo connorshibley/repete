@@ -1,0 +1,54 @@
+ALFRED VINTAGE PROBE
+run 2026-08-12T12:20:53-04:00
+read-only; no repo state mutated; no strategy or rail touched
+closes the deferral §31 recorded: 'ALFRED vintages are the correct fix and are a separate project'
+
+== 1. VINTAGE AVAILABILITY ==
+
+  GDPC1: Real GDP — advance/second/third + annual revisions
+    417 vintage dates published
+    earliest 1991-12-04, latest 2026-07-30
+
+  VERDICT: PASS — a real vintage axis exists.
+
+== 2. REVISION DIVERGENCE ==
+
+  GDPC1 @ 2020-04-01: Real GDP — advance/second/third + annual revisions
+    8 vintage rows, 8 distinct values
+
+  NEGATIVE CONTROL — DGS10: 10-year Treasury constant maturity — a market rate
+    1 vintage rows, 1 distinct values
+
+  VERDICT: PASS — revisions are visible on a revised series and absent on one that is never revised. The vintage axis carries real information.
+
+== 3. RELEASE LAG ==
+
+  PAYEMS: monthly payrolls, published the first Friday after the reference month
+    2023-01-01: first vintage 2023-02-03 (33d)
+    2023-02-01: first vintage 2023-03-10 (37d)
+    2023-03-01: first vintage 2023-04-07 (37d)
+    2023-04-01: first vintage 2023-05-05 (34d)
+    2023-05-01: first vintage 2023-06-02 (32d)
+    lag min 32d, median 34d, max 37d
+
+  VERDICT: PASS — the first vintage postdates the period it describes, so it can be used as the point of availability.
+
+FRED calls used: 8 (budget 30)
+
+=======================================================================
+All three checks PASS. A macro claim MAY be pre-registered and
+backtested against ALFRED vintages, subject to the usual discipline:
+canonical-hash the spec before running, count it against Bonferroni K,
+and use the exposure-matched benchmark.
+
+Read every series AS OF the decision date, never with default realtime
+params — the default for both is TODAY, which silently serves current
+values and is the precise failure §31 refused to risk.
+
+This does NOT mean macro helps. It means a test of whether it helps
+would be meaningful. EDGE still stands at 1 pass in 15.
+=======================================================================
+
+  vintages_exist         PASS
+  revision_divergence    PASS
+  release_lag            PASS
