@@ -163,6 +163,13 @@ sectors:
 # from the cross-section, which `min_ranked` treats as an outage floor.
 sector_etfs: [XLK, XLF, XLE, XLV, XLI, XLP, XLY, XLU, XLB, XLRE, XLC]
 
+# §64 single-purpose universes. `spy_only` scopes the three SPY-switch
+# candidates to the one instrument their evidence record is about;
+# `gem_legs` is the Antonacci rotation set (US / developed ex-US / bonds).
+# EFA and AGG are NOT in symbols: — same rationale as sector_etfs above.
+spy_only: [SPY]
+gem_legs: [SPY, EFA, AGG]
+
 strategy:              # execution globals (per-strategy params live in strategies:)
   name: ma_crossover   # legacy field, kept for compatibility
   fast_period: 10      # legacy ma_crossover params (strategies: section wins)
@@ -512,6 +519,47 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                               # laggard_count, and holding all of them plus
                               # nothing else would be one correlated bet on
                               # "beaten-down reverts", not four theses.
+
+  # ---- §64 wave (2026-08-12): four gate-first candidates, ALL DISABLED. ----
+  # Each exists so a FROZEN SPEC ARM can measure it against SPY total return
+  # with honest financing (risk.margin). Params are pre-registered starting
+  # points from the published sources, not fitted results. None reads the
+  # judge; none touches the live ensemble while disabled.
+  trend_hold:            # Gayed-Bilello 200-DMA regime switch on SPY alone
+    enabled: false
+    priority: 10
+    universe: spy_only
+    ma_days: 200         # the paper's headline; spec grid probes 100-250
+    symbol: SPY
+  tom_tilt:              # McConnell-Xu turn-of-the-month window, [-1,+3]
+    enabled: false
+    priority: 11
+    universe: spy_only
+    symbol: SPY
+    hold_days_into_month: 3
+  vol_lever:             # discrete Moreira-Muir: in when calm, out when not
+    enabled: false
+    priority: 12
+    universe: spy_only
+    symbol: SPY
+    lookback_days: 21
+    history_bars: 253    # bars of history requested; spec arms raise to 2520
+                         # (the expanding median needs years — the shipped
+                         # value only keeps max_lookback_bars at its pinned
+                         # 253 while the strategy is disabled)
+    entry_frac: 0.75     # enter under 0.75x the expanding median vol
+    exit_frac: 1.0       # exit over 1.0x — hysteresis, not a knife edge
+    min_history_readings: 12
+  gem:                   # Antonacci dual momentum, THE book spec, no grid
+    enabled: false
+    priority: 13
+    universe: gem_legs
+    us: SPY
+    intl: EFA
+    bonds: AGG
+    lookback_days: 252   # 12 months — ReSolve's 1,226-sibling study is why
+                         # this number may never be shopped after the fact
+    max_open_positions: 1  # the rotation holds exactly one leg
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by

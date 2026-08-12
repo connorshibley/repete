@@ -822,6 +822,12 @@ def simulate_ensemble(sym_bars: dict, cfg: dict, start_cash: float = 100_000.0,
     # account_dict would put a config read on the hottest path in the file.
     _margin_mult = float(((cfg.get("risk") or {}).get("margin") or {})
                          .get("multiplier", 1.0))
+    # §64: gem's T-bill threshold reads the rate aux through prepare()'s cfg
+    # argument — the one channel the strategy contract already carries.
+    # Shallow copy so the caller's dict is never mutated; live main.py never
+    # sets the key, so rate-needing strategies are inert live by construction.
+    if rate_bars is not None:
+        cfg = {**cfg, "_rate_bars": rate_bars}
     acct = SimAccount(cash=start_cash, margin_multiplier=_margin_mult)
     financing_paid = 0.0
     closed: list = []
