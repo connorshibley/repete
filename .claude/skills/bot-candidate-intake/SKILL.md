@@ -38,15 +38,30 @@ Ask, in order:
 
 ## Step 2 — Has it already been rejected?
 
-`knowledge/backtest_candidates.md` is ~5,400 lines and 50+ numbered sections.
-Search it before writing anything. Ideas that arrive repeatedly and have already
-been decided include: vol-regime stop widths (§2, rejected), regime gates on
-tsmom (§3, adopted then reverted on API drift), per-cycle entry caps (§4,
-rejected), gross-exposure caps in down regimes (§6, cannot bind), and
-exposure-matched benchmarks (§48 showed any long-biased strategy passes).
+**Search the record first — `bot-research-recall` is the how.**
+
+```bash
+.venv/bin/python scripts/recall.py search <mechanism> <instrument>
+.venv/bin/python scripts/recall.py search <terms> --corpus priors
+```
+
+Ranking is lexical, so search two or three ways before concluding an idea is
+new: the mechanism, the instrument, and the author's name. `--corpus priors`
+covers the 55 frozen hypotheses, which is where a near-miss usually hides.
+
+Ideas that arrive repeatedly and have already been decided: vol-regime stop
+widths (§2, rejected), regime gates on tsmom (§3, adopted then reverted on API
+drift), per-cycle entry caps (§4, rejected), gross-exposure caps in down
+regimes (§6, cannot bind), exposure-matched benchmarks (§48 showed any
+long-biased strategy passes), and quality filters on existing entries (§23
+rejected the strongest version; §58 re-ran the shape and was rejected 8-of-8).
 
 If it duplicates a decided section, the review is one paragraph pointing at that
 section. That is a complete answer.
+
+When you cite the section, read it — `recall.py section §N`. A `gate result` of
+`4/4` is a count of verdict rows, not good news: §48 reads 4/4 and is the
+survivorship finding.
 
 ## Step 3 — Write the source review
 

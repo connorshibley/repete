@@ -140,6 +140,36 @@ sectors:
   Basic Materials:        [LIN, FCX, NEM, SHW, APD, NUE, ECL, AA, DD, PPG, MLM, VMC]
   Communication Services: [DIS, CMCSA, T, VZ, EA, TTWO, MTCH, OMC, SIRI]
 
+# ============================================================
+# SECTOR FUNDS — the `sector_etfs` universe, used by `swing_sectors` ONLY.
+# ============================================================
+# The 11 SPDR sector funds, one per GICS sector. Same design as the sector
+# map above: a per-strategy universe that adds names WITHOUT widening
+# `symbols:` (the core universe three gated strategies were measured on).
+# Four of these (XLK, XLF, XLE, XLV) also sit in `symbols:` — that overlap is
+# fine and pre-existing; the ensemble holds at most one position per symbol,
+# whoever owns it.
+#
+# NOT merged into `etfs:`: that list answers "which core-universe names are
+# baskets" for cross-sectional exclusion, carries the broad-market funds
+# (SPY, QQQ, DIA, IWM), and every member must be in `symbols:`. This list
+# answers "what does swing_sectors rank", and a sector-value ranking that
+# contains the whole market as a member is measuring itself against itself.
+#
+# XLRE (2015) and XLC (2018) have the shortest histories — §57's survivorship
+# probe certified this family (the "15 certified funds", 13 in the earliest
+# period). With high_lookback_bars 252 they rank once they carry a year of
+# bars; before that `drawdown_pct` returns None and they are simply absent
+# from the cross-section, which `min_ranked` treats as an outage floor.
+sector_etfs: [XLK, XLF, XLE, XLV, XLI, XLP, XLY, XLU, XLB, XLRE, XLC]
+
+# §64 single-purpose universes. `spy_only` scopes the three SPY-switch
+# candidates to the one instrument their evidence record is about;
+# `gem_legs` is the Antonacci rotation set (US / developed ex-US / bonds).
+# EFA and AGG are NOT in symbols: — same rationale as sector_etfs above.
+spy_only: [SPY]
+gem_legs: [SPY, EFA, AGG]
+
 strategy:              # execution globals (per-strategy params live in strategies:)
   name: ma_crossover   # legacy field, kept for compatibility
   fast_period: 10      # legacy ma_crossover params (strategies: section wins)
@@ -374,6 +404,162 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
     max_open_positions: 0     # 0 = ceiling disabled (§29 convention). The
                               # binding limits are risk.sector_concentration
                               # below, the correlation cap, and heat.
+  lowvol:              # §32 candidate: low realized volatility, ranked
+    enabled: false     # NOT a change of state — it has been disabled since §32.
+                       # What changed on 2026-08-10 is that it became REACHABLE.
+                       #
+                       # It was in REGISTRY with no block here, so
+                       # `strategy_params` returned None and every call answered
+                       # `hold "no config for strategy lowvol"`. It could not
+                       # have traded had somebody set enabled: true, and
+                       # `test_lowvol.py` asserted only that it was not enabled —
+                       # which passed whether the strategy worked or did not
+                       # exist. A check that cannot fail (`ci.yml:55-69`).
+                       #
+                       # These params are the module's own defaults written down,
+                       # not new choices: they reproduce what §32 scored.
+    priority: 7        # below reclaim — nothing gated should ever be pre-empted
+                       # by a strategy that has not passed anything.
+    vol_period: 60
+    buy_bottom_fraction: 0.25   # buy the calmest quarter
+    exit_above_fraction: 0.50   # exit once a holding leaves the calmer half
+  hi52:                # §59 candidate: 52-week-high proximity (George & Hwang 2004)
+    enabled: false     # DISABLED, and registered DIAGNOSTIC only — which by
+                       # `gatespec.py` decides nothing and licenses nothing.
+                       # §52 freezes EDGE on data/snapshots/ and §57's own
+                       # pre-committed reading rule closes data/pit/, so there is
+                       # no venue in which this could currently earn one.
+                       #
+                       # Params are the PRE-REGISTERED starting point, not a
+                       # fitted result: 252 bars is the paper's own window, and
+                       # 0.25/0.50 mirror xsmom's fractions so the two rankings
+                       # differ in the STATISTIC and in nothing else. That is the
+                       # whole point — §35/§37 rejected the momentum ranking, and
+                       # George & Hwang's claim is that this ranking subsumes it.
+    priority: 8
+    exclude_etfs: true        # same category error as xsmom's, same fix: a
+                              # basket is not a peer of its own constituents.
+                              #
+                              # NOTE FOR ANY ETF-UNIVERSE RUN: this must be set
+                              # FALSE in the arm. `etfs:` names eight of the
+                              # fifteen certified funds, so `universe_for`
+                              # returns base - excluded_etfs and the ranking
+                              # silently shrinks to 7 of 15 (and 5 of 13 in the
+                              # earliest period) — losing SPY, which is the
+                              # benchmark, and every sector fund with the
+                              # deepest history.
+                              #
+                              # It does NOT empty and it does NOT error, which
+                              # is what makes it dangerous: n stays above the
+                              # `< 4` guard, so the strategy runs and reports
+                              # trades. `buy_top_fraction: 0.25` would mean
+                              # "the best 1 of 7" instead of "the best 3 of 15"
+                              # — a different strategy under the same name,
+                              # with nothing in the output saying so.
+                              # §59a-d carry the override explicitly.
+    high_lookback_bars: 252   # the 52-week window the paper is named for
+    buy_top_fraction: 0.25    # buy the quarter nearest their own highs
+    exit_below_fraction: 0.50 # exit when a holding leaves the top half
+    min_proximity: 0.90       # ABSOLUTE floor beneath the relative rank: a name
+                              # must be within 10% of its own high, not merely
+                              # the least-broken thing in a broken universe.
+                              # Without it the rule buys leaders of a bear
+                              # market, which is a relative-strength bet and not
+                              # the anchoring mechanism the paper describes.
+  swing_sectors:       # unloved-sector swing on the SPDR funds themselves
+                       # (owner direction 2026-08-11: "undervalued sectors and
+                       # bottlenecks", ETF-first, days-to-weeks holds).
+                       # `reclaim` owns the stock-level version of this thesis;
+                       # the two are separate strategies with separate gates.
+    enabled: false     # DISABLED until the pre-registered §62 gate is run and
+                       # the owner reads it. Every param below is the
+                       # PRE-REGISTERED starting point, not a fitted result —
+                       # re-picking any of them against the gate's own sample
+                       # is the in-sample selection this repo refuses.
+    priority: 9        # below hi52: it must never pre-empt a gated strategy
+    universe: sector_etfs     # the `sector_etfs:` list below — NOT `symbols:`
+                              # (that would be the core universe, and widening
+                              # it is a live change to three gated strategies),
+                              # and NOT `etfs:` (that list also carries the
+                              # broad-market funds, and a sector-value ranking
+                              # containing the whole market as a member is
+                              # measuring itself against itself).
+    high_lookback_bars: 252   # the 52-week window drawdown is measured from
+    min_drawdown_pct: 12.0    # a sector under 12% off its high is not unloved,
+                              # it is normal chop; the ranking alone would
+                              # otherwise always nominate SOMETHING (the hi52
+                              # min_proximity lesson, pointing the other way)
+    laggard_count: 4          # only the 4 deepest of the 11 rank as candidates
+                              # (mirrors reclaim.laggard_sector_count)
+    min_ranked: 6             # a cross-section under 6 rankable funds is a data
+                              # outage, not a market reading — no entries
+    stabilize_sma_period: 20  # the short base: close must be above it
+    base_slope_bars: 5        # ...and the base no lower than 5 bars ago —
+                              # the "stopped falling" evidence (reclaim's base
+                              # test, simplified for funds that cannot delist)
+    atr_period: 14
+    entry_zone_atr_mult: 0.75 # entry zone = [SMA20, SMA20 + 0.75·ATR]: a
+                              # pullback toward the rising base, not a chase.
+                              # Intraday (swing_scan) a dip INTO the zone
+                              # triggers; at the cycle a close inside it does.
+    recovered_drawdown_pct: 5.0  # thesis-complete exit: back within 5% of the
+                              # 52-week high means the repair happened
+    exit_buffer_pct: 3.0      # thesis-failed exit: 3% below the SMA20 base
+                              # (same buffer-not-touch reasoning as reclaim's)
+    max_hold_days: 45         # a repair that has not happened in ~9 weeks is
+                              # not happening; wide, because "accept
+                              # volatility" means giving the thesis room
+    stop_atr_mult: 3.5        # PER-STRATEGY bracket stop (risk.bracket_prices
+                              # reads this before risk.brackets.stop_atr_mult).
+                              # Wider than the global 2.0 on purpose — the
+                              # owner's "accept volatility" is expressed HERE,
+                              # per-trade, and not by moving any portfolio rail.
+    max_open_positions: 3     # of 11 sectors — NOT the §29 uncapped
+                              # convention: 4 candidates exist at any time by
+                              # laggard_count, and holding all of them plus
+                              # nothing else would be one correlated bet on
+                              # "beaten-down reverts", not four theses.
+
+  # ---- §64 wave (2026-08-12): four gate-first candidates, ALL DISABLED. ----
+  # Each exists so a FROZEN SPEC ARM can measure it against SPY total return
+  # with honest financing (risk.margin). Params are pre-registered starting
+  # points from the published sources, not fitted results. None reads the
+  # judge; none touches the live ensemble while disabled.
+  trend_hold:            # Gayed-Bilello 200-DMA regime switch on SPY alone
+    enabled: false
+    priority: 10
+    universe: spy_only
+    ma_days: 200         # the paper's headline; spec grid probes 100-250
+    symbol: SPY
+  tom_tilt:              # McConnell-Xu turn-of-the-month window, [-1,+3]
+    enabled: false
+    priority: 11
+    universe: spy_only
+    symbol: SPY
+    hold_days_into_month: 3
+  vol_lever:             # discrete Moreira-Muir: in when calm, out when not
+    enabled: false
+    priority: 12
+    universe: spy_only
+    symbol: SPY
+    lookback_days: 21
+    history_bars: 253    # bars of history requested; spec arms raise to 2520
+                         # (the expanding median needs years — the shipped
+                         # value only keeps max_lookback_bars at its pinned
+                         # 253 while the strategy is disabled)
+    entry_frac: 0.75     # enter under 0.75x the expanding median vol
+    exit_frac: 1.0       # exit over 1.0x — hysteresis, not a knife edge
+    min_history_readings: 12
+  gem:                   # Antonacci dual momentum, THE book spec, no grid
+    enabled: false
+    priority: 13
+    universe: gem_legs
+    us: SPY
+    intl: EFA
+    bonds: AGG
+    lookback_days: 252   # 12 months — ReSolve's 1,226-sibling study is why
+                         # this number may never be shopped after the fact
+    max_open_positions: 1  # the rotation holds exactly one leg
 
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
@@ -550,6 +736,26 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
                                  # 2.398 -> 1.977 -> 1.730 — while return rises.
                                  # More positions has a known cost in trade
                                  # quality. That is what §29 gates.
+  min_universe_fraction: 0.8     # UNIVERSE FLOOR (2026-08-06): if fewer than this
+                                 # fraction of the symbols the cycle ASKED for end up
+                                 # with usable bars, block ENTRIES; exits always run.
+                                 # 0 disables.
+                                 #
+                                 # The total-outage case is already covered and this is
+                                 # NOT it: on 2026-07-31 the laptop lost DNS, every
+                                 # symbol failed inside 40ms, SPY was therefore missing
+                                 # and the cycle aborted on the stale-SPY rail. What was
+                                 # open is the PARTIAL band, and it has fired: the
+                                 # ledger's only data_error in its whole history is QQQ
+                                 # dropping out mid-cycle on 2026-08-05, after which the
+                                 # bot traded 37 of 38 names with nothing recorded as
+                                 # blocked. That is divergence #17 (500 in sim vs 38
+                                 # live) re-enacted inside live.
+                                 #
+                                 # 0.8 would NOT have blocked that cycle, deliberately —
+                                 # 1-of-38 is a symbol, 12-of-38 is a broken feed. The
+                                 # 1-symbol case is made visible instead, by a
+                                 # universe_truncated event that blocks nothing.
   max_bar_age_days: 4            # FRESHNESS GUARD: refuse to trade if the newest bar is
                                  # older than this many calendar days (covers weekends +
                                  # a holiday). 0 disables. Guards against the stale-data
@@ -632,6 +838,29 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     lookback: 60                 # when >= max_correlated open positions have >= threshold
     threshold: 0.85              # Pearson correlation of daily returns with it over the
     max_correlated: 2            # lookback window. Entries only; fail-open without bars.
+  max_contraction_pctile: 0      # §58 VOLATILITY-CONTRACTION PRECONDITION — OFF.
+                                 # Blocks an entry unless the last 20 bars' high-to-low
+                                 # range, as a fraction of price, sits at or below this
+                                 # percentile of its own trailing year. 10 would mean
+                                 # "only names quieter than 90% of their own last year".
+                                 #
+                                 # 0 = disabled, the same convention as min_rvol, and it
+                                 # ships disabled for that key's exact reason: the idea has
+                                 # not passed a gate, and config.yaml IS the live artifact.
+                                 # §58 registers it DIAGNOSTIC, which licenses nothing.
+                                 #
+                                 # No bespoke code path exists — the shared rail
+                                 # risk.contraction_blocked() already runs for every
+                                 # strategy in main.py's entry loop and in both simulators
+                                 # and reads this key, so enabling it is one value.
+                                 #
+                                 # IT COSTS HISTORY. Any non-zero value moves
+                                 # strategies.max_lookback_bars from 253 to 272, because a
+                                 # rail starved of bars fails OPEN and silently blocks
+                                 # nothing. Per-strategy override:
+                                 # strategies.<name>.max_contraction_pctile.
+  contraction_period: 20         # bars in the range window — the "coil" itself
+  contraction_lookback: 252      # trailing windows it is ranked against (~one year)
   max_entry_drift_bps: 100       # ENTRY DRIFT GUARD (2026-07-21): skip a buy when the
                                  # live quote is >1% away from the price the signal saw.
                                  # Order-level backstop behind the freshness guard — every
@@ -668,6 +897,24 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     period: 20                   # realized-vol lookback (daily bars)
     min_scale: 0.5               # clamp so sizing never swings more than 2x either way
     max_scale: 1.5
+  margin:                        # §64 SIMULATOR margin model — arms only.
+    multiplier: 1.0              # 1.0 = cash account, byte-identical to the
+                                 # pre-§64 code. >1.0 exists so a FROZEN SPEC
+                                 # ARM can test financed leverage; the live
+                                 # Alpaca account is cash-sized and nothing in
+                                 # main.py reads this block. Financing on
+                                 # negative cash is charged at the ^IRX aux
+                                 # rate + spread, and FAILS CLOSED to
+                                 # flat_rate_pct — a levered arm with free
+                                 # borrow is divergence #16 wearing a new name.
+    spread_bps_annual: 150       # broker spread over the T-bill rate
+    flat_rate_pct: 6.0           # punitive fallback when no rate aux is given
+  macro_gate:                    # §64 macro regime gate — OFF. Exists so a
+    enabled: false               # frozen spec arm can test entry-blocking on
+    series: UNRATE               # a first-print ALFRED vintage series. Same
+    ma_days: 252                 # four properties as the §31 credit gate:
+                                 # shared impl, ts-bounded, fails open,
+                                 # never applied to exits.
   regime_exposure:               # down-regime gross-exposure cap. Gate 2026-07-18:
     enabled: true                # §29 2026-07-26: ENABLED, on §18's own condition.
                                  # §18 rejected it as untestable — "at 1%/trade
@@ -802,27 +1049,39 @@ llm:                   # optional judgment layer (Anthropic API)
                           # ENLARGE risk through the reviewer's absence.
   knowledge_path: knowledge/principles.md  # curated external principles fed to the
                           # review prompt, labeled unverified; comment out to disable
-  knowledge_max_context_chars: 1000
-                          # OWN budget (2026-08-04), same value the derived
-                          # `learning.max_context_chars // 4` produced — so this
-                          # changes nothing today and is here to make the
-                          # constraint VISIBLE. It was invisible and nearly
+  knowledge_max_context_chars: 1500
+                          # OWN budget (2026-08-04), RAISED 1000 -> 1500 on
+                          # 2026-08-11 (§61). It was invisible and nearly
                           # binding: principles.md had reached 906 of 1000 chars,
                           # and the next principle added would have been dropped
                           # off the end with no error. Same trap
-                          # news.memory.max_context_chars exists to avoid.
+                          # news.memory.max_context_chars exists to avoid. By
+                          # 2026-08-11 the file was at exactly 1000 of 1000 —
+                          # zero headroom, and knowledge could not grow at all.
                           #
-                          # DO NOT RAISE IT casually. context_for_llm caps the
-                          # WHOLE memory block at learning.max_context_chars and
-                          # the sub-budgets already oversubscribe that total;
-                          # knowledge is assembled BEFORE the scoreboard,
-                          # calibration and CURRENT REGIME, so every extra char
-                          # here comes off the tail. Widening this buys
-                          # principles by losing the regime label.
+                          # This comment used to read "DO NOT RAISE IT casually",
+                          # because context_for_llm capped the WHOLE block at
+                          # learning.max_context_chars and the sub-budgets
+                          # oversubscribed that total, so every extra char here
+                          # came off the tail. THAT WAS CORRECT AT THE TIME and
+                          # is kept here rather than deleted: lessons took // 2
+                          # and market context and the scoreboard // 4 each,
+                          # which is exactly 100% of the cap before knowledge,
+                          # news memory, the book, the trades, calibration or
+                          # the regime label got anything.
                           #
-                          # tests/test_principles_context.py fails if the file
-                          # outgrows this, so truncation is a red build rather
-                          # than a silently shorter prompt.
+                          # §61 fixed the constraint rather than working around
+                          # it. Every block now has a NAMED budget (see
+                          # learning.context_budgets) and learning.max_context_
+                          # chars covers their sum, so growth here no longer
+                          # costs the tail. Preflight warns if that stops being
+                          # true and a context_evicted ledger event fires if the
+                          # cap ever bites at runtime.
+                          #
+                          # tests/test_principles_context.py reads the SHIPPED
+                          # config and fails if the file outgrows this or drops
+                          # below 300 chars of headroom, so both truncation and
+                          # a silently-full budget are red builds.
   # The LLM may only VETO or DOWNSIZE a trade, never enlarge or invent one.
 
 news:                  # market awareness (Alpaca News API + LLM distill),
@@ -1126,7 +1385,38 @@ learning:                # the learning loop: hypothesis book + judge calibratio
   evaluator_batch_size: 5         # closed trades evaluated per learn.py run
   max_llm_calls_per_cycle: 2      # hard cap on learning LLM calls inside a trading cycle
   top_k_lessons: 8                # lessons injected into the review prompt
-  max_context_chars: 4000         # hard cap on the whole memory block
+  max_context_chars: 12000        # hard cap on the whole memory block.
+                                  # 4000 -> 12000 on 2026-08-11 (§61). At 4000
+                                  # the assembled context measured 5,613 chars
+                                  # against the live memory files and the bare
+                                  # ctx[:4000] silently dropped NEWS MEMORY,
+                                  # YOUR LAST RESOLVED CALLS, YOUR RECENT
+                                  # CALIBRATION and CURRENT REGIME, cutting
+                                  # TODAY'S MARKET CONTEXT mid-word. Every judge
+                                  # call, for months, with nothing to see it by.
+  context_budgets:                # chars per block. NAMED, not derived: three
+                                  # of these used to be // 2 and // 4 shares of
+                                  # max_context_chars, which is exactly 100% of
+                                  # it between them — an oversubscription that
+                                  # stayed at 100% however large the total got.
+                                  # Unset keys fall back to the old behaviour,
+                                  # so removing this block is the rollback path
+                                  # and is byte-identical (§61).
+    book: 2800                    # max_open_positions: 0 = UNCAPPED (§29), so
+                                  # this can list all 38 names — the biggest
+                                  # block in the prompt was the unbudgeted one
+    trades: 1200                  # 10 rows x ~103 chars, measured
+    lessons: 2400                 # wants 2,184 today at top_k_lessons: 8
+    market_context: 1000          # uses 364
+    scoreboard: 1000              # uses 922
+    calibration: 200              # uses 105
+    regime: 200                   # uses 49
+                                  # + knowledge 1500 (+66 label) and news_memory
+                                  # 600, which keep their own keys beside the
+                                  # features they belong to. Sum ~10,966 against
+                                  # a 12,000 total; preflight warns if that ever
+                                  # inverts, and tests/test_context_budget.py
+                                  # fails on the shipped config if it does.
   regime:                         # deterministic market-regime tagging from SPY bars
     sma_period: 50                # trend: SPY close vs SMA50
     vol_period: 20                # 20-day realized vol, annualized
@@ -1138,6 +1428,58 @@ ops:
                                  # 'degradation' events in one day -> single slo_breach
                                  # event + macOS alert. Escalates to a human; never HALTs
                                  # (the daily-loss kill switch owns HALT). 0 disables.
+  min_close_margin_min: 5        # SLO (2026-08-06): alert once/day if the cycle finishes
+                                 # fewer than this many minutes before the 16:00 ET close.
+                                 # The cycle fires at 15:45, so the whole budget is 15 min.
+                                 # Measured over the first 7 launchd cycles: min 1.63 min,
+                                 # median ~2.6, max 7.72 (2026-08-05, which spent a 54s
+                                 # stall plus two ~90-100s broker socket hangs). None would
+                                 # have fired at 5; a repeat of 08-05's hangs plus any
+                                 # growth would.
+                                 #
+                                 # MARGIN, NOT DURATION, and the distinction is the point:
+                                 # a cycle that STARTS late (2026-07-30, three backlogged
+                                 # launchd jobs firing at once after the laptop woke) can
+                                 # be fast and still miss the bell. A late order is not
+                                 # rejected, it is QUEUED FOR THE NEXT OPEN - divergence
+                                 # #18 - which silently turns a same-close fill into a
+                                 # next-open one that no gate ever modelled.
+                                 #
+                                 # Escalates to a human; never HALTs. 0 disables.
+                                 # Deliberately NOT a 'degradation' event: those are
+                                 # counted against max_degradations_per_day above, and a
+                                 # timing signal must not spend the fail-open budget.
+
+  # ---- broker resilience (2026-08-06) ----
+  # MEASURED FIRST, and it changed the fix. alpaca-py 0.43.5 already retries
+  # 429/504 three times by default (RESTClient sets _retry=3, _retry_wait=3),
+  # and neither client class lets you turn that off. What it has NEVER had is a
+  # timeout: RESTClient._request builds its request options with no `timeout`
+  # key at all, and requests' default is None — wait forever.
+  #
+  # On 2026-08-05 that cost 52.5s (account+positions), 89.7s (one symbol's
+  # bars) and 103.7s (an open-order lookup) in a single cycle: 246 seconds,
+  # four minutes of a fifteen-minute window, on three dead sockets. All three
+  # ended in RemoteDisconnected, which is connection-level and therefore not
+  # something the SDK's 429/504 retry ever looked at.
+  broker_timeout_sec: 10         # READ timeout (connect is 5). Healthy calls measured
+                                 # 0.22-1.3s per symbol across 2026-07-29..08-04, so
+                                 # this is ~8x the worst healthy call and ~9x faster
+                                 # than the observed hang. 0 disables the timeout
+                                 # entirely and restores the hang — it exists so the
+                                 # knob has an off position, not as a suggestion.
+  broker_retry_attempts: 2       # EXTRA attempts on connection-class failures, READS
+                                 # ONLY. Order submission is never auto-retried: on a
+                                 # retry Alpaca rejects the duplicate client_order_id
+                                 # and the caller would have to tell "already placed"
+                                 # from "really failed" — a classifier whose bug
+                                 # doubles a position.
+  broker_retry_budget_sec: 60    # TOTAL seconds of retrying per cycle, across every
+                                 # call. Without this, ~40 symbols x 2 retries x a 10s
+                                 # timeout is twenty minutes against a fifteen-minute
+                                 # window — a resilience fix that causes divergence
+                                 # #18. Once spent, calls still get their timeout but
+                                 # stop retrying. 0 disables retrying outright.
 
 reporting:
   starting_equity: 100000        # Alpaca paper account starting capital; the
@@ -1154,5 +1496,16 @@ storage:                 # EVENT STORE BACKEND (2026-07-22, backlog #4)
 memory:
   ledger_path: memory/ledger.jsonl
   learnings_path: memory/learnings.md
+  # Runtime STATE, resolved by src/statepaths.py. Both values below are the
+  # literals the code has always used, and they are load-bearing: fly symlinks
+  # memory/ onto /app/state, docker-compose mounts ./memory:ro for the
+  # publisher, and HEARTBEAT.md / docs/runbooks.md / deploy/ name them to
+  # operators. src/preflight.py REFUSES to start a cycle if either is changed,
+  # so these are redirectable for QA only.
+  heartbeat_path: memory/heartbeat
+  # Read by the MONITORS (health, watchdog). The trading rail keeps its own
+  # copy in risk.py on purpose — a config key that can move the kill switch is
+  # a way to disable it (scripts/halt.py:80).
+  halt_path: HALT
   negative_example_quota: 0.20   # ≥20% of retrieved past trades must be losers (anti-resonance)
   review_lookback_trades: 25     # how many recent CLOSED trades feed the weekly review

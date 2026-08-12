@@ -121,7 +121,12 @@ def apply_judge(cfg: dict, on: bool) -> dict:
 
 
 def run_arm(args) -> tuple:
-    """(name, summary, trade pnls, seconds, judge stats). Top-level to pickle.
+    """(name, summary, trade pnls, seconds, judge stats, trade keys).
+
+    Top-level to pickle. The KEYS are §55: `significance.compare_paired` needs
+    to know which trades the two arms have in common, and a bare list of P&L
+    floats cannot say. They ride back from the worker alongside the P&Ls
+    because the trades themselves do not survive the process boundary.
 
     The judge counters are read HERE and returned, not read by the parent after
     the pool closes: arms fan out over `fork`, so each child mutates its own
@@ -134,7 +139,7 @@ def run_arm(args) -> tuple:
     jm.reset_stats()
     result = bt.simulate_ensemble(sym_bars, cfg, cash, **aux)
     return (arm["name"], result.summary(), sig.trade_pnls(result),
-            time.monotonic() - t0, jm.stats())
+            time.monotonic() - t0, jm.stats(), sig.trade_keys(result))
 
 
 def run_arms(spec, base_cfg, sym_bars, aux, cash, workers: int) -> dict:
@@ -155,6 +160,11 @@ def run_arms(spec, base_cfg, sym_bars, aux, cash, workers: int) -> dict:
     return in_spec_order(done, spec["arms"])
 
 
+# Field positions inside an arm record, as `in_spec_order` builds it. Named
+# because positional unpacking of these tuples has now broken the runner once.
+SUMMARY, PNLS, SECS, JUDGE_STATS, KEYS = range(5)
+
+
 def in_spec_order(done: list, arms: list) -> dict:
     """Re-key results by arm name in SPEC order, never completion order.
 
@@ -169,8 +179,8 @@ def in_spec_order(done: list, arms: list) -> dict:
     mapping ever slipped, the pass mark would invert silently rather than
     error, which is the worst available failure.
     """
-    by_name = {name: (summary, pnls, secs, jstats)
-               for name, summary, pnls, secs, jstats in done}
+    by_name = {name: (summary, pnls, secs, jstats, keys)
+               for name, summary, pnls, secs, jstats, keys in done}
     missing = [a["name"] for a in arms if a["name"] not in by_name]
     if missing:
         raise SystemExit(f"arms produced no result: {missing}")
@@ -198,12 +208,25 @@ def default_candidate(spec: dict) -> str:
     return arms[1]["name"] if len(arms) > 1 else arms[0]["name"]
 
 
+def judge_stats_by_arm(arms: dict) -> dict:
+    """{arm name: judge counters}.
+
+    Extracted so it can be TESTED. The inline version destructured the arm
+    record positionally, §55 added a sixth element to `run_arm`'s return, and
+    the mismatch blew up after every arm had finished computing — the §39
+    failure mode exactly. Nothing in the suite touched it because the tests
+    drive `evaluate()`, which never sees these records.
+    """
+    return {name: rec[JUDGE_STATS] for name, rec in arms.items()}
+
+
 def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
-    base_summary = arms["baseline"][0]
-    cand_summary, cand_pnls = arms[candidate][0], arms[candidate][1]
-    base_pnls = arms["baseline"][1]
+    base_summary = arms["baseline"][SUMMARY]
+    cand_summary, cand_pnls = arms[candidate][SUMMARY], arms[candidate][PNLS]
+    base_pnls = arms["baseline"][PNLS]
 
     comp = None
+    paired = None          # §55, computed at most once like `comp`
     outcomes = []
     for clause in spec["clauses"]:
         rule = clause["rule"]
@@ -327,6 +350,72 @@ def evaluate(spec: dict, arms: dict, candidate: str, resamples: int) -> dict:
                 ok = comp.significant if rule == "significantly_better" \
                     else comp.not_worse
                 detail = comp.describe()
+        elif rule in ("significantly_better_paired", "not_worse_paired"):
+            # §55. Same two questions as the rules above, asked with common
+            # random numbers so the variance the two arms SHARE cancels instead
+            # of being counted twice. Measured against a known-zero effect:
+            # nominal 0.0500 coverage, and 0.645 power where the independent
+            # estimator reaches 0.025.
+            base_keys = arms["baseline"][KEYS]
+            cand_keys = arms[candidate][KEYS]
+            if not base_pnls or not cand_pnls:
+                ok, detail = False, "an arm produced no closed trades"
+            elif not base_keys or not cand_keys:
+                # Cannot pair without identities. FAIL rather than silently
+                # falling back to `compare()`: a spec that registered the
+                # paired rule and got scored by the independent one would be a
+                # different claim than the one frozen.
+                ok = False
+                detail = ("no trade keys available — cannot pair (the arm "
+                          "predates §55 or the runner dropped them)")
+            else:
+                paired = paired or sig.compare_paired(
+                    base_keys, base_pnls, cand_keys, cand_pnls,
+                    n_comparisons=spec.get("bonferroni_k", 1),
+                    resamples=resamples)
+                ok = paired.significant \
+                    if rule == "significantly_better_paired" else paired.not_worse
+                detail = paired.describe()
+                # The nested form when it applies, REPORTED and not gated: it
+                # is the sharper reading, but gating on whichever of two
+                # instruments looks better is selection. The clause that was
+                # registered is the one that decides.
+                nested = sig.disjoint_report(
+                    base_keys, base_pnls, cand_keys, cand_pnls,
+                    n_comparisons=spec.get("bonferroni_k", 1),
+                    resamples=resamples)
+                if nested is not None:
+                    detail += (f" | KEPT vs REMOVED (reported, not gated): "
+                               f"{nested.describe()}")
+        elif rule == "no_interior_optimum":
+            # §55, and it is §23's own conclusion executed instead of recalled.
+            # The only rule that reads EVERY arm rather than the candidate: the
+            # question is about the SHAPE of the response across a grid, which
+            # no single arm can answer.
+            metric, order = clause["metric"], clause["order"]
+            better = clause.get("better", "high")
+            absent = [n for n in order
+                      if n not in arms or arms[n][SUMMARY].get(metric) is None]
+            if absent:
+                # FAIL, never skip — §33 RUN 1 manufactured a VALIDATED verdict
+                # out of checks that quietly did not run.
+                ok = False
+                detail = f"cannot score {metric}: arms {absent} produced no value"
+            else:
+                vals = [float(arms[n][SUMMARY][metric]) for n in order]
+                best = max(vals) if better == "high" else min(vals)
+                idx = vals.index(best)
+                interior = 0 < idx < len(vals) - 1
+                ok = not interior
+                shape = " -> ".join(f"{v:.3f}" for v in vals)
+                word = "peak" if better == "high" else "trough"
+                where = "INTERIOR" if interior else (
+                    "flat" if len(set(vals)) == 1 else "at an end")
+                detail = (f"{metric} across {order}: {shape}; {word} at index "
+                          f"{idx} ({order[idx]}), {where}")
+                if interior:
+                    detail += (" — a lone interior optimum is the signature of "
+                               "a fitted parameter, not a mechanism (§23)")
         else:                                  # pragma: no cover - validated
             raise SystemExit(f"unknown clause rule {rule!r}")
         outcomes.append({"id": clause["id"], "rule": rule,
@@ -454,13 +543,20 @@ def main() -> int:
     arms = run_arms(spec, base_cfg, sym_bars, aux,
                     spec.get("cash", 100_000.0), args.workers)
     wall = time.monotonic() - t0
-    for name, (summary, _, secs, _js) in arms.items():
+    for name, rec in arms.items():
+        summary, secs = rec[SUMMARY], rec[SECS]
         print(fmt(name, summary, secs), flush=True)
         for extra in (fmt_exposure(name, summary), fmt_rails(name, summary)):
             if extra:
                 print(extra, flush=True)
 
-    judged = {name: js for name, (_, _, _, js) in arms.items()}
+    # Index, not positional unpack. §55 added a sixth element to `run_arm`'s
+    # return — the trade keys `compare_paired` needs — and updated three of the
+    # four places that read it. This one still destructured four, and it blew
+    # up AFTER every arm had finished computing: exactly the §39 failure that
+    # took a 388-second run to surface. Indexing does not silently depend on
+    # the arity, so the next field to be added cannot reopen this.
+    judged = judge_stats_by_arm(arms)
     if judge:
         print()
         for name, js in judged.items():
@@ -493,7 +589,7 @@ def main() -> int:
                 f"knowledge/judge_calibration.json has a non-degenerate "
                 f"histogram.")
 
-    bh = arms["baseline"][0].get("buy_hold_return_pct")
+    bh = arms["baseline"][SUMMARY].get("buy_hold_return_pct")
     if bh is not None:
         print(f"\n  buy-and-hold on this universe: {bh:+.2f}%")
 
@@ -567,7 +663,7 @@ def main() -> int:
         # predates the field — §35-§41 — and is NOT the same as `false`.
         "judge_model": judge,
         "judge_stats": judged if judge else None,
-        "arms": {name: summary for name, (summary, _, _, _) in arms.items()},
+        "arms": {name: rec[SUMMARY] for name, rec in arms.items()},
     }
     os.makedirs(os.path.dirname(args.verdicts) or ".", exist_ok=True)
     with open(args.verdicts, "a") as f:

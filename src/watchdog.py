@@ -67,8 +67,13 @@ def configure_logging() -> None:
     import log as structlog
     structlog.redact_existing_handlers()
 
-HEARTBEAT_FILE = "memory/heartbeat"
-HALT_FILE = "HALT"
+import statepaths  # noqa: E402
+
+# Defaults only — main() resolves the live values from config. The names stay
+# because check() takes them as parameter defaults and ten tests inject through
+# that seam; the literals now have one definition, in src/statepaths.py.
+HEARTBEAT_FILE = statepaths.DEFAULT_HEARTBEAT_PATH
+HALT_FILE = statepaths.DEFAULT_HALT_PATH
 
 
 def notify(title: str, message: str):
@@ -301,11 +306,35 @@ def catchup(now: datetime | None = None, records=None) -> str:
     return "ran late cycle"
 
 
+def _cfg_or_empty() -> dict:
+    """config.yaml, or {} if it cannot be read for any reason.
+
+    Total, and load-bearing that it is: the watchdog is the thing that tells a
+    human the bot is dead, so it has to keep working when the config is what
+    died. tests/test_alert_delivery.py runs this file as a real subprocess in a
+    temp cwd holding only .env and HALT — no config.yaml at all — and that test
+    is the only end-to-end proof the alert path works.
+    """
+    try:
+        import yaml
+        with open("config.yaml") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:                       # noqa: BLE001 — see the docstring
+        return {}
+
+
 def main():
     if "--catchup" in sys.argv:
         log.info("watchdog catch-up: %s", catchup())
         return
-    problems = check()
+    # Loaded ONCE, above check(), so the paths the watchdog watches and the
+    # ledger it writes the ops_alert to come from the same config. check()
+    # used to run before any config existed and take both paths from module
+    # defaults, which is how the monitor could end up watching a different
+    # file than the one health reported on.
+    cfg = _cfg_or_empty()
+    problems = check(heartbeat_path=statepaths.heartbeat_path(cfg),
+                     halt_path=statepaths.halt_path(cfg))
     if not problems:
         log.info("watchdog: all clear")
         return
@@ -313,10 +342,7 @@ def main():
         log.critical("watchdog: %s", p)
         notify("Trading agent needs attention", p)
     try:  # ledger event is best-effort — ops alerts must not depend on it
-        import yaml
         from ledger import Ledger
-        with open("config.yaml") as f:
-            cfg = yaml.safe_load(f)
         Ledger(cfg["memory"]["ledger_path"]).log_event(
             "ops_alert", "; ".join(problems))
     except Exception as e:  # noqa: BLE001

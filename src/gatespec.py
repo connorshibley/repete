@@ -61,6 +61,12 @@ COMPARATIVE_RULES = (
     "maxdd_within",         # maxDD <= baseline maxDD + `pp` percentage points
     "significantly_better",  # significance.compare(...).significant   [EDGE]
     "not_worse",            # significance.compare(...).not_worse      [CAPACITY]
+    # §55. The same two questions, asked with common random numbers so the
+    # variance the arms SHARE cancels rather than being counted twice. Not a
+    # replacement for the two above: those stay so every §1-§54 spec keeps
+    # re-executing byte-identically, and a spec picks ONE at registration.
+    "significantly_better_paired",  # compare_paired(...).significant   [EDGE]
+    "not_worse_paired",             # compare_paired(...).not_worse [CAPACITY]
 )
 
 # SELF-REFERENTIAL rules measure an arm against benchmarks derived from its OWN
@@ -105,13 +111,48 @@ SELF_RULES = (
     "beats_benchmark_risk_adjusted",  # risk-matched return >= benchmark [§51]
 )
 
+# GRID rules read EVERY arm named in a declared ordering, not just the
+# candidate. They are the only rules that do.
+GRID_RULES = (
+    # §55, and it is §23's own conclusion made mechanical instead of left in
+    # prose. §23's relative-volume filter cleared all six deterministic clauses
+    # by wide margins — PF +0.94 against a required +0.10, drawdown down 40%,
+    # per-trade P&L doubled — and its profit factor across the threshold grid
+    # ran 1.955 -> 2.898 -> 2.240 -> 1.705. It peaks at the SECOND of four arms
+    # and decays either side, ending BELOW baseline. If "more volume
+    # confirmation means better trades" were a mechanism, asking for MORE
+    # confirmation should not reverse it. A lone interior optimum is the
+    # signature of a fitted parameter, and the deterministic clauses cannot
+    # see it — only the interval and the shape of the response can.
+    #
+    # §23 wrote exactly that down: "Where a grid is available, check
+    # monotonicity: a lone interior optimum is weak evidence regardless of how
+    # good the winning cell looks." It then stayed prose for thirty-one
+    # sections. A lesson that cannot fail a gate is a lesson that gets
+    # forgotten, so here it is a clause the runner executes.
+    #
+    # Deliberately NOT a monotonicity requirement, which would be the obvious
+    # name and the wrong rule. Flat responses, monotone ones, and optima at
+    # either END all pass: an end optimum says the grid failed to bracket the
+    # effect, which is a reason to widen the grid, not evidence of fitting.
+    # Only a strictly interior peak fails.
+    "no_interior_optimum",     # the scored metric peaks at an END, or is flat
+)
+
+# Metrics `no_interior_optimum` may read, validated at REGISTRATION rather than
+# at scoring time. §39 crashed with IndexError AFTER a 388-second run had
+# computed every number; a typo'd metric name deserves to be caught while the
+# spec is being frozen, not after the compute is spent.
+GRID_METRICS = ("profit_factor", "total_return_pct", "win_rate",
+                "max_drawdown_pct", "avg_deployment_pct", "n_trades")
+
 # Rules that need a `symbol`. Validated rather than defaulted: a spec that
 # forgot to say which instrument it is racing would silently score against
 # whatever backtest.BENCHMARK_SYMBOL happened to be that week, and the frozen
 # hash would not record the difference.
 SYMBOL_RULES = ("beats_benchmark_symbol", "beats_benchmark_risk_adjusted")
 
-CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES
+CLAUSE_RULES = COMPARATIVE_RULES + SELF_RULES + GRID_RULES
 
 REQUIRED = ("id", "claim", "title", "snapshot", "arms", "clauses",
             "prior", "failure_modes")
@@ -201,6 +242,33 @@ def validate(spec: dict) -> None:
                   f"{clause['rule']} needs a `symbol` — the instrument being "
                   "raced must be part of the frozen spec, not a default that "
                   "can change underneath a registered claim")
+        if clause["rule"] == "no_interior_optimum":
+            _need(clause.get("metric") in GRID_METRICS,
+                  f"no_interior_optimum needs a `metric` from {GRID_METRICS}; "
+                  f"got {clause.get('metric')!r}")
+            _need(clause.get("better", "high") in ("high", "low"),
+                  "no_interior_optimum `better` must be `high` or `low` — "
+                  "an interior PEAK is the tell for profit_factor, an interior "
+                  "TROUGH for max_drawdown_pct, and defaulting silently would "
+                  "score half the metrics backwards")
+            order = clause.get("order")
+            _need(isinstance(order, list) and len(order) >= 3,
+                  "no_interior_optimum needs an `order` of at least THREE arms. "
+                  "With two there is no interior position, so the clause could "
+                  "never fail — and a check that cannot fail is worse than no "
+                  "check (ci.yml:55-69).")
+            _need(len(set(order)) == len(order),
+                  f"no_interior_optimum `order` repeats an arm: {order}")
+            unknown = [n for n in order if n not in names]
+            _need(not unknown,
+                  f"no_interior_optimum `order` names arms that do not exist: "
+                  f"{unknown}")
+            # NOT validated, and deliberately: that `order` runs along a real
+            # parameter axis is the author's declaration, unverifiable from
+            # here because the arms carry overlays, not a scalar knob. It is
+            # frozen into the spec hash, which is the guarantee actually on
+            # offer — the ordering cannot be rearranged after seeing the
+            # result. Saying so beats a check that only looks like one.
 
     ids = [c["id"] for c in spec["clauses"]]
     _need(len(set(ids)) == len(ids), f"duplicate clause ids: {ids}")

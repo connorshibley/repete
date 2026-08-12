@@ -1,0 +1,123 @@
+# §65c — tom_tilt turn-of-month window on SPY (2014-2019)
+#
+# SIXTEEN SPECS IN ONE REGISTRATION. s64a-e, s65a-d, s66a-d and s67a-c are
+# written and frozen TOGETHER, before any is run (the §41/§57/§62 convention).
+# Design, priors, reading rules and the promotion route were frozen FIRST in
+# research/specs/drafts/s64-wave-design.md (commit 0b0b08a), before any code
+# in this wave existed. Dossier: research/candidates_2026-08.md.
+#
+# DIAGNOSTIC on data/pit/, which is EDGE-frozen by §57's own reading rule.
+# These specs spend no Bonferroni budget and can enable nothing; s64/s65
+# carry a pre-committed PROMOTION rule in `prior` that is the only path to
+# an EDGE registration, via the audited --override-freeze supersession
+# argument drafted in the wave-design doc BEFORE any run.
+#
+# judge_model FALSE, argued here rather than assumed: these are mechanical
+# single-instrument (or three-fund) calendar/threshold switches with no
+# judgeable per-trade thesis. §57 declared true for the ensemble question —
+# a different question. Declaring false here is a pre-registered choice, not
+# an omission.
+#
+# EVERY LEVERED ARM PAYS FINANCING: aux rate_bars (^IRX, a market print that
+# is never revised) + 150bps, failing CLOSED to a punitive 6% flat — so no
+# number here is comparable to published figures that assumed a 1% borrow.
+# Shipped rails stay ON (regime cap, drawdown latch) exactly as §62 kept
+# them: the candidate is measured inside the bot it would actually live in,
+# and the block census reports what bound.
+#
+# SIZING OVERLAYS ARE IDENTICAL ACROSS ARMS (risk_per_trade 400 / position
+# 400 / heat 10000): buying power is what binds, so the ONLY difference
+# between baseline and a levered arm is risk.margin.multiplier — leverage is
+# attributable the way §53's three-arm design made the short leg attributable.
+#
+# s65: tom_tilt alone — the McConnell-Xu window as the ONLY exposure.
+# Candidate arm lev150. The tilt-on-base combined form is deliberately
+# NOT here: composing it would need a buy-and-hold base strategy that
+# does not exist, and inventing one mid-registration is unfrozen design.
+id: s65c
+claim: DIAGNOSTIC
+title: "tom_tilt turn-of-month window on SPY (2014-2019)"
+
+judge_model: false
+
+snapshot:
+  path: data/pit/bars_etf_2014-01-01_2019-12-31.json.gz
+  sha256: 847a1ec84edaa40e98f829980c83b0c7466c6e328d13bd350a2626340e4dbdaa
+
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+
+cash: 100000.0
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.tom_tilt.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.0
+  - name: lev150
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.tom_tilt.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+
+clauses:
+  - {id: a, rule: min_trades, n: 40}
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: c, rule: beats_exposure_matched}
+  - {id: d, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+prior: >-
+  McConnell-Xu: the last trading day through the first three of each month
+  carried essentially the entire 1926-2005 equity premium, 31 of 35
+  countries, and the effect persists in 2026 international data. AGAINST:
+  calendar effects are the canonical mining graveyard; per-window magnitude
+  is small; no post-2008 US-specific OOS study of this exact tilt exists.
+  Honest expectation: clause (b) is a coin flip per period. READING RULE
+  across s65a-d, committed before any run: (1) clause (b)
+  beats_benchmark_symbol passing on the lev150 candidate in 3 or more of 4
+  periods licenses exactly ONE EDGE registration at K=16 via the
+  supersession route — UNLESS a single period contributes more than 75
+  percent of the aggregate excess over SPY, in which case that period does
+  not count toward the three; (2) exposure-matched passes with (b) failing
+  resolve 'the window is fine, the sitting-out is the cost' — recorded, no
+  promotion; (3) 1 or fewer of 4 closes the candidate; (4) any other split
+  is INDETERMINATE and licenses nothing.
+
+failure_modes:
+  - >-
+    CIVIL-CALENDAR APPROXIMATION: entry keys on 'one weekday remains', not the
+    exchange calendar; a month-end holiday shifts entry a day. Fixed, known,
+    symmetric — but it is a divergence from the published window measured on
+    trading days.
+  - >-
+    MOSTLY IN CASH: ~80 percent of bars are deliberately flat, so total-return
+    comparisons vs a fully-invested index are dominated by whether the
+    window's edge survives at all; beats_exposure_matched is the clause that
+    isolates the window itself.
+  - >-
+    THE EFFECT'S OWN LITERATURE disagrees about persistence in US large-caps
+    post-publication; a pass here is one universe and 4 periods, not a
+    rehabilitation.
+  - >-
+    RAILS ON: regime cap and latch enabled; read the block census before
+    reading a FAIL.

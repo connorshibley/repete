@@ -1,0 +1,146 @@
+# §62e — 2000-2006 — the dot-com bust and recovery
+#
+# EIGHT SPECS IN ONE REGISTRATION. s62a-h are written and frozen TOGETHER,
+# before any of them is run (§41, §44, §48, §57, §58/§59 convention). Two
+# families, so the temptation to report the flattering QUESTION is removed
+# along with the flattering period: a-d score the strategy ALONE against a
+# clean index; e-h score the ADDITION of the strategy to the shipped ensemble.
+#
+# DIAGNOSTIC, and why that is not a compromise: data/pit/ is closed to EDGE by
+# §57's own pre-committed reading rule (the incumbent lost to SPY four periods
+# of four), and data/snapshots/ by §52. A DIAGNOSTIC spends no Bonferroni
+# budget, decides nothing, and can enable nothing. ONLY THE OWNER enables a
+# strategy (CLAUDE.md invariant 2); what this registration produces is the
+# evidence bundle for that decision, alongside the live dry-run candidates the
+# swingscan job ledgers while swing_sectors ships enabled: false.
+#
+# WHAT THIS TESTS. swing_sectors (owner direction 2026-08-11: "undervalued
+# sectors... accept volatility", days-to-weeks holds): rank the SPDR sector
+# funds by drawdown from their own 52-week high; a fund at least 12% down,
+# among the 4 deepest, whose SMA20 base has stopped falling, is bought on a
+# pullback into [SMA20, SMA20 + 0.75*ATR], with a 3.5*ATR stop, exits on
+# repair (drawdown <= 5%), base failure (3% below SMA20) or 45 days.
+#
+# ARGUED AGAINST IN ADVANCE. Sector cheapness persists for correct reasons —
+# energy spent 2014-2020 cheap and getting cheaper, INSIDE period c. The base
+# test and time stop bound each loss; nothing here makes reversion true. The
+# prior expectation is failure, as it was for hi52, and for the same reason:
+# mean reversion at the sector scale is as published as any anomaly there is.
+#
+# THIS FAMILY MEASURES THE ADDITION: ensemble+swing vs ensemble, same
+# universe, same period, judge on. min_trades is deliberately ABSENT here —
+# in an ensemble arm it would count every strategy's trades and pass without
+# swing trading once (vacuous); a-d carry the n floor where it binds.
+# not_worse_paired rather than significantly_better_paired: the enablement
+# question for an ADDITIVE leg is "does it not hurt the book" (CAPACITY
+# shape), with pf_gt_baseline carrying the improvement claim.
+id: s62e
+claim: DIAGNOSTIC
+title: "adding swing_sectors to the shipped ensemble, certified ETF universe (2000-2006)"
+
+judge_model: true
+
+snapshot:
+  path: data/pit/bars_etf_2000-01-01_2006-12-31.json.gz
+  sha256: 59a7e224cfcce0fc5b750ba036c0a1db300d3569d6c555cb9be5d4540609dfc0
+
+cash: 100000.0
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - SPY
+        - DIA
+        - QQQ
+        - IWM
+  - name: swingon
+    replace:
+      symbols:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - SPY
+        - DIA
+        - QQQ
+        - IWM
+    set:
+      strategies.swing_sectors.enabled: true
+
+clauses:
+  - {id: a, rule: pf_gt_baseline}
+
+  # "Accept volatility" is per-trade, not per-book: the addition may not
+  # deepen the BOOK's drawdown by more than 2pp.
+  - {id: b, rule: maxdd_within, pp: 2.0}
+
+  - {id: c, rule: not_worse_paired}
+
+prior: >-
+  Expected to fail, like every published anomaly this apparatus has scored:
+  EDGE stands at 1 pass in 15 with the one pass explained away by
+  survivorship. Sector-scale mean reversion is decades-published; period c
+  contains the exact counterexample (energy, cheap and getting cheaper for
+  six years).
+
+  THE READING RULE, COMMITTED BEFORE THE RUN, across s62a-h taken together:
+  (1) a-d (strategy alone): failing clause (b) beats_benchmark_symbol in
+  three or more of the four periods resolves against the strategy — the
+  recommendation to the owner is DO NOT ENABLE, and this recommendation is
+  not negotiable after the fact;
+  (2) e-h (the addition): failing (a) pf_gt_baseline or (c) not_worse_paired
+  in three or more periods likewise resolves against enablement;
+  (3) BOTH families surviving their 3-of-4 rule is the evidence bundle FOR
+  enablement — and still licenses nothing by itself: enabling remains an
+  owner action under CLAUDE.md invariant 2, to be made alongside the live
+  dry-run candidates the swingscan job ledgers;
+  (4) NO outcome licenses an EDGE registration on this universe (§57), and
+  none of these numbers may be quoted as an edge;
+  (5) any other split is INDETERMINATE and licenses nothing.
+
+failure_modes:
+  - >-
+    THE INTRADAY TRIGGER IS UNMODELLED. Live, swing_scan can fill INSIDE the
+    entry zone intraday; the simulator fills at the next open after a close
+    inside the zone. Same conditions, different price feed — the divergence
+    is registered in docs/divergences.md alongside this section. Direction
+    ambiguous: intraday fills catch deeper pullbacks (better entries) and
+    also catch knives the daily close would have dodged (worse).
+  - >-
+    ELEVEN FUNDS IS A SMALL CROSS-SECTION, nine before XLRE/XLC exist.
+    laggard_count 4 of 11 means one fund entering or leaving the bottom
+    quartile is a large fraction of the signal — §48's finding (twenty
+    positions were three to six independent bets) applies with less room.
+  - >-
+    SECTOR CHEAPNESS PERSISTS FOR CORRECT REASONS. Period c contains
+    2014-2019 energy: six years at 12%+ drawdown with a base that stabilized
+    and failed repeatedly. The time stop bounds each loss at ~9 weeks; it
+    does not bound how many times the same sector re-arms.
+  - >-
+    THE MANDATES WERE REMAPPED in the early 2000s (XLV was Consumer Services
+    before Health Care) — the funds are continuous, but 2000-2006 rotation
+    rotates between slightly different things than today's tickers name.
+  - >-
+    judge_model IS A DISTRIBUTION STAND-IN with no prompt (divergence #14/
+    #15) — and Phase 14 just changed the LIVE judge's context materially, so
+    the gap between judge_model and the shipped judge is at its widest ever.
+  - >-
+    A PASS WOULD NOT BE AN EDGE. It would say one candidate cleared one bar
+    on one universe, on a simulator with open divergences against live. §57
+    froze the licence, and the reading rule above spends none of it.

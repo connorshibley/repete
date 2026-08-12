@@ -62,7 +62,7 @@ pings stop. It is the only monitor that survives the host dying.
 Verify (see *Verifying* below):
 
 ```bash
-flyctl logs                    # expect: "scheduler up — 14 jobs, timezone America/New_York"
+flyctl logs                    # expect: "scheduler up — 16 jobs, timezone America/New_York"
 flyctl ssh console -C "python src/health.py"
 ```
 
@@ -116,7 +116,7 @@ python src/review.py            # closed-trade count matches the laptop
 
 | Check | Command | Expect |
 |---|---|---|
-| Scheduler booted | `flyctl logs` / `docker compose logs agent` | `scheduler up — 14 jobs, timezone America/New_York` |
+| Scheduler booted | `flyctl logs` / `docker compose logs agent` | `scheduler up — 16 jobs, timezone America/New_York` |
 | Agent healthy | `python src/health.py` | `HEALTHY`, or `DEGRADED — no heartbeat` until the first cycle |
 | One manual cycle | `docker compose run --rm agent python src/main.py` | writes a `cycle_complete` event |
 | Public status | open `/status` if the publisher runs | operational panel |

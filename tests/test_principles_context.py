@@ -61,26 +61,87 @@ def _copy(cfg):
 
 # ------------------------------------------------------- the shipped file
 
-def test_the_shipped_principles_file_fits_its_budget(tmp_path, cfg):
+def _shipped_budget() -> int:
+    """The budget `config.yaml` actually ships, not the test fixture's.
+
+    This distinction is the whole point. Until 2026-08-11 the test below built
+    a `Memory` from `tests/conftest.py`'s fixture, whose `llm` block carries no
+    `knowledge_max_context_chars` — so `knowledge_budget()` fell through to
+    `learning.max_context_chars // 4` and returned 1000 no matter what the
+    shipped config said. A guard on the shipped file that cannot see the
+    shipped budget is checking a number nobody deploys, and the only way to
+    make it pass would have been to edit the fixture: exactly the
+    "make the test agree with the code" move `bot-prove-it` exists to catch.
+    """
+    import yaml
+    with open("config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    return int(cfg["llm"]["knowledge_max_context_chars"])
+
+
+def test_the_shipped_principles_file_fits_its_budget():
     """THE LOAD-BEARING ONE. Truncation here is silent: `text[:cap]` drops the
     tail and returns happily, so the judge simply stops seeing the last
     principle and nothing anywhere says so."""
-    mem = _mem(tmp_path, _copy(cfg))
     text = open(PRINCIPLES).read().strip()
-    budget = mem.knowledge_budget()
+    budget = _shipped_budget()
     assert len(text) <= budget, (
         f"{PRINCIPLES} is {len(text)} chars against a {budget}-char budget — "
         f"the last {len(text) - budget} would be silently dropped. Tighten the "
-        f"wording; do NOT raise the budget without reading the note in "
-        f"config.yaml about what comes off the tail.")
+        f"wording, or raise llm.knowledge_max_context_chars AND check "
+        f"learning.context_budgets still fits its total (§61).")
+
+
+def test_the_shipped_principles_file_has_room_to_grow():
+    """'Fits' is not enough — it fitted at exactly 1000 of 1000 for weeks.
+
+    Zero headroom means the file is full and nobody is told; the next
+    principle anyone writes is the one that vanishes. §61 raised the budget
+    precisely because the owner asked for knowledge to be able to grow, so the
+    headroom is the thing worth asserting.
+    """
+    text = open(PRINCIPLES).read().strip()
+    headroom = _shipped_budget() - len(text)
+    assert headroom >= 300, (
+        f"{PRINCIPLES} has {headroom} chars of headroom against its shipped "
+        f"budget — knowledge cannot meaningfully grow. Raise "
+        f"llm.knowledge_max_context_chars and re-check the budget sum.")
+
+
+def test_the_fixture_and_the_shipped_config_really_do_differ(tmp_path, cfg):
+    """The bug this file shipped with, pinned so it cannot return silently.
+
+    `tests/conftest.py` carries a minimal `llm` block with no
+    `knowledge_max_context_chars`, so a `Memory` built from it derives
+    `learning.max_context_chars // 4`. That is fine for behaviour tests and
+    wrong for a claim about what is deployed. If these two numbers ever
+    coincide again, the guard above stops being able to tell which one it read
+    — and that is the state it spent weeks in.
+    """
+    fixture_budget = _mem(tmp_path, _copy(cfg)).knowledge_budget()
+    assert fixture_budget != _shipped_budget(), (
+        f"the conftest fixture and config.yaml both say {fixture_budget}; the "
+        f"shipped-file guard can no longer distinguish them, which is how it "
+        f"came to be checking a number nobody deploys")
 
 
 def test_every_principle_reaches_the_judge_intact(tmp_path, cfg):
     """Fits-in-budget is necessary, not sufficient — the assembled block is
     what the judge reads. Assert the LAST line survives, since that is the one
-    truncation takes first."""
-    mem = _mem(tmp_path, _copy(cfg))
-    lines = [l for l in open(PRINCIPLES).read().strip().splitlines() if l.strip()]
+    truncation takes first.
+
+    Built on the SHIPPED budget, for the same reason as the guard above: this
+    is a claim about the deployed file, and the conftest fixture derives
+    `learning.max_context_chars // 4` = 1000 regardless of what config.yaml
+    says. Caught by §61's mutation control — adding an eleventh principle left
+    every other test green and turned this one red, which was the file
+    reporting that knowledge still could not grow.
+    """
+    c = _copy(cfg)
+    c["llm"]["knowledge_max_context_chars"] = _shipped_budget()
+    mem = _mem(tmp_path, c)
+    lines = [ln for ln in open(PRINCIPLES).read().strip().splitlines()
+             if ln.strip()]
     block = mem.knowledge_block()
     for line in lines:
         assert line in block, f"principle missing from the judge block: {line!r}"

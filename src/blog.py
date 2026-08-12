@@ -28,6 +28,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -81,6 +82,28 @@ def _context_by_day(cfg: dict) -> dict:
     return out
 
 
+def _safe_url(url: str) -> bool:
+    """Is this safe to put in an href?
+
+    html.escape() protects the TEXT of a post but says nothing about the URL
+    built from the same record, so a post whose link was `javascript:alert(1)`
+    rendered as an ordinary, clickable "full write-up →" on a public page.
+    Confirmed against a hostile fixture: 14 such anchors, escaping clean
+    everywhere else.
+
+    Today every link is written by this bot from its own config, so nothing
+    hostile can reach it — which is exactly why the check is cheap now and
+    expensive later. An allowlist, not a blocklist: `javascript:` is the one
+    everybody remembers and `data:` and `vbscript:` are the ones they forget.
+    A scheme-relative "//host" is also refused; it is not a relative path.
+    """
+    u = (url or "").strip()
+    if not u or u.startswith("//"):
+        return False
+    scheme = urlparse(u).scheme.lower()
+    return scheme in ("", "http", "https")
+
+
 def render(cfg: dict, out_path: str | None = None) -> str:
     out_path = out_path or sitepaths.resolve(cfg, OUT_PATH)
     posts = _load_posts(cfg)   # every archived post — see the module docstring
@@ -100,7 +123,7 @@ def render(cfg: dict, out_path: str | None = None) -> str:
                          f'{html.escape(ctx)}</div>')
         for ts, p in days[day]:
             body = html.escape(p["text"])
-            if p.get("link"):
+            if p.get("link") and _safe_url(p["link"]):
                 url = html.escape(p["link"])
                 anchor = f'<a href="{url}">full write-up →</a>'
                 if url in body:

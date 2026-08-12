@@ -109,3 +109,65 @@ def test_plan_run_skips_refresh_when_context_fresh(cfg, tmp_path, monkeypatch):
     monkeypatch.setattr(daily_posts, "Broker",
                         lambda cfg: ScanBroker(make_bars(BUY_CLOSES)))
     daily_posts.run("plan")  # would raise if refresh were called
+
+
+# ---- F-10: the permalink is the only deep link this project has -----------
+#
+# journal.html#<trade_id> is the only deep-link surface in the repo, and both
+# callers (src/main.py, src/backfill_posts.py) built it with an f-string. A '#'
+# inside a trade_id truncates the fragment at the first '#', so the browser
+# looks for an element named "t", finds none, and silently leaves the reader at
+# the top of a page of hundreds of entries — no error, no 404, just the wrong
+# place. Verified in a browser: the article exists under id "t#0001 spaced" and
+# the naive link delivers the fragment "t".
+
+def test_permalink_encodes_the_fragment():
+    link = journal.permalink("https://x.io/journal.html", "t#0001 spaced")
+    assert link == "https://x.io/journal.html#t%230001%20spaced"
+    # Everything after the FIRST '#' is the fragment the browser receives; it
+    # must survive intact and decode back to the id it names.
+    from urllib.parse import unquote
+    frag = link.split("#", 1)[1]
+    assert "#" not in frag, "the fragment is truncated at the first '#'"
+    assert unquote(frag) == "t#0001 spaced"
+
+
+def test_permalink_leaves_an_ordinary_id_readable():
+    """Negative control: percent-encoding everything would make every existing
+    permalink ugly and would hide a regression in the test above."""
+    assert (journal.permalink("https://x.io/journal.html", "abc12345")
+            == "https://x.io/journal.html#abc12345")
+
+
+def test_both_callers_use_the_helper():
+    """A second construction site is how this bug survives a fix. Checked by
+    source because the alternative is running a full cycle and a backfill."""
+    import inspect
+
+    import backfill_posts
+    import main
+    for mod, fn in ((main, main.journal_and_link),
+                    (backfill_posts, backfill_posts.run)):
+        src = inspect.getsource(fn)
+        if "journal_url_base" in src or "base" in src:
+            assert 'f"{base}#' not in src, (
+                f"{mod.__name__} still builds a permalink by concatenation")
+
+
+def test_the_rendered_anchor_matches_what_the_permalink_points_at(cfg, tmp_path):
+    """The two halves have to agree: journal.py writes the id, permalink()
+    writes the fragment that has to find it."""
+    from urllib.parse import unquote
+    path = str(tmp_path / "journal.jsonl")
+    with open(path, "w") as f:
+        f.write(json.dumps({"trade_id": "t#0001 spaced", "ts":
+                            "2026-08-11T13:00:00+00:00", "symbol": "NVDA",
+                            "kind": "buy", "title": "BUY NVDA", "text": "x"})
+                + "\n")
+    out = journal.render(cfg, out_path=str(tmp_path / "journal.html"),
+                         path=path)
+    html = open(out).read()
+    from html import escape
+    link = journal.permalink("https://x.io/journal.html", "t#0001 spaced")
+    frag = unquote(link.split("#", 1)[1])
+    assert f'id="{escape(frag)}"' in html

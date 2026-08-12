@@ -4,17 +4,24 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Seventeen such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-one such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-05: #13, #14, #15 and #16.** All four are open *by
-construction* rather than by defect — a sampling fact about the live record, two
-judge inputs the simulator has no mechanism to represent, and a cost the paper
-broker does not charge. **#17 is a DEFECT, found and closed the same day**, and
-it is the largest correction here: the simulator let every strategy enter every
-symbol in the snapshot.
+**Open as of 2026-08-11: #13, #14, #15, #16, #18, #19 and #21.** Six of the seven
+are open *by construction* rather than by defect — a sampling fact about the live
+record, two judge inputs the simulator has no mechanism to represent, a cost the
+paper broker does not charge, a fill-session hazard that only materialises when
+the cycle runs long, and a scanner that tests a live quote where the simulator
+tests a completed close. **#19 is not: it is a plain omission**, found
+2026-08-09, in which a live entry filter has been silently switched off in every
+gate ever run because no spec supplies the data it needs. **#17 and #20 are
+DEFECTS, each found and closed the same day.** #17 is the largest correction
+here: the simulator let every strategy enter every symbol in the snapshot. #20
+is the subtler shape — live and the simulator keyed the re-entry cooldown
+differently, which is harmless under the shipped config and would have gone
+live silently on the day a second strategy was scoped.
 
 That count has been wrong before, in the direction that matters. This file said
 **"Open as of 2026-07-29: none"** while #15 had been open since the initial
@@ -43,7 +50,44 @@ code" is not closed; the repo has been wrong about that before.
 | 10 | **The simulator's equity peak advanced only on buy bars** | **closed 2026-07-28** | `tests/test_sim_peak_tracks_every_bar.py` |
 | 11 | **Live sampled the equity peak only when an order was attempted** | **closed 2026-07-29** | `tests/test_quiet_cycle_still_ratchets_the_peak.py` |
 | 12 | **Live read RAW bars while every snapshot is split/dividend adjusted** | **closed 2026-07-29** | `tests/test_bars_are_split_adjusted.py` |
+| 13 | **Live is trading in a state the backtest says is rare** (the drawdown latch) | **open** | open by construction — a sampling fact about the live record, not a defect |
+| 14 | **The live judge reads news memory; the backtest's judge model cannot** | **open** | open by construction — the simulator has no mechanism to represent it |
+| 15 | **The live judge reads curated principles; the backtest's judge model cannot** | **open** | open by construction — same; open since the initial commit, found 2026-08-04 |
+| 16 | **Paper shorting is free; real shorting is not** | **open** | open by construction — the paper broker charges no borrow, and the bias flatters |
 | 17 | **The simulator ignored per-strategy universes — 500 names traded in the sim, 38 live** | **closed 2026-08-05** | `tests/test_sim_honours_universes.py` |
+| 18 | **An overrunning cycle fills at the NEXT OPEN, and nothing checks the clock** | **open** | open by construction — see below |
+| 19 | **The earnings blackout is unmodelled in EVERY gate** | **open** | found 2026-08-09 (§57); no registered spec has ever passed `earnings=` |
+| 20 | The re-entry cooldown was keyed by symbol in live, by (strategy, symbol) in the simulator | closed | `tests/test_cooldown_key_matches_sim.py` |
+| 21 | **The live swing scanner fills inside the entry zone intraday; the simulator fills at the next open** | **open** | open by construction — the 30-min scan tests a live quote, the cycle and every §62 arm test the last completed close |
+
+> **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
+> second time this file has been wrong in the direction that matters. The prose
+> above said eighteen and named five open; the table listed fourteen and showed
+> exactly one open. A reader who trusted the table — the fastest thing in the
+> file to read, and therefore the thing most likely to be read alone — would
+> have undercounted the open divergences **five to one**.
+>
+> Found while writing `tests/test_doc_counts.py`, which now asserts the prose
+> total, the table rows and the `Open as of` line all agree. The three could
+> drift apart before because nothing compared them.
+>
+> **Row 21 was missing until 2026-08-11 — the third time, and the guard above
+> reported green throughout.** #21 was registered by #110 with a full `## #21`
+> section, but no table row, so the prose said twenty, the `Open as of` line
+> named six, and `README.md` said "20 … six open" while a registered OPEN
+> divergence existed a few hundred lines below. Every one of those three
+> statements agreed with the other two, which is exactly what the guard checked.
+>
+> The lesson is narrower than "add another check". The sentence above —
+> *"nothing compared them"* — named three artifacts and quietly implied they
+> were all of them. The **sections** were a fourth, and the deep-dive section is
+> where a divergence is actually written up; the table is a summary of it. So
+> the register could gain a fully documented entry and lose it from every count
+> in the repo. `test_doc_counts.py` now asserts **every `## #N` section has a
+> table row** (sections ⊆ rows, not equality — #1–#7 and #9 predate the
+> deep-dive convention and legitimately have no section). Found while rebasing
+> the QA-sweep branch, i.e. by reading the file for an unrelated reason — the
+> fourth entry in this register to be found that way.
 
 ---
 
@@ -350,11 +394,67 @@ backtest would flatter.
 
 ### The budget it shares
 
-`knowledge_block()` caps at `learning.max_context_chars // 4`. It has no budget
-of its own — it takes a quarter of learning's. Growing `principles.md` past that
-cap silently truncates the tail rather than failing, so length is a real
-constraint and not a style preference. (This is the same trap
-`news.memory.max_context_chars` was given its own budget to avoid.)
+~~`knowledge_block()` caps at `learning.max_context_chars // 4`. It has no
+budget of its own — it takes a quarter of learning's.~~ **Stale since
+2026-08-04**; struck rather than deleted, per this register's own rule that a
+superseded claim stays visible. The block was given its own
+`llm.knowledge_max_context_chars` on that date, with the derived `// 4` kept
+only as a fallback.
+
+The rest of this paragraph stood, and understated the problem: growing
+`principles.md` past its cap silently truncates the tail rather than failing, so
+length is a real constraint and not a style preference. (This is the same trap
+`news.memory.max_context_chars` was given its own budget to avoid.) See the note
+below — the truncation was not hypothetical, and it was not the knowledge block
+that paid for it.
+
+### Note, 2026-08-11 — the budget was raised, after four blocks were found missing
+
+**No status change. #15 stays OPEN**, and nothing here could close it: the
+simulator still has no prompt for a principle to attach to. This is the #17
+precedent — the same gap, measured from another side, recorded under the
+existing number rather than given a new one.
+
+`llm.knowledge_max_context_chars` went **1000 → 1500** and
+`learning.max_context_chars` **4000 → 12000** (§61). The owner asked for the
+principles file to be able to grow; it was sitting at exactly 1000 of 1000
+chars, fitting with zero headroom, so the next principle written would have been
+the one that disappeared.
+
+**What the paragraph above did not know.** The constraint that actually bound
+was not the knowledge budget — it was the total. Three sub-budgets were derived
+shares (`lessons // 2`, `market_context // 4`, `scoreboard // 4`), which is
+exactly 100% of the cap between them, before knowledge, news memory, the book,
+the trade block, calibration or the regime label got anything. Measured against
+the live memory files on 2026-08-11, `context_for_llm` assembled **5,613 chars
+against a 4,000 cap** and the closing `ctx[:4000]` dropped **NEWS MEMORY, YOUR
+LAST RESOLVED CALLS, YOUR RECENT CALIBRATION and CURRENT REGIME** entirely,
+cutting TODAY'S MARKET CONTEXT mid-word. Every judge call, for months.
+
+So the concern this entry recorded — that a block without its own budget eats
+the tail — had already happened, to four other blocks, while the knowledge block
+was the one being watched.
+
+**Direction of bias: UNCHANGED.** The sim judge still has strictly less context
+than the live one, so backtests remain optimistic relative to live, and
+invariant #2 still means a principle can only subtract live trades and never add
+one. A wider knowledge block makes the live judge see *more* of what the
+simulator cannot represent, which widens the gap without flipping its sign.
+
+**What is new is that the gap is now bounded and visible.** Every block has a
+named budget (`memory.context_budgets`), `preflight.warnings` reports at startup
+when they oversubscribe their total — non-blocking, deliberately, because this
+makes the bot worse rather than unsafe — and a `context_evicted` ledger event
+records any cycle where the cap actually bit, naming the blocks lost. Pinned by
+`tests/test_context_budget.py`, whose eviction cases carry vacuity guards
+because the two guards that should have caught this could not: both
+`test_principles_do_not_shrink_the_lesson_block` and
+`test_unset_knowledge_path_gives_byte_identical_context` run on an empty
+`tmp_path`, where the assembled context never approaches the cap at any budget.
+
+**Rollback:** removing `learning.context_budgets` and restoring the two
+numbers reproduces the old behaviour byte-for-byte, asserted by
+`test_an_unset_config_is_byte_identical`.
 
 ### What would close this
 
@@ -550,3 +650,228 @@ are specific to this filter rather than to any change in the loop.
 **This is not an EDGE claim and nothing here is gated.** The EDGE tally is
 unchanged at 1-in-15 and frozen; `knowledge/backtest_candidates.md` owns that
 count.
+
+### Note, 2026-08-06 — the same gap re-enacted itself INSIDE live, and is now floored
+
+The entry above is about the simulator trading a wider universe than the bot.
+The mirror image also existed and nobody had looked for it: **the bot silently
+trading a NARROWER universe than the one every gate scored.**
+
+`_fetch_and_validate_bars` caught a per-symbol bar failure, logged `data_error`,
+and carried on with whatever was left. There was no floor and no record that the
+cross-section had shrunk. It has fired once — the ledger's only `data_error` in
+its entire history:
+
+```json
+{"event": "data_error",
+ "detail": "QQQ: ('Connection aborted.', RemoteDisconnected(...))",
+ "ts": "2026-08-05T19:47:25.555162+00:00"}
+```
+
+QQQ is one of the core 38. That cycle then ran on 37 with nothing anywhere
+saying so.
+
+**This does NOT reopen #17**, and it is deliberately a note rather than #19: it
+is the same gap between the scored universe and the traded one, measured from
+the other side, and no new sim/live divergence was created by finding it. What
+changed is that the gap is now bounded and visible — `risk.min_universe_fraction`
+blocks entries below 80% of the requested cross-section (exits always run), and
+a `universe_truncated` event records every loss down to a single symbol.
+Pinned by `tests/test_universe_floor.py`.
+
+**The floor takes no credit for the total-outage case.** On 2026-07-31 the
+laptop lost DNS and every symbol failed inside 40ms; SPY was therefore missing
+and the stale-SPY rail aborted the cycle, as it was always going to.
+`test_a_total_outage_still_aborts_on_spy_rather_than_the_floor` holds that
+boundary, with the freshness rail deliberately left armed so the test cannot
+pass for the wrong reason.
+
+---
+
+## #18 — an overrunning cycle fills at the next open, and nothing checks the clock
+
+**Registered 2026-08-06. OPEN by construction.**
+
+Found while instrumenting cycle duration, not while looking for it.
+
+### The mechanism
+
+The cycle fires at **15:45 ET** against a **16:00 close**, so the entire budget
+is fifteen minutes. **No code anywhere compares the clock to the close before
+submitting an order.** Grep for a cutoff and there is none: not in
+`_process_signal`, not in `broker.market_order`, not in preflight.
+
+Exits go out as `TimeInForce.DAY` (`src/broker.py:181`). Alpaca does not reject
+a DAY order placed after the bell — it **queues it for the next session's
+open**. So a cycle that runs long does not fail loudly. It silently converts a
+**same-close fill into a next-open fill**, across an overnight gap.
+
+Every gate assumes the same-close fill. §19 states it directly
+(`knowledge/backtest_candidates.md:665-681`): *"The live scheduler runs one
+cycle at 15:45 ET and fills immediately, at today's close."* That assumption is
+load-bearing for every recorded number, and it is true only while the cycle
+finishes in time.
+
+### Why it is open rather than closed
+
+The same reason as #16. A test can prove the *alarm* fires — and one does, in
+`tests/test_cycle_timing.py`. No test can detect **"the broker filled this at
+the wrong session"**: the fill is legitimate, the order is legitimate, and
+nothing in the response distinguishes a 15:59 fill from an 09:30 one except a
+timestamp nobody compares. That makes this **structurally weaker than #13-#15**
+and exactly as weak as #16.
+
+Closing it would require either a hard cutoff that refuses to submit inside N
+minutes of the bell — a behaviour change, and a real one, since refusing an
+exit is not obviously safer than filling it late — or fill-session attribution
+in `record_fill_quality`. Both are decisions, not cleanups. Neither is in scope
+here.
+
+### What was actually shipped
+
+Visibility, not a fix:
+
+- `cycle_timing` on **every** cycle (`src/main.py`, in `run_cycle`'s `finally:`,
+  so a crashed cycle records too) carrying `duration_s`, `finished_at_et` and
+  `margin_min`.
+- One alert per day when `margin_min < ops.min_close_margin_min` (default 5).
+
+### The measurement that prompted it
+
+Seven launchd cycles, the only ones that exist: min **1.63 min**, median
+**~2.6**, max **7.72** on 2026-08-05 — which spent a 54 s stall and two
+~90-100 s broker socket hangs, and finished at 15:52:44 with **7m16s of
+margin**. Nothing had ever recorded any of it.
+
+**No verdict is reopened.** No gate has been shown to be affected, because no
+cycle has yet been shown to cross the bell. This entry records a hazard that is
+now instrumented rather than a correction to a past number.
+
+
+---
+
+## #19 — The earnings blackout has never been modelled in a single gate
+
+**Found 2026-08-09, while writing §57.** `tsmom` ships with
+`earnings_blackout_days: 3` (`config.yaml`), so live refuses to open a momentum
+position within three days of an earnings date. The simulator supports it:
+`simulate_ensemble` blocks on `earnings_mod.next_within(earnings.get(sym, []),
+ts, blackout_days)`.
+
+But the guard is `if blackout_days and earnings and ...`, and **`earnings` is
+`None` in every gate ever run.** `run_gate.py` passes it only when a spec
+declares an `aux:` block, and grepping all 40 files in `research/specs/` plus
+every row of `research/registrations.jsonl` finds **not one** that does. The
+short-circuit has silently disabled a live entry filter in every section from
+§35 onward.
+
+### What this does and does not invalidate
+
+**Direction is nameable rather than unknown.** The filter only ever REMOVES
+entries, so every gate scored a bot that took *more* trades than live would —
+including trades live would have refused for sitting on an earnings date. It
+inflates trade count and it moves per-trade P&L by an unmeasured amount.
+
+**No verdict is reopened.** Fifteen EDGE claims were rejected; a filter that
+removes trades does not turn a rejection into a pass, and §41 set the precedent
+that a simulator finding does not retroactively re-score sections. What it does
+mean is that the trade COUNTS quoted from §35 onward describe a bot slightly
+different from the one running.
+
+**It does not affect §57 at all**, which is why it was safe to find here: ETFs
+have no earnings, `next_within([])` returns False, and the filter would be a
+no-op on that universe regardless.
+
+### What would close this
+
+A spec that declares an `aux: {earnings: ...}` block against a FROZEN earnings
+file, plus a test asserting that a spec whose config sets
+`earnings_blackout_days` and which supplies no earnings data is REFUSED rather
+than silently scored. Today the absence is invisible; the fix is to make it
+loud. Not done here — it belongs with the universe it affects, which is the
+38-name book and not this one.
+
+---
+
+## #20 — the re-entry cooldown was keyed by symbol in live and by (strategy, symbol) in the simulator
+
+**Found and closed 2026-08-10** (§58), while reading the entry loop for an
+unrelated rail. Not a sampling fact, not a modelling limit — a plain defect, and
+the second of that kind in this register after #17.
+
+`risk.cooldown_days_for(cfg, name)` is per-strategy by design:
+`risk.reentry_cooldown.strategies` names which strategies the rule applies to,
+because §9 measured it and **adopted it for meanrev while rejecting it for
+tsmom** (PF 2.16 → 2.25 for one; maxDD worsened for the other).
+
+`backtest.simulate_ensemble` keyed its `last_exit` map by `(strategy, symbol)`
+to match. `main.py` built and read the same map keyed by **symbol alone**.
+
+### The mechanism
+
+In live, meanrev exiting AAPL set `last_exit["AAPL"]`. tsmom's entry check then
+read that same slot, found a recent exit, and refused the entry — applying to
+tsmom a rule §9 had explicitly measured and rejected *for tsmom*. The simulator,
+keying by pair, let tsmom in.
+
+### Why it stayed invisible
+
+`strategies: [meanrev]` is the shipped scope, and with exactly one scoped
+strategy the two keyings cannot disagree — every lookup that reaches
+`cooldown_blocked` is meanrev's own. It was a defect waiting on a config change.
+
+That is the dangerous shape, not a harmless one. The config change would have
+been made on the strength of a gate, and the gate would have been scored under
+the simulator's rule. The evidence licensing the change would have described a
+bot that was not the one running, and nothing in the output would have said so.
+
+### What this invalidates
+
+**Nothing.** With one scoped strategy the behaviours are identical, so no gate
+verdict and no live decision rests on the difference. It is recorded because the
+register's standard is that a divergence is listed when it is found, not when it
+first costs something.
+
+### CLOSED by `tests/test_cooldown_key_matches_sim.py`
+
+Live now keys by `(strategy, symbol)`, with `strategies.DEFAULT_OWNER` for
+legacy ledger rows that predate the strategy tag — dropping those would silently
+shorten the cooldown on the oldest positions, which are the ones most likely to
+be re-entered.
+
+The test asserts the behaviour (one strategy's exit does not block another's
+entry, and the same strategy's still does), and reads both sources so it fails
+if either side drifts back. "Fixed in code" is not closed.
+
+## #21 — the live swing scanner fills inside the entry zone intraday; the simulator fills at the next open
+
+**Status: open by construction** (2026-08-11, Phase 15).
+
+`swing_sectors` derives its entry conditions and zone entirely from completed
+daily bars — one implementation, `assess()` — and two callers ask it the same
+question with different prices. The 15:45 cycle and every §62 arm test the
+LAST COMPLETED CLOSE against the zone and fill at the next open, which is
+exactly the backtester's model. The live `swing_scan` job tests a LIVE QUOTE
+against the same zone every 30 minutes and fills at that quote.
+
+### Direction of bias: genuinely ambiguous
+
+An intraday trigger catches deeper pullbacks (fills lower inside the zone —
+better entries) and also catches knives the daily close would have dodged (a
+fund that touched the zone at 11:00 and closed 3% below it enters live and
+does not enter in the sim). Neither effect has been measured, which is why
+this is a register entry and not a footnote.
+
+### What would close it
+
+An hourly-resolution arm on §25's Alpaca hourly snapshot (one vendor, one
+price basis for signal and fill — the trap `src/intraday.py` documents),
+registered as its own spec family. Until then, every §62 number describes the
+CYCLE's swing behaviour, not the scanner's.
+
+### What bounds it meanwhile
+
+The scan re-runs the drift guard at order time; the coid is shared with the
+cycle so the two paths cannot double-enter; and while `swing_sectors` ships
+`enabled: false` the scanner places nothing at all — the divergence is
+currently between the simulator and a dry run.

@@ -1,0 +1,2 @@
+{"bar_close_time": "2026-07-31T15:17:34.190962Z", "event_id": "local-demo-20260731T151734Z", "kind": "[PAPER]", "received_at": "2026-07-31T15:17:34.190962Z", "side": "buy", "strategy": "local-demo", "symbol": "AAPL", "timeframe": "1h"}
+{"bar_close_time": "2026-07-31T15:17:48.119717Z", "event_id": "local-demo-20260731T151748Z", "kind": "[PAPER]", "received_at": "2026-07-31T15:17:48.119717Z", "side": "buy", "strategy": "local-demo", "symbol": "AAPL", "timeframe": "1h"}
