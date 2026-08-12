@@ -1,0 +1,183 @@
+{
+  "1_Buy_and_Hold_SPY_benchmark": {
+    "start": "2005-02-18",
+    "end": "2024-12-31",
+    "years": 19.87,
+    "total_return_pct": 386.8,
+    "cagr_pct": 8.29,
+    "ann_vol_pct": 19.12,
+    "sharpe": 0.51,
+    "max_drawdown_pct": -56.5
+  },
+  "2_SMA200_Trend_Timing_SPY": {
+    "start": "2005-12-02",
+    "end": "2024-12-31",
+    "years": 19.08,
+    "total_return_pct": 200.5,
+    "cagr_pct": 5.94,
+    "ann_vol_pct": 11.42,
+    "sharpe": 0.56,
+    "max_drawdown_pct": -20.5,
+    "pct_time_in_market": 76.9
+  },
+  "3_Sector_Momentum_Rotation_Top3of9": {
+    "start": "2006-03-31",
+    "end": "2024-12-31",
+    "years": 18.75,
+    "total_return_pct": 315.2,
+    "cagr_pct": 7.89,
+    "ann_vol_pct": 15.21,
+    "sharpe": 0.58,
+    "max_drawdown_pct": -42.1
+  },
+  "3b_SPY_same_period_monthly": {
+    "start": "2006-03-31",
+    "end": "2024-12-31",
+    "years": 18.75,
+    "total_return_pct": 351.4,
+    "cagr_pct": 8.37,
+    "ann_vol_pct": 15.42,
+    "sharpe": 0.6,
+    "max_drawdown_pct": -52.2
+  },
+  "4_MTUM_since_inception": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 306.4,
+    "cagr_pct": 12.73,
+    "ann_vol_pct": 19.22,
+    "sharpe": 0.72,
+    "max_drawdown_pct": -34.1
+  },
+  "4_MTUM_SPY_same_window": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 280.2,
+    "cagr_pct": 12.09,
+    "ann_vol_pct": 16.89,
+    "sharpe": 0.76,
+    "max_drawdown_pct": -34.1
+  },
+  "4_VLUE_since_inception": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 114.0,
+    "cagr_pct": 6.72,
+    "ann_vol_pct": 18.55,
+    "sharpe": 0.44,
+    "max_drawdown_pct": -39.5
+  },
+  "4_VLUE_SPY_same_window": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 280.2,
+    "cagr_pct": 12.09,
+    "ann_vol_pct": 16.89,
+    "sharpe": 0.76,
+    "max_drawdown_pct": -34.1
+  },
+  "4_QUAL_since_inception": {
+    "start": "2013-07-18",
+    "end": "2024-12-31",
+    "years": 11.46,
+    "total_return_pct": 255.1,
+    "cagr_pct": 11.7,
+    "ann_vol_pct": 17.28,
+    "sharpe": 0.73,
+    "max_drawdown_pct": -34.1
+  },
+  "4_QUAL_SPY_same_window": {
+    "start": "2013-07-18",
+    "end": "2024-12-31",
+    "years": 11.46,
+    "total_return_pct": 247.1,
+    "cagr_pct": 11.47,
+    "ann_vol_pct": 16.97,
+    "sharpe": 0.73,
+    "max_drawdown_pct": -34.1
+  },
+  "4_USMV_since_inception": {
+    "start": "2011-10-20",
+    "end": "2024-12-31",
+    "years": 13.2,
+    "total_return_pct": 250.1,
+    "cagr_pct": 9.96,
+    "ann_vol_pct": 13.68,
+    "sharpe": 0.76,
+    "max_drawdown_pct": -33.1
+  },
+  "4_USMV_SPY_same_window": {
+    "start": "2011-10-20",
+    "end": "2024-12-31",
+    "years": 13.2,
+    "total_return_pct": 381.7,
+    "cagr_pct": 12.65,
+    "ann_vol_pct": 16.69,
+    "sharpe": 0.8,
+    "max_drawdown_pct": -34.1
+  },
+  "4_SIZE_since_inception": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 196.1,
+    "cagr_pct": 9.72,
+    "ann_vol_pct": 17.46,
+    "sharpe": 0.62,
+    "max_drawdown_pct": -39.2
+  },
+  "4_SIZE_SPY_same_window": {
+    "start": "2013-04-18",
+    "end": "2024-12-31",
+    "years": 11.7,
+    "total_return_pct": 280.2,
+    "cagr_pct": 12.09,
+    "ann_vol_pct": 16.89,
+    "sharpe": 0.76,
+    "max_drawdown_pct": -34.1
+  },
+  "5_QYLD_covered_call_since_inception": {
+    "start": "2013-12-12",
+    "end": "2024-12-31",
+    "years": 11.05,
+    "total_return_pct": -27.2,
+    "cagr_pct": -2.84,
+    "ann_vol_pct": 14.94,
+    "sharpe": -0.12,
+    "max_drawdown_pct": -40.7
+  },
+  "5_QYLD_SPY_same_window": {
+    "start": "2013-12-12",
+    "end": "2024-12-31",
+    "years": 11.05,
+    "total_return_pct": 229.0,
+    "cagr_pct": 11.38,
+    "ann_vol_pct": 17.18,
+    "sharpe": 0.71,
+    "max_drawdown_pct": -34.1
+  },
+  "6_Dual_Momentum_SPY_TLT_Cash": {
+    "start": "2008-06-30",
+    "end": "2024-12-31",
+    "years": 16.5,
+    "total_return_pct": 152.0,
+    "cagr_pct": 5.76,
+    "ann_vol_pct": 13.59,
+    "sharpe": 0.48,
+    "max_drawdown_pct": -27.0
+  },
+  "6b_SPY_same_period_monthly": {
+    "start": "2008-06-30",
+    "end": "2024-12-31",
+    "years": 16.5,
+    "total_return_pct": 357.9,
+    "cagr_pct": 9.66,
+    "ann_vol_pct": 15.91,
+    "sharpe": 0.66,
+    "max_drawdown_pct": -42.6
+  }
+}
