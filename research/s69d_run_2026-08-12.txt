@@ -1,0 +1,32 @@
+s69d — tom_tilt lev150 latch-off vs latch-on (2022-2026)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T15:04:19 | sha 4fe0fb8ac04c6b10… | judge OFF
+
+prior: Candidate latch_off at 1.5x. The first honest measurement of the McConnell-Xu window on this apparatus (s65 never traded). READING RULE, frozen: (b) in 3+ of 4 with no single period contributing over 75 percent of aggregate excess licenses ONE EDGE registration at K=16; 2 of 4 recorded, no EDGE; 1 or fewer closes the family for good.
+
+  verified bars_etf_2022-01-01_2026-07-10.json.gz  sha256 d84f9ce13ee58187…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  15 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret   -6.99%  PF 0.360  maxDD 11.74%  trades     5  symbols   1  deploy   2.51%  (0s)
+                           signals     51  blocked     46  |  drawdown 42  regime_exposure 4
+  latch_off                ret  -11.45%  PF 0.749  maxDD 18.68%  trades    36  symbols   1  deploy  16.63%  (0s)
+                           signals     51  blocked     15  |  regime_exposure 15
+
+  buy-and-hold on this universe: +52.98%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [FAIL] (a) min_trades  36 vs 40
+  [FAIL] (b) beats_benchmark_symbol  -11.45% vs SPY +67.06% | maxDD 18.68% vs SPY 24.50% (reported, not gated)
+  [FAIL] (c) beats_exposure_matched  -11.45% vs +8.81% (B&H +52.98% x 16.6% deployment)
+  [FAIL] (d) beats_benchmark_risk_adjusted  -11.45% at 18.68% maxDD -> -15.02% levered to SPY's 24.50% maxDD, vs SPY +67.06%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

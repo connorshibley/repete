@@ -1084,12 +1084,67 @@
       "key": "§67",
       "heading": "## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
       "start_line": 6702,
-      "body_sha256": "617fc7f9e08bdb16aa49aeb3160c5bab19a6128e26a0456de13ad3d8d320ace0",
+      "body_sha256": "1da4c9615b020fb182106a97c70fbe6a738c47ad3324bda746d4919aab688615",
       "subheadings": [],
       "specs": [
         "s67a",
         "s67b",
         "s67c"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§68",
+      "heading": "## §68 — TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6726,
+      "body_sha256": "fcb0c3faa14e36f3927e9a57ad0fc19084be430edfca3fc62313f57472498073",
+      "subheadings": [],
+      "specs": [
+        "s68a",
+        "s68b",
+        "s68c",
+        "s68d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§69",
+      "heading": "## §69 — TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6749,
+      "body_sha256": "c82617eb4fa88d57ab1eaffae5176d24c472513cdeb3df8fd38794330db443ba",
+      "subheadings": [],
+      "specs": [
+        "s69a",
+        "s69b",
+        "s69c",
+        "s69d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§70",
+      "heading": "## §70 — VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6761,
+      "body_sha256": "38d8ea9283c8bc8466966857a0544c579ff3cd69d08c72f9ed9bab00f69f6133",
+      "subheadings": [],
+      "specs": [
+        "s70a",
+        "s70b",
+        "s70c",
+        "s70d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§71",
+      "heading": "## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6773,
+      "body_sha256": "3907874c855faa16947122883c06cd27a9bd71129417c4e82380e9d02d66be10",
+      "subheadings": [],
+      "specs": [
+        "s71a",
+        "s71b",
+        "s71c"
       ],
       "spec_source": "id+header+trailer"
     }

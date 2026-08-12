@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **72 sections, 6,722 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **76 sections, 6,780 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -94,6 +94,10 @@ column has been corrected — they are placed side by side.
 | §65 | TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
 | §66 | VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
 | §67 | GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED | DIAGNOSTIC | pre-registered | 0/3 | 2026-08-12 |
+| §68 | TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 | DIAGNOSTIC | pre-registered | 3/4 | 2026-08-12 |
+| §69 | TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST | DIAGNOSTIC | pre-registered | 1/4 | 2026-08-12 |
+| §70 | VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
+| §71 | GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED | DIAGNOSTIC | pre-registered | 0/3 | 2026-08-12 |
 
 A `gate result` of `—` means no spec was registered against that
 section; the first registered section is §35. And a ratio is not a section

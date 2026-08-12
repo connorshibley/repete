@@ -6720,3 +6720,61 @@ a FRED API key and a passing `probe_alfred_vintages.py` (§63). That venue
 stays open and unspent, and it is the only one in the wave that still is.
 
 <!-- recall: section=§67 specs=s67a,s67b,s67c -->
+
+---
+
+## §68 — TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+The latch wave (s68-s71, fifteen specs frozen together, owner-directed
+after §64-§67: "rerun with the latch declared per-arm"). Baseline = the
+§64 candidate exactly (lev150, latch 10%); candidate = identical twin with
+`risk.max_drawdown_pct: 0` — the latch's whole cost is the arm delta.
+
+**Verdict: latch_off beats SPY total return in 3 of 4 periods** — 2000-06
++51.76% vs +10.01%, 2007-13 +55.08% vs +51.30%, 2022-26 +75.57% vs
++67.06%; FAILS 2014-19 (+69.97% vs +97.39%), exactly where the dossier
+said it would. All financing paid at ^IRX+150bps. **The frozen promotion
+rule FIRED: one EDGE registration at K=16 is licensed** via the audited
+`--override-freeze` supersession argument (wave-design doc). It has NOT
+been registered yet — spending it is the next act, recorded when it
+happens. The latch's measured cost vs §64: deployment 2.5-23% → 71-106%.
+Cautions stand: three bear-containing periods carried it; the strategy
+lost to SPY in the one grind-up window; a latchless single-symbol config
+has no drawdown brake and is not shippable as-is (failure_modes).
+
+<!-- recall: section=§68 specs=s68a,s68b,s68c,s68d -->
+
+---
+
+## §69 — TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 (2000-06 only) → CLOSED for good by its own rule.**
+With the latch off it traded 40+ windows per period; the McConnell-Xu
+window beat exposure-matched SPY in 3 of 4 (the window itself retains
+some edge) but total-return lost everywhere post-2007. The 2026
+international persistence does not survive on US large-caps here.
+
+<!-- recall: section=§69 specs=s69a,s69b,s69c,s69d -->
+
+---
+
+## §70 — VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 → CLOSED per its rule; EDGE was pre-excluded both
+waves.** The 2000-06 pass repeats (min_trades failing again — the discrete
+switch makes single-digit decisions); 2007-26 all lose total return.
+Matches Moreira-Muir's own Table V: the 1.5x cap keeps the defense, loses
+the offense.
+
+<!-- recall: section=§70 specs=s70a,s70b,s70c,s70d -->
+
+---
+
+## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 0 of 3, now measured both wired (§67) and unwired.** Per
+the frozen rule: no further GEM registration of any kind in this repo.
+The book spec loses to SPY in every window including its structurally
+favorable long bear.
+
+<!-- recall: section=§71 specs=s71a,s71b,s71c -->
