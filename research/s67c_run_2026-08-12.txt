@@ -1,0 +1,29 @@
+s67c — gem dual momentum, book spec (2022-2026)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T14:39:59 | sha f8ec8a7a2130dcfc… | judge OFF
+
+prior: A FALSIFICATION REGISTRATION. Tracked post-publication record: 8.4 pct CAGR vs SPY 13.6 (2014-2026); 2022 the haven leg (AGG -13pc) failed it; ReSolve's 1,226-specification study shows the book's 12-month lookback is luck-indistinguishable from its siblings, which is why there is ONE arm and NO grid. Expected: FAILS clause (b) in periods b and c; period a (2007-2013, the long bear) is its one structurally favorable window. READING RULE across s67a-c, committed before any run: (1) clause (b) failing in 2 or more of 3 periods CLOSES the dual-momentum family in this repo — future GEM-shaped proposals get this section as the one-paragraph answer; (2) passing in 2 or more of 3 is surprising, licenses NOTHING by itself, and reopens the family for one properly-powered future registration; (3) no outcome licenses an EDGE registration from this spec. 2000-2006 is deliberately absent: EFA and AGG did not exist; a period the legs cannot trade is not stretched (the s53 degenerate-period precedent cuts the other way when the instrument itself is missing).
+
+  verified bars_2022-01-01_2026-07-10.json.gz  sha256 e2f073a6321d650d…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  6 symbols | 1 arms | 2 worker(s)
+
+  baseline                 ret  +45.41%  PF 5.658  maxDD 18.73%  trades    12  symbols   3  deploy  58.87%  (0s)
+                           signals     18  blocked      6  |  zero_qty 4  regime_exposure 2
+
+  buy-and-hold on this universe: +22.39%
+
+-- PRE-REGISTERED PASS MARK (baseline) --
+  [PASS] (a) min_trades  12 vs 5
+  [FAIL] (b) beats_benchmark_symbol  +45.41% vs SPY +67.06% | maxDD 18.73% vs SPY 24.50% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  +45.41% at 18.73% maxDD -> +59.40% levered to SPY's 24.50% maxDD, vs SPY +67.06%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

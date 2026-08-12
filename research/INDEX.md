@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **67 sections, 6,525 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **72 sections, 6,722 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -89,6 +89,11 @@ column has been corrected — they are placed side by side.
 | §60 | THE PROJECT SCORES ITS OWN PREDICTIONS | — | — | — | 2026-08-11 |
 | §61 | THE JUDGE HAD NOT BEEN SEEING ITS OWN SCOREBOARD | — | — | — | 2026-08-11 |
 | §62 | SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE | DIAGNOSTIC | pre-registered | 3/8 | 2026-08-11 |
+| §63 | TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS | — | — | — | — |
+| §64 | TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE | DIAGNOSTIC | pre-registered | 0/5 | 2026-08-12 |
+| §65 | TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
+| §66 | VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
+| §67 | GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED | DIAGNOSTIC | pre-registered | 0/3 | 2026-08-12 |
 
 A `gate result` of `—` means no spec was registered against that
 section; the first registered section is §35. And a ratio is not a section

@@ -7,7 +7,8 @@ section synthesizes an ma_crossover-only ensemble, so old configs and tests
 keep working.
 """
 from strategies import (ma_crossover, tsmom, xsmom, meanrev, donchian, lowvol,
-                        reclaim, hi52, swing_sectors)
+                        reclaim, hi52, swing_sectors, trend_hold, tom_tilt,
+                        vol_lever, gem)
 from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # noqa: F401
 
 # Registered != enabled. `lowvol` (§32, 2026-07-27) and `hi52` (§59,
@@ -22,7 +23,8 @@ from strategies.base import Signal, sma, rsi, total_return, true_range, atr  # n
 # `test_registry_is_reachable.py` is what stops that recurring.
 REGISTRY = {m.NAME: m for m in (ma_crossover, tsmom, xsmom, meanrev,
                                 donchian, lowvol, reclaim, hi52,
-                                swing_sectors)}
+                                swing_sectors, trend_hold, tom_tilt,
+                                vol_lever, gem)}
 
 DEFAULT_OWNER = "ma_crossover"  # legacy ledger records carry no strategy tag
 
@@ -50,6 +52,14 @@ SECTORS_UNIVERSE = "sectors"
 #: funds (SPY, QQQ, DIA, IWM), and a sector-value ranking that contains the
 #: whole market as a member is measuring itself against itself.
 SECTOR_ETFS_UNIVERSE = "sector_etfs"
+
+#: §64 single-symbol universe (the `spy_only:` list) and the GEM rotation legs
+#: (the `gem_legs:` list). Separate keys, not filters over `etfs:`, for the
+#: sector_etfs reason above: each names EXACTLY the instruments its strategy's
+#: evidence record is about, and nothing else can drift in through a config
+#: edit elsewhere.
+SPY_ONLY_UNIVERSE = "spy_only"
+GEM_LEGS_UNIVERSE = "gem_legs"
 
 
 def sector_universe(cfg: dict) -> set:
@@ -115,6 +125,10 @@ def universe_for(cfg: dict, name: str) -> set:
         base = sector_universe(cfg)
     elif key == SECTOR_ETFS_UNIVERSE:
         base = sector_etf_universe(cfg)
+    elif key == SPY_ONLY_UNIVERSE:
+        base = set(cfg.get("spy_only") or ())
+    elif key == GEM_LEGS_UNIVERSE:
+        base = set(cfg.get("gem_legs") or ())
     else:
         return set()
     # Subtracted HERE, at the entries-only boundary, rather than inside

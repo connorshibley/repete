@@ -199,12 +199,12 @@ def test_the_control_is_not_also_a_subject():
 # ---- the declared enumeration ----------------------------------------------
 
 def test_the_universe_is_well_formed_and_carries_its_sources():
-    assert len(probe.UNIVERSE) == 15
+    assert len(probe.UNIVERSE) == 20   # 15 original + 5 GEM legs (2026-08-12)
     for ticker, inception, what in probe.UNIVERSE:
         assert ticker.isupper() and 2 <= len(ticker) <= 5
         date.fromisoformat(inception)          # raises if malformed
         assert len(what) > 10, f"{ticker} has no description"
-    assert len({t for t, *_ in probe.UNIVERSE}) == 15, "duplicate ticker"
+    assert len({t for t, *_ in probe.UNIVERSE}) == 20, "duplicate ticker"
 
 
 def test_spy_is_in_the_universe():

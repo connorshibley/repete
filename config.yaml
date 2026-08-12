@@ -163,6 +163,13 @@ sectors:
 # from the cross-section, which `min_ranked` treats as an outage floor.
 sector_etfs: [XLK, XLF, XLE, XLV, XLI, XLP, XLY, XLU, XLB, XLRE, XLC]
 
+# §64 single-purpose universes. `spy_only` scopes the three SPY-switch
+# candidates to the one instrument their evidence record is about;
+# `gem_legs` is the Antonacci rotation set (US / developed ex-US / bonds).
+# EFA and AGG are NOT in symbols: — same rationale as sector_etfs above.
+spy_only: [SPY]
+gem_legs: [SPY, EFA, AGG]
+
 strategy:              # execution globals (per-strategy params live in strategies:)
   name: ma_crossover   # legacy field, kept for compatibility
   fast_period: 10      # legacy ma_crossover params (strategies: section wins)
@@ -513,6 +520,47 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                               # nothing else would be one correlated bet on
                               # "beaten-down reverts", not four theses.
 
+  # ---- §64 wave (2026-08-12): four gate-first candidates, ALL DISABLED. ----
+  # Each exists so a FROZEN SPEC ARM can measure it against SPY total return
+  # with honest financing (risk.margin). Params are pre-registered starting
+  # points from the published sources, not fitted results. None reads the
+  # judge; none touches the live ensemble while disabled.
+  trend_hold:            # Gayed-Bilello 200-DMA regime switch on SPY alone
+    enabled: false
+    priority: 10
+    universe: spy_only
+    ma_days: 200         # the paper's headline; spec grid probes 100-250
+    symbol: SPY
+  tom_tilt:              # McConnell-Xu turn-of-the-month window, [-1,+3]
+    enabled: false
+    priority: 11
+    universe: spy_only
+    symbol: SPY
+    hold_days_into_month: 3
+  vol_lever:             # discrete Moreira-Muir: in when calm, out when not
+    enabled: false
+    priority: 12
+    universe: spy_only
+    symbol: SPY
+    lookback_days: 21
+    history_bars: 253    # bars of history requested; spec arms raise to 2520
+                         # (the expanding median needs years — the shipped
+                         # value only keeps max_lookback_bars at its pinned
+                         # 253 while the strategy is disabled)
+    entry_frac: 0.75     # enter under 0.75x the expanding median vol
+    exit_frac: 1.0       # exit over 1.0x — hysteresis, not a knife edge
+    min_history_readings: 12
+  gem:                   # Antonacci dual momentum, THE book spec, no grid
+    enabled: false
+    priority: 13
+    universe: gem_legs
+    us: SPY
+    intl: EFA
+    bonds: AGG
+    lookback_days: 252   # 12 months — ReSolve's 1,226-sibling study is why
+                         # this number may never be shopped after the fact
+    max_open_positions: 1  # the rotation holds exactly one leg
+
 risk:                  # ---- HARD RAILS: enforced in deterministic code ----
   risk_per_trade_pct: 8.0        # § 29 ADOPTED 2026-07-26 (was 1.0). Selected by
                                  # the pre-registered rule: highest arm clearing
@@ -849,6 +897,24 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
     period: 20                   # realized-vol lookback (daily bars)
     min_scale: 0.5               # clamp so sizing never swings more than 2x either way
     max_scale: 1.5
+  margin:                        # §64 SIMULATOR margin model — arms only.
+    multiplier: 1.0              # 1.0 = cash account, byte-identical to the
+                                 # pre-§64 code. >1.0 exists so a FROZEN SPEC
+                                 # ARM can test financed leverage; the live
+                                 # Alpaca account is cash-sized and nothing in
+                                 # main.py reads this block. Financing on
+                                 # negative cash is charged at the ^IRX aux
+                                 # rate + spread, and FAILS CLOSED to
+                                 # flat_rate_pct — a levered arm with free
+                                 # borrow is divergence #16 wearing a new name.
+    spread_bps_annual: 150       # broker spread over the T-bill rate
+    flat_rate_pct: 6.0           # punitive fallback when no rate aux is given
+  macro_gate:                    # §64 macro regime gate — OFF. Exists so a
+    enabled: false               # frozen spec arm can test entry-blocking on
+    series: UNRATE               # a first-print ALFRED vintage series. Same
+    ma_days: 252                 # four properties as the §31 credit gate:
+                                 # shared impl, ts-bounded, fails open,
+                                 # never applied to exits.
   regime_exposure:               # down-regime gross-exposure cap. Gate 2026-07-18:
     enabled: true                # §29 2026-07-26: ENABLED, on §18's own condition.
                                  # §18 rejected it as untestable — "at 1%/trade

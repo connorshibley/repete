@@ -1,5 +1,35 @@
 {
   "snapshots": {
+    "bars_2007-01-01_2013-12-31.json.gz": {
+      "built_at": "2026-08-12T12:36:27.392474+00:00",
+      "end": "2013-12-31",
+      "n_bars": 10528,
+      "n_symbols": 6,
+      "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price snapshot used by \u00a71\u2013\u00a713; re-baseline inside this file.",
+      "sha256": "9a0160ab426473b169e6239c4189f0da41222e965406b9adcae57f226f054af5",
+      "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
+      "start": "2007-01-01"
+    },
+    "bars_2014-01-01_2019-12-31.json.gz": {
+      "built_at": "2026-08-12T12:36:30.868656+00:00",
+      "end": "2019-12-31",
+      "n_bars": 9060,
+      "n_symbols": 6,
+      "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price snapshot used by \u00a71\u2013\u00a713; re-baseline inside this file.",
+      "sha256": "e65db00b2285181891306c4fb16a07718292bdf37976141c21652db0e9f67f90",
+      "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
+      "start": "2014-01-01"
+    },
+    "bars_2022-01-01_2026-07-10.json.gz": {
+      "built_at": "2026-08-12T12:36:34.241676+00:00",
+      "end": "2026-07-10",
+      "n_bars": 6798,
+      "n_symbols": 6,
+      "note": "Adjusted prices. NOT comparable with the retired Alpaca raw-price snapshot used by \u00a71\u2013\u00a713; re-baseline inside this file.",
+      "sha256": "e2f073a6321d650d607f706b7236c7d4714e65d1c5cbf5cea15bcf1d189ade50",
+      "source": "yfinance (auto_adjust=True \u2014 split/dividend adjusted)",
+      "start": "2022-01-01"
+    },
     "bars_etf_2000-01-01_2006-12-31.json.gz": {
       "built_at": "2026-08-10T00:32:50.170809+00:00",
       "end": "2006-12-31",

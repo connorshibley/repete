@@ -914,6 +914,67 @@ def credit_blocked(credit_bars: dict | None, ts: str, cfg: dict) -> bool:
     return latest < avg
 
 
+def _asof_closes(bars: list, ts: str, n: int) -> list:
+    """Last `n` closes with bar ts <= `ts`, oldest first. ts-bounded so a
+    backtest cannot read a value the live bot could not have seen."""
+    out = [b["close"] for b in bars if b.get("ts", "") <= ts]
+    return out[-n:] if len(out) >= n else []
+
+
+def financing_rate_pct(rate_bars: dict | None, ts: str, cfg: dict) -> float:
+    """§64: the annualized borrow rate (percent) charged on negative cash.
+
+    FAILS CLOSED, unlike every gate above — and that asymmetry is the point.
+    A gate that fails open permits a trade; a financing model that fails open
+    lends for FREE, which is divergence #16 (the §53 short leg was handed a
+    cost-free borrow and still lost). Missing aux, short history or a
+    non-positive print all fall back to `risk.margin.flat_rate_pct` — a
+    deliberately punitive flat rate — never to zero.
+
+    The aux series is ^IRX (13-week T-bill, annualized PERCENT — 4.85 means
+    4.85%/yr), a market print that is never revised, so the as-of read is
+    point-in-time by construction. Spread rides on top.
+    """
+    mcfg = (cfg.get("risk") or {}).get("margin") or {}
+    spread = float(mcfg.get("spread_bps_annual", 150)) / 100.0
+    flat = float(mcfg.get("flat_rate_pct", 6.0))
+    series = (rate_bars or {}).get("^IRX") or []
+    got = _asof_closes(series, ts, 1)
+    if not got or got[0] <= -1.0:          # sanity floor, not a gate
+        return flat
+    return got[0] + spread
+
+
+def macro_blocked(macro_bars: dict | None, ts: str, cfg: dict) -> bool:
+    """§64: block an ENTRY while the macro regime series signals risk-off.
+
+    The claim under test is that entries taken while unemployment trends up
+    are worse trades — an input no traded symbol's price history contains,
+    `credit_blocked`'s argument exactly. The measure: the latest as-of value
+    of the configured series against its own trailing mean.
+
+    The four properties `credit_blocked` pinned hold here too, deliberately:
+    ONE implementation shared by every caller; `ts`-bounded (the aux is a
+    daily as-of step series built from first-print vintages, and this reads
+    only bars at or before `ts`); FAILS OPEN (missing series, short history
+    or the feature off all permit the entry — freshness rails own outages);
+    NEVER applied to exits.
+
+    Config: `risk.macro_gate: {enabled, series, ma_days}`; disabled ships.
+    """
+    gcfg = (cfg.get("risk") or {}).get("macro_gate") or {}
+    if not gcfg.get("enabled"):
+        return False
+    series = (macro_bars or {}).get(str(gcfg.get("series", "UNRATE"))) or []
+    ma_days = int(gcfg.get("ma_days", 252) or 0)
+    if ma_days <= 0:
+        return False
+    window = _asof_closes(series, ts, ma_days)
+    if not window:
+        return False                       # fail open — see docstring
+    return window[-1] > sum(window) / len(window)
+
+
 def rotate_scan_order(symbols: list, day=None) -> list:
     """Rotate a symbol list by date so first refusal circulates. §24.
 
