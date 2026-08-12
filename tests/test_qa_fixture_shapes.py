@@ -235,7 +235,7 @@ def test_the_hostile_profile_emits_every_edge_case_it_claims():
 def _roots():
     """Import the generator's own root resolution, so this test guards every
     checkout it claims to — including the main one when we run in a worktree."""
-    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    sys.path.append(os.path.join(REPO, "scripts"))
     import qa_fixture
     return qa_fixture._repo_roots()
 
@@ -276,7 +276,7 @@ def test_the_generator_refuses_to_write_into_any_live_tree(sub):
 
 
 def _qa_fixture():
-    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    sys.path.append(os.path.join(REPO, "scripts"))
     import qa_fixture
     return qa_fixture
 

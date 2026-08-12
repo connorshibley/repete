@@ -22,7 +22,7 @@ import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "scripts"))
+sys.path.append(os.path.join(REPO, "scripts"))
 sys.path.insert(0, os.path.join(REPO, "src"))
 
 import qa_site_sweep  # noqa: F401,E402  (import registers the criteria)
@@ -45,6 +45,37 @@ def _doc_ids():
     return set(re.findall(r"`((?:SITE|PUB|LEG|AUTH|AUTHZ|TIER|TIME|GATE|"
                           r"WEBHOOK|UNSUB|RO|TOK|NORM|RL|SCALE|XSURF|DIGEST)"
                           r"[A-Za-z0-9-]*)`", _doc()))
+
+
+def test_importing_the_qa_scripts_does_not_shadow_a_src_module():
+    """scripts/ must never be reachable BEFORE src/ on sys.path.
+
+    Both directories hold a `recall` module — `src/recall.py` (the research
+    record, which has search()) and `scripts/recall.py` (its CLI, which does
+    not). These files used to do `sys.path.insert(0, <scripts>)`, which put
+    scripts/ at the front for the whole pytest session, so every test collected
+    afterwards got the wrong one and tests/test_recall_quotes.py died at import
+    with "module 'recall' has no attribute 'search'".
+
+    Two things made it nasty. It was invisible in isolation — that file passes
+    alone and fails only when collected after this one — and it did not exist
+    at all until a rebase brought src/recall.py into the tree, so it appeared
+    as someone else's branch breaking mine. Pinned rather than left to
+    alphabetical luck.
+    """
+    import recall
+    assert hasattr(recall, "search"), (
+        f"`recall` resolved to {recall.__file__} — scripts/ is shadowing src/")
+    assert os.path.join("src", "recall.py") in recall.__file__
+
+    src_i = next(i for i, p in enumerate(sys.path)
+                 if os.path.basename(p.rstrip(os.sep)) == "src")
+    scripts_i = [i for i, p in enumerate(sys.path)
+                 if os.path.basename(p.rstrip(os.sep)) == "scripts"]
+    assert all(i > src_i for i in scripts_i), (
+        f"scripts/ precedes src/ on sys.path (src={src_i}, scripts={scripts_i})"
+        f" — every name present in both now resolves to the wrong module for "
+        f"the rest of the session")
 
 
 def test_every_registered_criterion_is_documented():
