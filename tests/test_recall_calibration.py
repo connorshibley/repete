@@ -130,7 +130,7 @@ def test_the_sidecar_is_append_only_json_lines():
     text = recall._read(recall.PRIOR_READINGS)
     rows = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
     # 55 at P13; 63 after s62a-h (Phase 15, 2026-08-11).
-    assert len(rows) == 63
+    assert len(rows) == 79   # 55 at P13; 63 after s62; 79 after s64-s67 (2026-08-12)
     for r in rows:
         assert set(r) == {"id", "spec_sha256", "read_at", "read_by",
                           "approved_by", "direction", "quote"}

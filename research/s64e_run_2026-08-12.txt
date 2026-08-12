@@ -1,0 +1,33 @@
+s64e — trend_hold ma_days grid at 1.5x (2014-2019)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T14:39:59 | sha c7e866c4fe4a44ac… | judge OFF
+
+prior: The grid exists solely to feed reading-rule clause (1) of s64a-d: promotion requires BOTH the 3-of-4 and this plateau. The paper's grid was cost-motivated flat (10-250 day all worked; short lengths die of turnover). Expected: flat-ish, peak at an end. No outcome of s64e alone licenses anything.
+
+  verified bars_etf_2014-01-01_2019-12-31.json.gz  sha256 847a1ec84edaa40e…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  15 symbols | 4 arms | 3 worker(s)
+
+  baseline                 ret   +0.71%  PF 1.254  maxDD 12.53%  trades     3  symbols   1  deploy  23.12%  (0s)
+                           signals    902  blocked    899  |  drawdown 895  regime_exposure 3  expired_unfilled 1
+  ma100                    ret   -0.04%  PF 1.101  maxDD 10.32%  trades     3  symbols   1  deploy  13.92%  (0s)
+                           signals   1016  blocked   1013  |  drawdown 1008  regime_exposure 4  expired_unfilled 1
+  ma150                    ret   +0.30%  PF 1.100  maxDD 10.00%  trades     5  symbols   1  deploy  22.91%  (0s)
+                           signals    936  blocked    931  |  drawdown 919  regime_exposure 11  expired_unfilled 1
+  ma250                    ret  -18.67%  PF 0.000  maxDD 18.67%  trades     3  symbols   1  deploy  15.11%  (0s)
+                           signals    955  blocked    952  |  drawdown 945  regime_exposure 6  expired_unfilled 1
+
+  buy-and-hold on this universe: +83.16%
+
+-- PRE-REGISTERED PASS MARK (ma100) --
+  [FAIL] (a) no_interior_optimum  total_return_pct across ['ma100', 'ma150', 'baseline', 'ma250']: -0.044 -> 0.303 -> 0.711 -> -18.667; peak at index 2 (baseline), INTERIOR — a lone interior optimum is the signature of a fitted parameter, not a mechanism (§23)
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (1s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

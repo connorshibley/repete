@@ -1,0 +1,32 @@
+s65a — tom_tilt turn-of-month window on SPY (2000-2006)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T14:39:59 | sha 26c33135759c32b6… | judge OFF
+
+prior: McConnell-Xu: the last trading day through the first three of each month carried essentially the entire 1926-2005 equity premium, 31 of 35 countries, and the effect persists in 2026 international data. AGAINST: calendar effects are the canonical mining graveyard; per-window magnitude is small; no post-2008 US-specific OOS study of this exact tilt exists. Honest expectation: clause (b) is a coin flip per period. READING RULE across s65a-d, committed before any run: (1) clause (b) beats_benchmark_symbol passing on the lev150 candidate in 3 or more of 4 periods licenses exactly ONE EDGE registration at K=16 via the supersession route — UNLESS a single period contributes more than 75 percent of the aggregate excess over SPY, in which case that period does not count toward the three; (2) exposure-matched passes with (b) failing resolve 'the window is fine, the sitting-out is the cost' — recorded, no promotion; (3) 1 or fewer of 4 closes the candidate; (4) any other split is INDETERMINATE and licenses nothing.
+
+  verified bars_etf_2000-01-01_2006-12-31.json.gz  sha256 59a7e224cfcce0fc…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  13 symbols | 2 arms | 3 worker(s)
+
+  baseline                 ret   -2.96%  PF 0.783  maxDD 11.80%  trades     8  symbols   1  deploy   1.70%  (0s)
+                           signals     81  blocked     73  |  drawdown 65  regime_exposure 8
+  lev150                   ret   -0.76%  PF 0.960  maxDD 14.86%  trades     4  symbols   1  deploy   1.19%  (0s)
+                           signals     81  blocked     77  |  drawdown 77
+
+  buy-and-hold on this universe: +38.39%
+
+-- PRE-REGISTERED PASS MARK (lev150) --
+  [FAIL] (a) min_trades  4 vs 40
+  [FAIL] (b) beats_benchmark_symbol  -0.76% vs SPY +10.01% | maxDD 14.86% vs SPY 47.52% (reported, not gated)
+  [FAIL] (c) beats_exposure_matched  -0.76% vs +0.46% (B&H +38.39% x 1.2% deployment)
+  [FAIL] (d) beats_benchmark_risk_adjusted  -0.76% at 14.86% maxDD -> -2.44% levered to SPY's 47.52% maxDD, vs SPY +10.01%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

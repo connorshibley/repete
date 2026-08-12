@@ -6610,3 +6610,113 @@ the full index, and the retained window is a separate question this probe does
 not settle.
 
 <!-- recall: section=§63 specs= -->
+
+---
+
+## §64 — TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+First of the four beat-SPY-wave families (§64-§67, sixteen specs s64a-e,
+s65a-d, s66a-d, s67a-c registered TOGETHER, design frozen in
+`research/specs/drafts/s64-wave-design.md` at commit 0b0b08a before the
+margin model or any strategy in the wave existed; dossier
+`research/candidates_2026-08.md`; transcripts
+`research/s6*_run_2026-08-12.txt`). Registers nothing further, spends no
+Bonferroni budget, enables nothing. **K stays 15** for the whole wave.
+
+New under all sixteen: the §64 simulator margin model — leverage via
+`risk.margin.multiplier`, financing charged per bar at the ^IRX as-of rate
++150bps, FAIL-CLOSED to 6% flat (divergence #16 made structural) — so every
+levered number in this wave pays for its borrow, unlike every published
+figure the dossier reviewed.
+
+**Verdict: clause (b) beats_benchmark_symbol 0 of 4 on the lev150
+candidate → CLOSED by its own rule (3).** s64e's grid failed
+no_interior_optimum: on 2014-2019 at 1.5x, total return peaks AT ma_days
+200 (+0.71%) against −18.67% at 250 — an interior optimum, the signature
+of a fitted parameter, so the promotion path was closed from both ends.
+
+**The finding that outranks the verdict: a single-symbol, full-equity
+strategy plus the portfolio drawdown latch is a one-way trapdoor.** s64a's
+census: 869 of 876 signals blocked, 867 by `drawdown`. Deployment 2.5%
+(2000-06) to 23% (2014-19) on a strategy meant to be ~80-100% invested.
+Mechanism: the latch blocks entries once equity falls ~10% from its
+high-water mark; with ONE symbol and the book forced to cash, equity
+cannot recover to un-latch — the first ~10% drawdown is permanent cash.
+The latch was built for a 38-name book where other positions keep equity
+moving (§48 measured it MASKING measurement; §58 measured filters THROUGH
+it). Here it does not mask the candidate — it replaces it.
+
+These verdicts therefore measure "candidate inside the shipped rails",
+which is exactly what the specs declared (the §62 convention), and the
+frozen rules count them — but what they closed is the candidates AS
+WIRED, not the mechanisms. A re-test with the latch configuration DECLARED
+IN THE ARMS is a different experiment needing its own pre-registration
+(§53's precedent: relief cannot be claimed by arguing the config would
+have changed it). Whether to spend one is an owner decision.
+
+`mode: paper` unchanged; every wave strategy ships `enabled: false`;
+ensemble-unmoved proven in `tests/test_margin_model.py`.
+
+<!-- recall: section=§64 specs=s64a,s64b,s64c,s64d,s64e -->
+
+---
+
+## §65 — TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Second wave family; wave header and the latch-trapdoor finding are in §64.
+
+**Verdict: every clause failed in all four periods → CLOSED by its own
+rule (3).** min_trades 15 vs 40 even in the calm 2014-2019 window (the
+unlevered baseline managed 49 entries; the levered candidate latched out
+after its first losing window and stayed out). The McConnell-Xu window was
+never actually measured here — what was measured is that a strategy which
+is deliberately 80% in cash still trips a high-water-mark latch on the
+20% it does trade, and then cannot recover it. The window itself remains
+untested on this apparatus; the candidate as wired is closed.
+
+<!-- recall: section=§65 specs=s65a,s65b,s65c,s65d -->
+
+---
+
+## §66 — VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Third wave family; wave header in §64. EDGE was PRE-EXCLUDED for this
+candidate in its own frozen prior, whatever the outcome.
+
+**Verdict: clause (b) 1 of 4 → CLOSED by its own rule (3).** The one pass
+is s66a (2000-2006): **+68.44% vs SPY +10.01% at a quarter of SPY's
+drawdown (10.89% vs 47.52%)** — and it sits in the one spec of the four
+whose own min_trades clause FAILED: two trades in seven years. The
+discrete vol switch sat out both halves of the dot-com bust and rode the
+middle, twice. That is either the mechanism working exactly as Moreira-
+Muir describe, or two lucky episodes — and on n=2 those are the same
+observation, which is why the reading rule pre-committed that no outcome
+here licenses anything. Periods b-d: min_trades passed, benchmark failed.
+The b-d results carry the same latch suffocation as the rest of the wave
+(deployment 24-31% in 2014-19).
+
+<!-- recall: section=§66 specs=s66a,s66b,s66c,s66d -->
+
+---
+
+## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Fourth wave family; wave header in §64. Registered explicitly as a
+falsification candidate: one arm, the exact Antonacci book spec, NO grid
+(ReSolve's 1,226-sibling study is why a grid here would be spec-shopping).
+
+**Verdict: clause (b) 0 of 3 → the dual-momentum family is CLOSED by its
+own rule (1).** In its structurally favorable window (2007-2013, the long
+bear its reputation rests on) it returned −8.79% against SPY's +51.30%.
+2022-2026 (+45.41% vs +67.06%) is its best showing and still loses. The
+first run of s67 CRASHED on a units bug (bars passed where closes were
+wanted — fixed with a regression test; the reachability fixture carries no
+SPY spine and could not have caught it); the verdicts above are from the
+fixed rerun, same frozen specs.
+
+Future GEM-shaped proposals get this section as the one-paragraph answer.
+**s68 (macro gate on ALFRED vintages) remains UNREGISTERED** — blocked on
+a FRED API key and a passing `probe_alfred_vintages.py` (§63). That venue
+stays open and unspent, and it is the only one in the wave that still is.
+
+<!-- recall: section=§67 specs=s67a,s67b,s67c -->

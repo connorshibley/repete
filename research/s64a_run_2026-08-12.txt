@@ -1,0 +1,33 @@
+s64a — trend_hold levered switch on SPY (2000-2006)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T14:39:59 | sha 49e5b23e2a2efd99… | judge OFF
+
+prior: Expected outcome, frozen: the 2016-2026 replication at 1.5x with honest financing TRAILED SPY TR by ~2.2pp/yr, so clause (b) is expected to FAIL in the grind-up period (c) and pass at most in bear-containing windows; the risk-adjusted clause (d) is the likely pass. McLean-Pontiff leaves ~1.4pp of the in-sample edge before financing. READING RULE across s64a-d, committed before any run: (1) clause (b) beats_benchmark_symbol passing on the lev150 candidate in 3 or more of the 4 periods AND s64e showing no interior optimum licenses exactly ONE EDGE registration for this candidate at K=16 via the supersession route in the wave-design doc — and nothing else does; (2) 2 of 4 resolves regime-dependent: recorded, no EDGE, may inform ONE future combined spec; (3) 1 or fewer of 4 closes the candidate for this programme; (4) risk-adjusted-only passes license a note, never a promotion — the owner's bar is total return; (5) any other split is INDETERMINATE and licenses nothing.
+
+  verified bars_etf_2000-01-01_2006-12-31.json.gz  sha256 59a7e224cfcce0fc…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  13 symbols | 3 arms | 3 worker(s)
+
+  baseline                 ret  -10.27%  PF 0.000  maxDD 10.90%  trades     6  symbols   1  deploy   1.88%  (0s)
+                           signals    875  blocked    869  |  drawdown 867  regime_exposure 1  expired_unfilled 1
+  lev150                   ret  -10.29%  PF 0.000  maxDD 11.10%  trades     5  symbols   1  deploy   2.56%  (0s)
+                           signals    876  blocked    871  |  drawdown 869  regime_exposure 1  expired_unfilled 1
+  lev125                   ret  -12.80%  PF 0.000  maxDD 13.52%  trades     6  symbols   1  deploy   2.35%  (0s)
+                           signals    875  blocked    869  |  drawdown 867  regime_exposure 1  expired_unfilled 1
+
+  buy-and-hold on this universe: +38.39%
+
+-- PRE-REGISTERED PASS MARK (lev150) --
+  [FAIL] (a) min_trades  5 vs 8
+  [FAIL] (b) beats_benchmark_symbol  -10.29% vs SPY +10.01% | maxDD 11.10% vs SPY 47.52% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  -10.29% at 11.10% maxDD -> -44.03% levered to SPY's 47.52% maxDD, vs SPY +10.01%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

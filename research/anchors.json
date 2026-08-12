@@ -1027,7 +1027,7 @@
       "key": "§63",
       "heading": "## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS",
       "start_line": 6528,
-      "body_sha256": "128b34cd01174d4e2a8622d21e9c2ee5661de36e4ee14b0df81f2c8759fdff95",
+      "body_sha256": "4e64c4a5eff9c53bc6a11f398a841f2f9cb40e971c2cad5a7d9d1ee55e633e16",
       "subheadings": [
         "### Why now, and why this is not a new idea",
         "### What each probe decides",
@@ -1035,6 +1035,62 @@
         "### What is NOT claimed"
       ],
       "specs": [],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§64",
+      "heading": "## §64 — TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6616,
+      "body_sha256": "cefbe3d6cb59cd36f94c8d995b0d1fa2f35394122573d30908f8f85994239bb8",
+      "subheadings": [],
+      "specs": [
+        "s64a",
+        "s64b",
+        "s64c",
+        "s64d",
+        "s64e"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§65",
+      "heading": "## §65 — TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6664,
+      "body_sha256": "6837f6d35a313661f12d5160895f4be44c7b47d6e01e4c225c58bd2ca66689ca",
+      "subheadings": [],
+      "specs": [
+        "s65a",
+        "s65b",
+        "s65c",
+        "s65d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§66",
+      "heading": "## §66 — VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6681,
+      "body_sha256": "59d997bf959a847eb9d09cd965f0615e25e6d6111426db4c7e7383a0b7fc8259",
+      "subheadings": [],
+      "specs": [
+        "s66a",
+        "s66b",
+        "s66c",
+        "s66d"
+      ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§67",
+      "heading": "## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
+      "start_line": 6702,
+      "body_sha256": "617fc7f9e08bdb16aa49aeb3160c5bab19a6128e26a0456de13ad3d8d320ace0",
+      "subheadings": [],
+      "specs": [
+        "s67a",
+        "s67b",
+        "s67c"
+      ],
       "spec_source": "id+header+trailer"
     }
   ]
