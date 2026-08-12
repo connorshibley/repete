@@ -102,10 +102,10 @@ _REVISED_MANY = _obs([
     ("2020-09-30", "9999-12-31", "2020-04-01", "17302.0"),
 ])
 _REVISED_ONE = _obs([("2020-07-30", "9999-12-31", "2020-04-01", "17302.5")])
-_CONTROL_ONE = _obs([("2023-01-04", "9999-12-31", "2023-01-01", "3.79")])
+_CONTROL_ONE = _obs([("2023-01-04", "9999-12-31", probe.CONTROL_OBS_DATE, "3.79")])
 _CONTROL_MANY = _obs([
-    ("2023-01-04", "2023-02-01", "2023-01-01", "3.79"),
-    ("2023-02-02", "9999-12-31", "2023-01-01", "3.55"),
+    ("2023-01-04", "2023-02-01", probe.CONTROL_OBS_DATE, "3.79"),
+    ("2023-02-02", "9999-12-31", probe.CONTROL_OBS_DATE, "3.55"),
 ])
 
 
@@ -147,6 +147,20 @@ def test_revision_divergence_undetermined_without_control(monkeypatch):
     _router(monkeypatch, {("series/observations", "GDPC1"): _REVISED_MANY})
     out = []
     assert probe.check_revision_divergence(out) is None
+
+
+def test_negative_control_empty_forces_undetermined(monkeypatch):
+    """A market with no quote on the control date (e.g. a non-trading day)
+    must not be read as 'zero distinct values, therefore never revised' —
+    that is zero evidence, not confirming evidence, and the vacuous
+    len(distinct) < 2 check must not silently wave it through as a PASS."""
+    _router(monkeypatch, {
+        ("series/observations", "GDPC1"): _REVISED_MANY,
+        ("series/observations", "DGS10"): {"observations": []},
+    })
+    out = []
+    assert probe.check_revision_divergence(out) is None
+    assert "UNDETERMINED" in "\n".join(out)
 
 
 def test_row_without_realtime_metadata_is_undetermined(monkeypatch):
