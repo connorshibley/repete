@@ -1,0 +1,31 @@
+s70a — vol_lever lev150 latch-off vs latch-on (2000-2006)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T15:04:19 | sha f7030647847bb5e9… | judge OFF
+
+prior: Candidate latch_off at 1.5x. s66a (+68 percent vs +10 on two trades) suggested the mechanism deserved an unsuffocated look; its literature still predicts roughly SPY-matching total return with shallower drawdowns. READING RULE, frozen: THIS CANDIDATE STILL CANNOT LICENSE AN EDGE REGISTRATION REGARDLESS OF OUTCOME (the s66 pre-commitment carries over); (b) in 3+ of 4 AND candidate maxDD at least 5pp shallower than SPY in 3+ resolves note-as-ensemble-overlay for a future separately-registered question; anything else closes it.
+
+  verified bars_etf_2000-01-01_2006-12-31.json.gz  sha256 59a7e224cfcce0fc…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  13 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret  +68.44%  PF 20.463  maxDD 10.89%  trades     2  symbols   1  deploy  72.17%  (1s)
+                           signals      3  blocked      1  |  regime_exposure 1
+  latch_off                ret  +68.44%  PF 20.463  maxDD 10.89%  trades     2  symbols   1  deploy  72.17%  (1s)
+                           signals      3  blocked      1  |  regime_exposure 1
+
+  buy-and-hold on this universe: +38.39%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [FAIL] (a) min_trades  2 vs 3
+  [PASS] (b) beats_benchmark_symbol  +68.44% vs SPY +10.01% | maxDD 10.89% vs SPY 47.52% (reported, not gated)
+  [PASS] (d) beats_benchmark_risk_adjusted  +68.44% at 10.89% maxDD -> +298.73% levered to SPY's 47.52% maxDD, vs SPY +10.01%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (1s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

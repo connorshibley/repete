@@ -91,6 +91,15 @@ UNIVERSE = [
     ("DIA",  "1998-01-20", "SPDR Dow Jones Industrial Average"),
     ("QQQ",  "1999-03-10", "Invesco QQQ — Nasdaq 100"),
     ("IWM",  "2000-05-26", "iShares Russell 2000"),
+    # §64 additions (2026-08-12): the GEM/dual-momentum legs. Inception dates
+    # from issuer fact sheets. Each is a single perpetual fund, not a screened
+    # universe, so the question here is only continuous pricing over the
+    # window it is asked to cover — the same question the fifteen above answer.
+    ("EFA",  "2001-08-14", "iShares MSCI EAFE — developed ex-US equity"),
+    ("IEF",  "2002-07-22", "iShares 7-10 Year Treasury Bond"),
+    ("TLT",  "2002-07-22", "iShares 20+ Year Treasury Bond"),
+    ("AGG",  "2003-09-22", "iShares Core U.S. Aggregate Bond"),
+    ("VEU",  "2007-03-02", "Vanguard FTSE All-World ex-US"),
 ]
 
 # NEGATIVE CONTROL. Symbols the sibling probe already MEASURED as dead, with the

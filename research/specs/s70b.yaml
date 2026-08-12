@@ -1,0 +1,96 @@
+# §70b — vol_lever lev150 latch-off vs latch-on (2007-2013)
+#
+# THE LATCH WAVE — FIFTEEN SPECS IN ONE REGISTRATION (s68-s71), owner-directed
+# 2026-08-12 after §64-§67: "rerun with the latch declared per-arm." The §64
+# finding was that risk.max_drawdown_pct (the drawdown circuit breaker, built
+# for a 38-name book) is a one-way trapdoor for a single-symbol full-equity
+# strategy: 869 of 876 signals blocked, and a cash book can never recover its
+# high-water mark. §64-§67 closed the candidates AS WIRED; this wave asks the
+# question those verdicts could not: the MECHANISM, latch declared OFF in the
+# candidate arm, latch-on identical twin as baseline — so the latch's whole
+# cost is the arm difference, the §53 attribution pattern. §53's precedent is
+# honored, not dodged: this is the "different experiment needing its own
+# pre-registration", registered before any run. For s71/gem specifically, the
+# §67 closure stands for GEM-as-wired; the OWNER'S explicit instruction is
+# what reopens the mechanism question here, and this header is that record.
+# DIAGNOSTIC; K stays 15. judge_model false (the §64 argument, unchanged).
+# Every levered arm pays ^IRX+150bps financing, fail-closed 6%.
+id: s70b
+claim: DIAGNOSTIC
+title: "vol_lever lev150 latch-off vs latch-on (2007-2013)"
+
+judge_model: false
+
+snapshot:
+  path: data/pit/bars_etf_2007-01-01_2013-12-31.json.gz
+  sha256: 37e2609b8515998a54729a476ab1a39778e1db9fd0bca6c27992b2972bebc29a
+
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+
+cash: 100000.0
+bonferroni_k: 15
+
+arms:
+  - name: baseline
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.vol_lever.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      strategies.vol_lever.history_bars: 2520
+      risk.max_drawdown_pct: 10.0
+  - name: latch_off
+    replace:
+      symbols:
+        - SPY
+    set:
+      strategies.ma_crossover.enabled: false
+      strategies.tsmom.enabled: false
+      strategies.meanrev.enabled: false
+      strategies.vol_lever.enabled: true
+      risk.risk_per_trade_pct: 400.0
+      risk.max_position_pct: 400.0
+      risk.max_portfolio_heat_pct: 10000.0
+      risk.margin.multiplier: 1.5
+      strategies.vol_lever.history_bars: 2520
+      risk.max_drawdown_pct: 0
+
+clauses:
+  - {id: a, rule: min_trades, n: 3}
+  - {id: b, rule: beats_benchmark_symbol, symbol: SPY}
+  - {id: d, rule: beats_benchmark_risk_adjusted, symbol: SPY}
+
+prior: >-
+  Candidate latch_off at 1.5x. s66a (+68 percent vs +10 on two trades)
+  suggested the mechanism deserved an unsuffocated look; its literature
+  still predicts roughly SPY-matching total return with shallower drawdowns.
+  READING RULE, frozen: THIS CANDIDATE STILL CANNOT LICENSE AN EDGE
+  REGISTRATION REGARDLESS OF OUTCOME (the s66 pre-commitment carries over);
+  (b) in 3+ of 4 AND candidate maxDD at least 5pp shallower than SPY in 3+
+  resolves note-as-ensemble-overlay for a future separately-registered
+  question; anything else closes it.
+
+failure_modes:
+  - >-
+    LATCH OFF IS NOT SHIPPABLE AS-IS: the live book runs nine other strategies
+    under one latch; a candidate that only works latchless needs its own risk
+    design before any enablement conversation, and that design is not licensed
+    by these specs.
+  - >-
+    REMAINING RAILS STAY ON (regime cap, daily loss limit); the arm difference
+    isolates the latch only.
+  - >-
+    FEW INDEPENDENT EPISODES: same s48/s49 caveat as the first wave; four
+    periods of regime switches are a handful of bets.
+  - >-
+    GAP-THROUGH and financing realism carry over from s64 verbatim.

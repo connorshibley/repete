@@ -6523,3 +6523,287 @@ dodged. Open by construction until an hourly-resolution arm is registered on
 §25's data.
 
 <!-- recall: section=§62 specs=s62a,s62b,s62c,s62d,s62e,s62f,s62g,s62h -->
+
+---
+## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS
+
+*(Numbering note: this section was written 2026-08-10 on branch
+`feature/alfred-edgar-lookahead-probes` as §60, before §60–§62 merged to
+main and took those numbers. Renumbered §63 at merge, 2026-08-12; content
+otherwise unchanged.)*
+
+
+**No claim type.** Nothing is registered here and **K stays 15**. These are
+probes, not gates: they decide whether a claim on either source *may later be
+written*, and they are deliberately run before any ingest code exists.
+
+### Why now, and why this is not a new idea
+
+§31 already decided this and wrote down the reasoning. Choosing cross-asset
+prices over FRED, it said: *"FRED serves CURRENT values and most macro series
+are revised. Backtesting against revised data is lookahead, and it would
+quietly invalidate this gate rather than fail it loudly. ALFRED vintages are
+the correct fix and are a separate project."*
+
+This is that separate project. The value of recording it that way is that the
+conclusion was reached before the work was wanted, not after — the reasoning
+carries no hindsight.
+
+The governing precedent for the *shape* is §46's FMP probe: data carrying
+lookahead cannot be gated on, because a claim scored against it would be
+inflated and indistinguishable from a genuine edge. §28 is the harder
+precedent — a fully drafted gate that was **never registered** because a probe
+refused it.
+
+### What each probe decides
+
+`scripts/probe_alfred_vintages.py` — three checks, each fatal alone:
+
+1. **VINTAGE AVAILABILITY** — more than one vintage for a revised series, or it
+   is FRED-current wearing ALFRED's name.
+2. **REVISION DIVERGENCE** — vintage values must actually differ for a revised
+   series, **and must not differ** for a never-revised market rate. The second
+   half is a negative control, and it is the reason the check means anything:
+   without it, a divergence could be noise, and the probe returns UNDETERMINED
+   rather than PASS.
+3. **RELEASE LAG** — the first vintage must postdate the period it describes.
+   Payrolls for January are not public until February; a zero lag is the period
+   date wearing another name.
+
+`scripts/probe_edgar_pit.py` — three checks, each fatal alone:
+
+1. **ACCEPTANCE TIMESTAMP** — `acceptanceDateTime` present on every row *and*
+   carrying a real time of day. An 8-K accepted at 18:05 ET is not tradeable
+   that session, and an all-midnight column is the filing date wearing a clock.
+2. **RETROACTIVE EDIT** — amendments must ADD a filing, not replace the
+   original. If history is rewritten in place, a backtest reads today's
+   corrected story as though it were known then.
+3. **SURVIVORSHIP** — filing histories retained for issuers that failed.
+
+The restatement names (KHC, UAA) and failed issuers (SIVB, FRC) are
+deliberately **the same names the FMP probe uses**, so the two are comparable
+rather than each picking a convenient universe.
+
+### Verdict semantics
+
+All three pass → a claim on that source MAY be pre-registered, with the usual
+discipline (canonical-hash the spec, count it against K, exposure-matched
+benchmark). Any one fails → that source is **LIVE JUDGE CONTEXT ONLY** — the W7
+shape: judge-only, so under invariant #2 it can veto or shrink and can never
+create a trade — and no spec may reference it. Both probes exit non-zero on
+refusal rather than leaving the reader to infer it.
+
+**A refusal is a successful run.** It is the outcome the probes exist to
+produce cheaply.
+
+### What is NOT claimed
+
+Passing says a test *would be meaningful*, not that macro or filings help.
+Nothing in `src/` reads either source; no strategy, rail, threshold or
+`config.yaml` value is touched; `mode: paper`. EDGE stands at **1 pass in 15**,
+and that single pass (§51) its own write-up showed to be explicable by
+survivorship.
+
+One coverage limit worth stating in advance: EDGAR's `submissions` endpoint
+returns a RECENT window, not all history. A claim reaching further back needs
+the full index, and the retained window is a separate question this probe does
+not settle.
+
+<!-- recall: section=§63 specs= -->
+
+---
+
+## §64 — TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+First of the four beat-SPY-wave families (§64-§67, sixteen specs s64a-e,
+s65a-d, s66a-d, s67a-c registered TOGETHER, design frozen in
+`research/specs/drafts/s64-wave-design.md` at commit 0b0b08a before the
+margin model or any strategy in the wave existed; dossier
+`research/candidates_2026-08.md`; transcripts
+`research/s6*_run_2026-08-12.txt`). Registers nothing further, spends no
+Bonferroni budget, enables nothing. **K stays 15** for the whole wave.
+
+New under all sixteen: the §64 simulator margin model — leverage via
+`risk.margin.multiplier`, financing charged per bar at the ^IRX as-of rate
++150bps, FAIL-CLOSED to 6% flat (divergence #16 made structural) — so every
+levered number in this wave pays for its borrow, unlike every published
+figure the dossier reviewed.
+
+**Verdict: clause (b) beats_benchmark_symbol 0 of 4 on the lev150
+candidate → CLOSED by its own rule (3).** s64e's grid failed
+no_interior_optimum: on 2014-2019 at 1.5x, total return peaks AT ma_days
+200 (+0.71%) against −18.67% at 250 — an interior optimum, the signature
+of a fitted parameter, so the promotion path was closed from both ends.
+
+**The finding that outranks the verdict: a single-symbol, full-equity
+strategy plus the portfolio drawdown latch is a one-way trapdoor.** s64a's
+census: 869 of 876 signals blocked, 867 by `drawdown`. Deployment 2.5%
+(2000-06) to 23% (2014-19) on a strategy meant to be ~80-100% invested.
+Mechanism: the latch blocks entries once equity falls ~10% from its
+high-water mark; with ONE symbol and the book forced to cash, equity
+cannot recover to un-latch — the first ~10% drawdown is permanent cash.
+The latch was built for a 38-name book where other positions keep equity
+moving (§48 measured it MASKING measurement; §58 measured filters THROUGH
+it). Here it does not mask the candidate — it replaces it.
+
+These verdicts therefore measure "candidate inside the shipped rails",
+which is exactly what the specs declared (the §62 convention), and the
+frozen rules count them — but what they closed is the candidates AS
+WIRED, not the mechanisms. A re-test with the latch configuration DECLARED
+IN THE ARMS is a different experiment needing its own pre-registration
+(§53's precedent: relief cannot be claimed by arguing the config would
+have changed it). Whether to spend one is an owner decision.
+
+`mode: paper` unchanged; every wave strategy ships `enabled: false`;
+ensemble-unmoved proven in `tests/test_margin_model.py`.
+
+<!-- recall: section=§64 specs=s64a,s64b,s64c,s64d,s64e -->
+
+---
+
+## §65 — TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Second wave family; wave header and the latch-trapdoor finding are in §64.
+
+**Verdict: every clause failed in all four periods → CLOSED by its own
+rule (3).** min_trades 15 vs 40 even in the calm 2014-2019 window (the
+unlevered baseline managed 49 entries; the levered candidate latched out
+after its first losing window and stayed out). The McConnell-Xu window was
+never actually measured here — what was measured is that a strategy which
+is deliberately 80% in cash still trips a high-water-mark latch on the
+20% it does trade, and then cannot recover it. The window itself remains
+untested on this apparatus; the candidate as wired is closed.
+
+<!-- recall: section=§65 specs=s65a,s65b,s65c,s65d -->
+
+---
+
+## §66 — VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Third wave family; wave header in §64. EDGE was PRE-EXCLUDED for this
+candidate in its own frozen prior, whatever the outcome.
+
+**Verdict: clause (b) 1 of 4 → CLOSED by its own rule (3).** The one pass
+is s66a (2000-2006): **+68.44% vs SPY +10.01% at a quarter of SPY's
+drawdown (10.89% vs 47.52%)** — and it sits in the one spec of the four
+whose own min_trades clause FAILED: two trades in seven years. The
+discrete vol switch sat out both halves of the dot-com bust and rode the
+middle, twice. That is either the mechanism working exactly as Moreira-
+Muir describe, or two lucky episodes — and on n=2 those are the same
+observation, which is why the reading rule pre-committed that no outcome
+here licenses anything. Periods b-d: min_trades passed, benchmark failed.
+The b-d results carry the same latch suffocation as the rest of the wave
+(deployment 24-31% in 2014-19).
+
+<!-- recall: section=§66 specs=s66a,s66b,s66c,s66d -->
+
+---
+
+## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+Fourth wave family; wave header in §64. Registered explicitly as a
+falsification candidate: one arm, the exact Antonacci book spec, NO grid
+(ReSolve's 1,226-sibling study is why a grid here would be spec-shopping).
+
+**Verdict: clause (b) 0 of 3 → the dual-momentum family is CLOSED by its
+own rule (1).** In its structurally favorable window (2007-2013, the long
+bear its reputation rests on) it returned −8.79% against SPY's +51.30%.
+2022-2026 (+45.41% vs +67.06%) is its best showing and still loses. The
+first run of s67 CRASHED on a units bug (bars passed where closes were
+wanted — fixed with a regression test; the reachability fixture carries no
+SPY spine and could not have caught it); the verdicts above are from the
+fixed rerun, same frozen specs.
+
+Future GEM-shaped proposals get this section as the one-paragraph answer.
+**s68 (macro gate on ALFRED vintages) remains UNREGISTERED** — blocked on
+a FRED API key and a passing `probe_alfred_vintages.py` (§63). That venue
+stays open and unspent, and it is the only one in the wave that still is.
+
+<!-- recall: section=§67 specs=s67a,s67b,s67c -->
+
+---
+
+## §68 — TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+The latch wave (s68-s71, fifteen specs frozen together, owner-directed
+after §64-§67: "rerun with the latch declared per-arm"). Baseline = the
+§64 candidate exactly (lev150, latch 10%); candidate = identical twin with
+`risk.max_drawdown_pct: 0` — the latch's whole cost is the arm delta.
+
+**Verdict: latch_off beats SPY total return in 3 of 4 periods** — 2000-06
++51.76% vs +10.01%, 2007-13 +55.08% vs +51.30%, 2022-26 +75.57% vs
++67.06%; FAILS 2014-19 (+69.97% vs +97.39%), exactly where the dossier
+said it would. All financing paid at ^IRX+150bps. **The frozen promotion
+rule FIRED: one EDGE registration at K=16 is licensed** via the audited
+`--override-freeze` supersession argument (wave-design doc). It has NOT
+been registered yet — spending it is the next act, recorded when it
+happens. The latch's measured cost vs §64: deployment 2.5-23% → 71-106%.
+Cautions stand: three bear-containing periods carried it; the strategy
+lost to SPY in the one grind-up window; a latchless single-symbol config
+has no drawdown brake and is not shippable as-is (failure_modes).
+
+<!-- recall: section=§68 specs=s68a,s68b,s68c,s68d -->
+
+---
+
+## §69 — TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 (2000-06 only) → CLOSED for good by its own rule.**
+With the latch off it traded 40+ windows per period; the McConnell-Xu
+window beat exposure-matched SPY in 3 of 4 (the window itself retains
+some edge) but total-return lost everywhere post-2007. The 2026
+international persistence does not survive on US large-caps here.
+
+<!-- recall: section=§69 specs=s69a,s69b,s69c,s69d -->
+
+---
+
+## §70 — VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 1 of 4 → CLOSED per its rule; EDGE was pre-excluded both
+waves.** The 2000-06 pass repeats (min_trades failing again — the discrete
+switch makes single-digit decisions); 2007-26 all lose total return.
+Matches Moreira-Muir's own Table V: the 1.5x cap keeps the defense, loses
+the offense.
+
+<!-- recall: section=§70 specs=s70a,s70b,s70c,s70d -->
+
+---
+
+## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)
+
+**Verdict: (b) 0 of 3, now measured both wired (§67) and unwired.** Per
+the frozen rule: no further GEM registration of any kind in this repo.
+The book spec loses to SPY in every window including its structurally
+favorable long bear.
+
+<!-- recall: section=§71 specs=s71a,s71b,s71c -->
+
+---
+
+## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)
+
+The one registration §68's promotion rule licensed, spent on owner
+direction, registered with the audited `--override-freeze` (argument in
+the registration rows) and run as a deterministic re-scoring of s68's
+exact configuration. **Every number reproduced byte-identically**, so the
+frozen confirmation rule resolves: **EDGE CONFIRMED — beats SPY total
+return in 3 of 4 periods** (2000-06 +51.76% vs +10.01%; 2007-13 +55.08%
+vs +51.30%; 2022-26 +75.57% vs +67.06%; FAILS 2014-19 +69.97% vs
++97.39%), at 1.5x with financing paid at ^IRX+150bps, on the
+survivorship-certified universe.
+
+**The EDGE tally is now 2 passes in 16 — and this is the first pass on
+clean data.** (§51's pass was explained by +200pp of survivorship.) The
+venue RE-FREEZES with this registration; the licence was for one spend.
+
+What this is NOT: an enablement, or a config change. The caveats are part
+of the claim: three bear-containing periods carry it; it LOST to SPY in
+the grind-up window (regime dependence is the mechanism, not a flaw to
+fix); and a latchless single-symbol book has no drawdown brake — running
+it live requires a risk design (per-strategy latch? wider portfolio
+latch? separate sleeve?) that does not exist and is its own future,
+separately-registered work. `mode: paper` unchanged; every §64-wave
+strategy still ships `enabled: false`.
+
+<!-- recall: section=§72 specs=s72a,s72b,s72c,s72d -->

@@ -420,7 +420,9 @@ def run(cfg: dict) -> list[str]:
                                  f"constituents (§49)")
 
     known_universes = {None, strategies.SECTORS_UNIVERSE,
-                       strategies.SECTOR_ETFS_UNIVERSE}
+                       strategies.SECTOR_ETFS_UNIVERSE,
+                       strategies.SPY_ONLY_UNIVERSE,
+                       strategies.GEM_LEGS_UNIVERSE}
     for sname, sparams in (cfg.get("strategies") or {}).items():
         key = (sparams or {}).get("universe")
         if key not in known_universes:
@@ -437,6 +439,14 @@ def run(cfg: dict) -> list[str]:
             fails.append(f"strategies.{sname}.universe is "
                          f"'{strategies.SECTOR_ETFS_UNIVERSE}' but no "
                          f"sector_etfs: list is configured")
+        if key == strategies.SPY_ONLY_UNIVERSE and not cfg.get("spy_only"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.SPY_ONLY_UNIVERSE}' but no "
+                         f"spy_only: list is configured")
+        if key == strategies.GEM_LEGS_UNIVERSE and not cfg.get("gem_legs"):
+            fails.append(f"strategies.{sname}.universe is "
+                         f"'{strategies.GEM_LEGS_UNIVERSE}' but no "
+                         f"gem_legs: list is configured")
 
     scfg = (cfg.get("risk") or {}).get("sector_concentration")
     if isinstance(scfg, dict) and scfg.get("enabled"):

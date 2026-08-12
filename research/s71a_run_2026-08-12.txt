@@ -1,0 +1,31 @@
+s71a — gem lev150 latch-off vs latch-on (2007-2013)
+claim DIAGNOSTIC | K=15 | frozen 2026-08-12T15:04:20 | sha 87461dbada90d59c… | judge OFF
+
+prior: Candidate latch_off, unlevered (the book spec). s67 closed GEM as wired; the owner's explicit instruction reopens the MECHANISM question only. Tracked OOS still predicts failure. READING RULE, frozen: (b) failing in 2 or more of 3 re-closes the family PERMANENTLY, now measured both wired and unwired — no further GEM registration of any kind; passing 2+ of 3 licenses nothing but reopens discussion; no EDGE from this spec.
+
+  verified bars_2007-01-01_2013-12-31.json.gz  sha256 9a0160ab426473b1…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+
+  6 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret   -8.79%  PF 0.374  maxDD 11.35%  trades     8  symbols   3  deploy  16.57%  (0s)
+                           signals     62  blocked     54  |  drawdown 40  regime_exposure 12  strategy_slots 1  zero_qty 1
+  latch_off                ret   +2.64%  PF 1.062  maxDD 16.68%  trades    23  symbols   3  deploy  46.92%  (0s)
+                           signals     45  blocked     22  |  regime_exposure 19  zero_qty 2  strategy_slots 1
+
+  buy-and-hold on this universe: +35.86%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [PASS] (a) min_trades  23 vs 5
+  [FAIL] (b) beats_benchmark_symbol  +2.64% vs SPY +51.30% | maxDD 16.68% vs SPY 55.19% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  +2.64% at 16.68% maxDD -> +8.73% levered to SPY's 55.19% maxDD, vs SPY +51.30%
+
+====================================================================
+DIAGNOSTIC — this decides NOTHING. It is not a claim and cannot
+enable, reject or support anything. See the spec's `prior` for why.
+====================================================================
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl
