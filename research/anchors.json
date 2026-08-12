@@ -1003,7 +1003,7 @@
       "key": "§62",
       "heading": "## §62 — SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE (DIAGNOSTIC, K=15, pre-registered 2026-08-11)",
       "start_line": 6448,
-      "body_sha256": "6b6744b3fc16ce52a863344190fdc1b6df1be662d612704f209afdab8750cf61",
+      "body_sha256": "56fa49d8c49d97c41d2a6e98ff71a141fefa5a8b84eaebb2780742da7635100b",
       "subheadings": [
         "### The strategy alone (s62a–d): REJECTED, four of four",
         "### The addition (s62e–h): three of four pass, and every pass is a shrug",
@@ -1021,6 +1021,20 @@
         "s62g",
         "s62h"
       ],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§63",
+      "heading": "## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS",
+      "start_line": 6528,
+      "body_sha256": "128b34cd01174d4e2a8622d21e9c2ee5661de36e4ee14b0df81f2c8759fdff95",
+      "subheadings": [
+        "### Why now, and why this is not a new idea",
+        "### What each probe decides",
+        "### Verdict semantics",
+        "### What is NOT claimed"
+      ],
+      "specs": [],
       "spec_source": "id+header+trailer"
     }
   ]

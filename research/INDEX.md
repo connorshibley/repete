@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **68 sections, 6,610 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **68 sections, 6,612 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a

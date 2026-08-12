@@ -6608,3 +6608,5 @@ One coverage limit worth stating in advance: EDGAR's `submissions` endpoint
 returns a RECENT window, not all history. A claim reaching further back needs
 the full index, and the retained window is a separate question this probe does
 not settle.
+
+<!-- recall: section=§63 specs= -->
