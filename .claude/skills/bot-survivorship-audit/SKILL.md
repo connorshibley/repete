@@ -36,8 +36,10 @@ wrong. **Unmined is not unbiased.**
 - **§48**: with the drawdown rail removed the bot cleared every clause in all
   four periods. Against clean SPY it beats only in the two *poisoned* periods
   and loses in both clean ones.
-- **§51**: the project's only EDGE pass in 15 claims. Its own results section
-  showed +200.28pp was large enough to explain it on its own.
+- **§51**: the first of only 2 passes in 16 EDGE claims, and the one this audit
+  broke — its own results section showed +200.28pp was large enough to explain
+  it. (§72 is the other, and it ran on `data/pit/`, not on a snapshot; this
+  finding does not reach it.)
 - **§52**: EDGE claims on `data/snapshots/` are now mechanically frozen.
 
 ## Which rule to use
