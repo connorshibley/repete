@@ -120,16 +120,21 @@ than a missed entry.
 
 This is the section most repos leave out.
 
-**One EDGE claim in fifteen has passed — and it does not mean what it looks
-like.** As of 2026-08-12 the tally is **2 passes in 16** — §72 (trend_hold, latch-off, financed 1.5x) is the first pass on survivorship-clean data; the earlier §51 pass was explained by survivorship. The §51 pass ran on the
-most survivor-selected universe in the project, carrying **+200.28pp** of
-survivorship inflation — large enough to explain the result. Every spec froze the
-asymmetry before the run — *a FAIL is decisive, a PASS is not* — so the caveat
-was already in place when the pass arrived. §52 then found survivorship-free
-replication **blocked** and **froze the EDGE budget**. None of it was quietly
-dropped: every claim is written up in `knowledge/backtest_candidates.md` with the
-verdict, the frozen prior, and what the result did and did not license. That file
-carries the running count and is the only place it is kept.
+**Two EDGE claims in sixteen have passed — and they do not mean the same
+thing.** As of 2026-08-12 the tally is **2 passes in 16**, and the difference
+between them is the whole point. §51 ran on the most survivor-selected universe
+in the project, carrying **+200.28pp** of survivorship inflation — large enough
+to explain the result outright. §72 (trend_hold, latch-off, financed 1.5×) is
+the **first pass on survivorship-certified data**, so it is the only one that
+has not already been explained away. Every spec froze the asymmetry before the
+run — *a FAIL is decisive, a PASS is not* — so the caveat was in place before
+either pass arrived, and at K=16 two passes remains a rate consistent with
+chance. §52 found survivorship-free replication **blocked** and froze the EDGE
+budget; §68's pre-committed promotion rule later licensed exactly one
+registration, §72 spent it, and the venue re-froze. None of it was quietly
+dropped: every claim is written up in `knowledge/backtest_candidates.md` with
+the verdict, the frozen prior, and what the result did and did not license.
+That file carries the running count and is the only place it is kept.
 
 **The shipped configuration fails its own gate.** §43 pointed
 `backtest.enablement_gate` — the function that rejected every candidate — at the

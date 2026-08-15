@@ -139,8 +139,20 @@ registration.
 
 ## Standing constraints right now
 
-- **EDGE frozen** (§52) until a vendor with verified delisted history is bought.
-- **Hands-off since 2026-08-02** — the owner decided to stop building and wait
-  for the decay monitor to reach n=20 closed trades (~early Sept). Registering
-  new EDGE claims is not the work right now; parking candidates is. See
+- **Both EDGE venues frozen.** `data/snapshots/` under §52 (survivorship, until
+  a vendor with verified delisted history is bought) and `data/pit/` under §57's
+  reading rule, re-frozen by §72 — §68's promotion rule licensed exactly one
+  registration and §72 spent it. A new EDGE claim therefore needs a fresh
+  pre-committed promotion or a certified vendor, not an override.
+- **Hands-off was REVERSED on 2026-08-10.** The 2026-08-02 stop-building
+  decision no longer applies; development resumed toward the news/24-7 agent
+  thesis. **The reversal is narrow, and two constraints survive it:**
+  - **Live strategies stay frozen** so the decay sample reaches n=20 closed
+    trades clean (13 as of 2026-08-14, ~early Sept). Do not touch strategy
+    enablement or live config.
+  - **Do not develop in `~/bots/trading-agent`** — that checkout IS the live
+    deployment; 9+ launchd jobs read `src/main.py` from that working directory
+    every run, so work there is live by definition. Use
+    `~/bots/trading-agent-tv-dev`.
+- Parking a candidate is still usually righter than registering it. See
   `bot-candidate-intake`.
