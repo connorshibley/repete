@@ -46,7 +46,8 @@ The trap this tool makes cheaper to fall into, so it is stated first:
 - **§48 reads `4/4`** and is the finding that the drawdown rail was masking
   measurement — the section that made the survivorship problem visible.
 - **§51 reads `3/3`** and is the section that sized the survivorship inflation
-  at **+200.28pp** and broke the project's only EDGE pass with its own results.
+  at **+200.28pp** and broke its own pass with its own results. It was the
+  first of the record's two passes; §72 added the second, on clean data.
 - **§44 reads `3/4`** and the claim failed: several sections register a
   conjunction where one failure sinks the whole thing, and nothing
   machine-readable says so.
@@ -81,7 +82,7 @@ section. That is a complete answer — see `bot-candidate-intake`.
 If it is genuinely new, `bot-pre-registration` governs what happens next. Note
 that **both EDGE venues are closed**: §52 freezes `data/snapshots/` and §57's
 own reading rule freezes `data/pit/`, both enforced in
-`register_gate.freeze_violation`. K stays 15.
+`register_gate.freeze_violation`. K stays 16.
 
 ## New sections carry a trailer
 

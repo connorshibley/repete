@@ -208,6 +208,123 @@ def test_the_readme_open_closed_split_is_current():
 # The one that cannot run everywhere, and says so.
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# The EDGE tally must agree with the register that owns it.
+#
+# §72 took K from 15 to 16 on 2026-08-12 and the correction reached some
+# statements and not others — leaving README.md contradicting ITSELF inside one
+# paragraph: a bolded "One EDGE claim in fifteen has passed" directly above
+# "the tally is 2 passes in 16". Exactly the shape this file was written for
+# (see the header: the prose said eighteen, the table listed fourteen).
+#
+# README.md:132 claims backtest_candidates.md "carries the running count and is
+# the only place it is kept". That is not true — README, GLOSSARY and the
+# skills all restate it. Where a restatement could be deleted it was; what
+# remains is checked here.
+#
+# The derivation lives in conftest, shared with test_skills_are_current.py, so
+# the two guards cannot drift apart on what counts as stating the budget.
+# --------------------------------------------------------------------------
+
+from conftest import (edge_pass_ceiling, live_bonferroni_k,  # noqa: E402
+                      stated_tallies, UNIQUE_PASS_RE)
+
+# Globbed, not enumerated: a hardcoded list means a `docs/edge_record.md`
+# landing next month states "1 pass in 15" and nothing notices — the precise
+# failure this file exists to prevent.
+#
+# Both globs are NON-RECURSIVE, and that is what makes an exclusion list
+# unnecessary rather than merely absent. The frozen material all sits one level
+# further down or in directories not scanned at all: the append-only research
+# record (`knowledge/backtest_candidates.md`, where §51's "K=15" was TRUE when
+# written), the dated reports and hash-frozen specs under `research/`, and the
+# date-prefixed design docs under `docs/superpowers/specs/`. Editing any of
+# those to satisfy a test would falsify the record that gives every verdict in
+# this repo its weight.
+DOC_DIRS = (ROOT, ROOT / "docs")
+
+# The docs that actually carry the tally today, pinned by name.
+OWNING_DOCS = (ROOT / "README.md", ROOT / "GLOSSARY.md")
+
+
+def tally_docs() -> list[pathlib.Path]:
+    return sorted({p for d in DOC_DIRS for p in d.glob("*.md")})
+
+
+def test_the_tally_scan_still_reaches_the_docs_that_state_it():
+    """A guard that silently stops covering a file is worse than no guard.
+
+    `DOC_DIRS` is a glob, so a refactor could narrow it without any test
+    noticing — the negative assertions below would go green on a smaller
+    corpus and read as coverage."""
+    missing = sorted(str(p.relative_to(ROOT)) for p in OWNING_DOCS
+                     if p not in set(tally_docs()))
+    assert not missing, f"no longer scanned for the EDGE tally: {missing}"
+
+
+def test_no_front_door_doc_states_a_stale_bonferroni_k():
+    k = live_bonferroni_k()
+    bad = {}
+    for p in tally_docs():
+        wrong = sorted(stated_tallies(p.read_text())[0] - {k})
+        if wrong:
+            bad[str(p.relative_to(ROOT))] = wrong
+    assert not bad, (
+        f"{bad}\nresearch/registrations.jsonl says K={k}. The register owns "
+        f"this number; a doc quoting a stale one is how a reader learns the "
+        f"tally is decorative.")
+
+
+def test_no_front_door_doc_claims_more_edge_passes_than_the_verdicts_support():
+    """A bound, not an equality — see `conftest.edge_pass_ceiling` for why the
+    per-family reading rules (§44's conjunction, §72's 3-of-4) are not
+    derivable from the store."""
+    ceiling = edge_pass_ceiling()
+    bad = {}
+    for p in tally_docs():
+        over = sorted(stated_tallies(p.read_text())[1] - set(range(ceiling + 1)))
+        if over:
+            bad[str(p.relative_to(ROOT))] = over
+    assert not bad, (
+        f"{bad}\nat most {ceiling} registered EDGE families have even one "
+        f"passing arm in research/verdicts.jsonl.")
+
+
+def test_no_front_door_doc_calls_the_edge_record_unique():
+    """"this project's only EDGE pass" states a tally with no number in it.
+
+    A guard that reads only digits reads half the prose. `docs/data_vendors.md`
+    carried this shape and every numeric assertion above was green on it."""
+    if edge_pass_ceiling() <= 1:
+        return
+    bad = {p.relative_to(ROOT): sorted({m.group(0) for m in
+                                        UNIQUE_PASS_RE.finditer(p.read_text())})
+           for p in tally_docs() if UNIQUE_PASS_RE.search(p.read_text())}
+    assert not bad, (
+        f"{dict(bad)}\n§72 was the second pass. Say 'the first of two' rather "
+        f"than 'the only'.")
+
+
+def test_the_owning_docs_still_state_the_tally_in_a_shape_the_guard_reads():
+    """The three tests above cannot tell *correct* from *silent*.
+
+    Reword README to "the tally is two in sixteen" and every one of them passes
+    by matching nothing at all. The docs that own the number must therefore be
+    caught STATING it, which is this file's founding argument (a check that
+    cannot fail is worse than no check) applied to the extractor rather than to
+    the corpus."""
+    k, ceiling = live_bonferroni_k(), edge_pass_ceiling()
+    for p in OWNING_DOCS:
+        ks, ms = stated_tallies(p.read_text())
+        rel = p.relative_to(ROOT)
+        assert k in ks, (
+            f"{rel} no longer states K={k} in any shape this guard reads. "
+            f"Either it stopped carrying the tally, or the wording drifted "
+            f"out of `conftest._K_ONLY_RE` / `_TALLY_RE`.")
+        assert ms, f"{rel} states K but no pass count"
+        assert max(ms) <= ceiling, f"{rel} claims {max(ms)} passes, ceiling {ceiling}"
+
+
 def test_the_live_trade_count_is_checked_only_where_a_ledger_exists(capsys):
     """`memory/ledger.jsonl` is gitignored: absent in a worktree, absent in CI.
 

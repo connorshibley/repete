@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**2,523 tests as of 2026-08-15**, offline by design — no credentials, ever, in CI.
+**2,534 tests as of 2026-08-15**, offline by design — no credentials, ever, in CI.
 
 **Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
 regenerates the test count, the divergence total and the open/closed split, and
@@ -120,7 +120,7 @@ than a missed entry.
 
 This is the section most repos leave out.
 
-**One EDGE claim in fifteen has passed — and it does not mean what it looks
+**Two EDGE claims in sixteen have passed — and neither means what it looks
 like.** As of 2026-08-12 the tally is **2 passes in 16** — §72 (trend_hold, latch-off, financed 1.5x) is the first pass on survivorship-clean data; the earlier §51 pass was explained by survivorship. The §51 pass ran on the
 most survivor-selected universe in the project, carrying **+200.28pp** of
 survivorship inflation — large enough to explain the result. Every spec froze the
@@ -205,7 +205,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 2523, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2534 offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

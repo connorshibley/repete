@@ -1,12 +1,204 @@
 """Shared fixtures. All tests run offline: no Broker/anthropic/tweepy clients
 are ever constructed, LLM review is disabled, and X posting stays dry_run.
 """
+import collections
+import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
+
+# --------------------------------------------------------------------------
+# The EDGE register.
+#
+# Shared because K has exactly ONE definition and two guards read it:
+# `test_skills_are_current.py` pins the tally stated in `.claude/skills/`, and
+# `test_doc_counts.py` pins the tally stated in README/GLOSSARY/docs. A second
+# copy of this derivation would be the same drift both of them exist to catch,
+# so it lives here next to `make_bars` rather than in either caller.
+#
+# Absolute paths, unlike the CWD-relative ones in test_skills_are_current.py:
+# a helper two modules deep should not care where pytest was invoked from.
+# --------------------------------------------------------------------------
+
+_ROOT = os.path.join(os.path.dirname(__file__), "..")
+REGISTRATIONS = os.path.join(_ROOT, "research", "registrations.jsonl")
+VERDICTS = os.path.join(_ROOT, "research", "verdicts.jsonl")
+
+
+def _register_rows(path: str) -> list[dict]:
+    with open(path) as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def edge_families() -> dict[int, list[str]]:
+    """EDGE spec ids grouped by the K they were registered against.
+
+    K is NOT the number of EDGE rows in the register, and asserting that it is
+    would be wrong in two directions at once:
+
+    * **Down**: a claim is registered once per *arm*. §43, §44, §50 and §72 are
+      four period arms each, all sharing one `bonferroni_k`, because they are
+      one hypothesis scored four ways — not four chances at a false positive.
+      22 EDGE rows are 8 spends.
+    * **Up**: `bonferroni_k` was already 8 on the first row in this file (s35,
+      2026-07-28), whose own `prior` reads *"EDGE claims stand at 0 for 7
+      entering this test"*. Seven spends predate the register.
+
+    So K is `max(bonferroni_k)` — the operator that matches what the skills
+    actually say about it, *"it only goes up"*. Neither a row count (22) nor a
+    distinct-value count (8) would have caught the drift these guards exist for.
+    """
+    fams: dict[int, list[str]] = collections.defaultdict(list)
+    for row in _register_rows(REGISTRATIONS):
+        spec = row.get("spec", {})
+        if spec.get("claim") == "EDGE":
+            fams[int(spec["bonferroni_k"])].append(row["id"])
+    return dict(fams)
+
+
+def live_bonferroni_k() -> int:
+    """The K every tally in the repo must agree with.
+
+    Asserts rather than letting `max()` raise ValueError on an empty dict: a
+    renamed key or a restructured row would otherwise turn every caller into a
+    confusing crash instead of one sentence naming the real problem. A guard
+    that fails by crashing tells you nothing about the thing it guards.
+    """
+    fams = edge_families()
+    assert fams, (
+        f"no rows in {REGISTRATIONS} parse as EDGE claims carrying a "
+        f"`bonferroni_k` — every tally guard that calls this is now measuring "
+        f"NOTHING and passing. Fix the parse; do not delete the guard.")
+    return max(fams)
+
+
+def edge_pass_ceiling() -> int:
+    """The most EDGE claims that could honestly be called passes.
+
+    An upper bound, never an equality, because whether a *family* passed is not
+    derivable from the store. §44 (K=13) had three of four arms pass and is
+    REJECTED — its pre-registered reading rule was a conjunction, "one clause
+    failure in one period sinks the whole claim". §72 (K=16) also had three of
+    four and is CONFIRMED, because §68 had frozen a 3-of-4 confirmation rule for
+    it beforehand. Both rules bind because they were written before the runs;
+    neither exists as a field a test could read.
+
+    So: a family with no passing arm under any reading rule did not pass. The
+    true count may be below this (it is — 2 against a ceiling of 3) and can
+    never be above it. That is the overclaim direction, which is the one this
+    project guards hardest.
+    """
+    latest = {v["id"]: v for v in _register_rows(VERDICTS)}
+    return sum(any(latest.get(sid, {}).get("passed") for sid in ids)
+               for ids in edge_families().values())
+
+
+def edge_k_floor() -> int:
+    """The smallest K the register has ever carried — 8.
+
+    Used to tell a BUDGET from a PERIOD COUNT. "1 pass in 15" (claims) and
+    "1 pass in 4" (periods, `backtest_candidates.md:3714`) are the same
+    sentence shape, and no amount of regex separates them. K has never been
+    below 8 and only goes up, so a denominator under the floor is not the
+    budget.
+
+    Known blind spot, stated rather than hidden: a doc claiming "1 pass in 7"
+    would be wrong and would be ignored here. The presence test on the docs
+    that OWN the tally covers that from the other side — they must state the
+    real one, so an understatement cannot hide in them.
+    """
+    return min(edge_families())
+
+
+# --------------------------------------------------------------------------
+# How this repo writes a tally.
+#
+# Shared for the same reason the derivation above is: `test_skills_are_current`
+# and `test_doc_counts` must not drift apart on what counts as *stating* the
+# budget, or the weaker of the two silently becomes the standard.
+# --------------------------------------------------------------------------
+
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                 "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                 "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+                 "fifteen": 15, "sixteen": 16, "seventeen": 17,
+                 "eighteen": 18, "nineteen": 19, "twenty": 20}
+
+_WORD_RE = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b", re.I)
+
+
+def digitize(text: str) -> str:
+    """Spelled-out numbers to digits, so ONE pattern set reads both forms.
+
+    `README.md` stated the tally entirely in words ("One EDGE claim in fifteen
+    has passed") and a digit-only guard saw nothing there at all.
+
+    Safe only because every pattern below is anchored on the tally IDIOM
+    rather than on a bare number: "fifteen minutes" becomes "15 minutes" and
+    still matches nothing, while "Fifteen pre-registered EDGE attempts"
+    becomes "15 pre-registered EDGE attempts" and matches.
+    """
+    return _WORD_RE.sub(lambda m: str(_NUMBER_WORDS[m.group(1).lower()]), text)
+
+
+# Shapes that state BOTH halves — "2 passes in 16", "One EDGE claim in
+# fifteen", "the tally is unchanged at 1-in-15". Denominator is floor-filtered.
+_TALLY_RE = re.compile(
+    r"\b(?P<m1>\d+) pass(?:es)? in (?P<n1>\d+)\b"
+    r"|\b(?P<m2>\d+) EDGE claims? in (?P<n2>\d+)\b"
+    r"|EDGE tally[^.]{0,60}?\b(?P<m3>\d+)-in-(?P<n3>\d+)\b")
+
+# Shapes that state K alone.
+#
+# `K stays N` is house style (21 uses in knowledge/backtest_candidates.md) and
+# was the ONLY phrasing `bot-research-recall` used — its absence from the first
+# version of this pattern is why the one skill still asserting K=15 passed the
+# guard green for as long as the guard existed.
+#
+# `pre-registered` is REQUIRED in the last alternation, and that is the whole
+# point of it: "Fifteen EDGE claims were rejected" counts REJECTIONS (14 today,
+# and 14 at K=15 too — it was already wrong when written), which is a different
+# quantity from the budget. Dropping the qualifier silently conflates them.
+_K_ONLY_RE = re.compile(
+    r"\bK is (?:now )?(?P<a>\d+)\b"
+    r"|\bK\s*=\s*(?P<b>\d+)\b"
+    r"|\bK (?:stays|remains|stands at) (?P<c>\d+)\b"
+    r"|\bin (?P<d>\d+) claims\b"
+    r"|\b(?P<e>\d+) pre-registered EDGE (?:attempts|claims)\b")
+
+# A tally stated as a UNIQUENESS claim, with no number in it to compare.
+# Two skills carried this after §72 made it false, and one was the frontmatter
+# `description:` of a file whose body had already been corrected.
+#
+# Must NOT match "the only three-of-three pass" (no `EDGE` before `pass`) or
+# "the first of only 2 passes in 16 EDGE claims" (`only` is followed by a
+# count, never by `EDGE pass`).
+UNIQUE_PASS_RE = re.compile(
+    r"(?:only|single|sole)\s+(?:\w+\s+){0,2}EDGE\s+pass", re.I)
+
+
+def stated_tallies(text: str) -> tuple[set[int], set[int]]:
+    """(K values stated, pass counts stated) — digitized, floor-filtered."""
+    t = digitize(text)
+    floor = edge_k_floor()
+    ks, ms = set(), set()
+    for match in _TALLY_RE.finditer(t):
+        for mg, ng in (("m1", "n1"), ("m2", "n2"), ("m3", "n3")):
+            if match.group(ng) is None:
+                continue
+            n = int(match.group(ng))
+            if n >= floor:            # else it is periods, not claims
+                ks.add(n)
+                ms.add(int(match.group(mg)))
+    for match in _K_ONLY_RE.finditer(t):
+        for g in ("a", "b", "c", "d", "e"):
+            if match.group(g) is not None:
+                ks.add(int(match.group(g)))
+    return ks, ms
 
 
 @pytest.fixture(autouse=True)

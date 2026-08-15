@@ -648,8 +648,8 @@ are specific to this filter rather than to any change in the loop.
 ### Not a claim of value
 
 **This is not an EDGE claim and nothing here is gated.** The EDGE tally is
-unchanged at 1-in-15 and frozen; `knowledge/backtest_candidates.md` owns that
-count.
+unchanged and frozen; `knowledge/backtest_candidates.md` owns that count, and
+it is not restated here.
 
 ### Note, 2026-08-06 — the same gap re-enacted itself INSIDE live, and is now floored
 
@@ -772,7 +772,7 @@ entries, so every gate scored a bot that took *more* trades than live would —
 including trades live would have refused for sitting on an earnings date. It
 inflates trade count and it moves per-trade P&L by an unmeasured amount.
 
-**No verdict is reopened.** Fifteen EDGE claims were rejected; a filter that
+**No verdict is reopened.** The rejected EDGE claims stay rejected; a filter that
 removes trades does not turn a rejection into a pass, and §41 set the precedent
 that a simulator finding does not retroactively re-score sections. What it does
 mean is that the trade COUNTS quoted from §35 onward describe a bot slightly

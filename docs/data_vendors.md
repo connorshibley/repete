@@ -12,7 +12,7 @@ which reads **current** Wikipedia membership, so the companies that failed are
 absent from all nine snapshots in `data/snapshots/` by construction.
 
 §48 sized the inflation at **+130.06pp**. §51 showed it was large enough to
-explain this project's only EDGE pass, at **+200.28pp**. §52 froze the EDGE
+explain the first of the record's two EDGE passes, at **+200.28pp**. §52 froze the EDGE
 budget on that finding, and named its own exit: *"Lifts the freeze: a source
 that passes `probe_delisted_coverage.py`."*
 
@@ -62,7 +62,7 @@ Less than it sounds. It would permit registering EDGE claims on a
 survivorship-free version of the **live** universe — which is the one question
 this project has never been able to ask. It would not:
 
-- change any of the fifteen existing rejections. §41 set the precedent that a
+- change any of the existing rejections. §41 set the precedent that a
   data or simulator finding does not retroactively re-score past sections;
 - close divergences #13–#16, #18 or #19, none of which is about survivorship;
 - move the live evidence, which is calendar-bound at ten closed trades and

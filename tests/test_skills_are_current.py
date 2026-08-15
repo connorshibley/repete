@@ -30,8 +30,6 @@ the same argument about the same tally in a banner.
 """
 from __future__ import annotations
 
-import collections
-import json
 import os
 import re
 import sys
@@ -166,63 +164,20 @@ def test_the_divergence_skill_does_not_undercount():
 
 
 # ------------------------------------------------------------ Bonferroni budget
+#
+# `edge_families` / `live_bonferroni_k` / `edge_pass_ceiling` live in conftest
+# because `test_doc_counts.py` asserts the same tally against README, GLOSSARY
+# and docs/. One derivation, two callers — a second copy here would be the
+# drift these guards exist to catch.
 
-REGISTRATIONS = "research/registrations.jsonl"
-VERDICTS = "research/verdicts.jsonl"
-
-
-def _rows(path: str) -> list[dict]:
-    with open(path) as fh:
-        return [json.loads(line) for line in fh if line.strip()]
-
-
-def edge_families() -> dict[int, list[str]]:
-    """EDGE spec ids grouped by the K they were registered against.
-
-    K is NOT the number of EDGE rows in the register, and asserting that it is
-    would be wrong in two directions at once:
-
-    * **Down**: a claim is registered once per *arm*. §43, §44, §50 and §72 are
-      four period arms each, all sharing one `bonferroni_k`, because they are
-      one hypothesis scored four ways — not four chances at a false positive.
-      22 EDGE rows are 8 spends.
-    * **Up**: `bonferroni_k` was already 8 on the first row in this file (s35,
-      2026-07-28), whose own `prior` reads *"EDGE claims stand at 0 for 7
-      entering this test"*. Seven spends predate the register.
-
-    So K is `max(bonferroni_k)` — the operator that matches what the skill
-    actually says about it, *"it only goes up"*. Neither a row count (22) nor a
-    distinct-value count (8) would have caught the drift this test exists for.
-    """
-    fams: dict[int, list[str]] = collections.defaultdict(list)
-    for row in _rows(REGISTRATIONS):
-        spec = row.get("spec", {})
-        if spec.get("claim") == "EDGE":
-            fams[int(spec["bonferroni_k"])].append(row["id"])
-    return dict(fams)
+from conftest import (edge_pass_ceiling, live_bonferroni_k,  # noqa: E402
+                      stated_tallies, REGISTRATIONS, UNIQUE_PASS_RE, VERDICTS)
 
 
 def test_the_register_can_still_answer_what_k_is():
     """Every assertion below is vacuous if the parse silently yields nothing —
     a renamed key or a restructured row would turn this whole section green."""
-    fams = edge_families()
-    assert fams, (
-        f"no rows in {REGISTRATIONS} parse as EDGE claims with a "
-        f"`bonferroni_k`; the budget guard below is measuring nothing")
-
-
-# `K is 16`, `K = 16`, `2 passes in 16`, `only EDGE pass in 15 claims` — every
-# shape the skills currently use to state the budget. Deliberately requires a
-# digit, so `bot-pre-registration`'s "the only three-of-three pass in the
-# record" (a description of §51's clauses, not of K) is not swept up.
-K_STATED_RE = re.compile(
-    r"\bK is (?P<a>\d+)\b"
-    r"|\bK\s*=\s*(?P<b>\d+)\b"
-    r"|(?:\d+ )?pass(?:es)? in (?P<c>\d+)\b"
-    r"|\bin (?P<d>\d+) claims\b")
-
-# The `M` half of "M passes in N".
-M_STATED_RE = re.compile(r"\b(?P<m>\d+) pass(?:es)? in \d+\b")
+    assert live_bonferroni_k() > 0
 
 
 @pytest.mark.parametrize("name,path", ALL, ids=[n for n, _ in ALL])
@@ -234,11 +189,13 @@ def test_the_bonferroni_budget_a_skill_states_matches_the_register(name, path):
     reads as authority, it is the denominator the whole record is judged
     against, and a session that believes K is 15 registers the sixteenth claim
     at the fifteenth claim's significance threshold.
+
+    Reads the WHOLE file, frontmatter included. `bot-survivorship-audit` had a
+    corrected body and a stale `description:` at the same time, and the
+    description is the half that decides whether the skill loads at all.
     """
-    k = max(edge_families())
-    text = open(path).read()
-    stated = {int(m.group(g)) for m in K_STATED_RE.finditer(text)
-              for g in ("a", "b", "c", "d") if m.group(g) is not None}
+    k = live_bonferroni_k()
+    stated, _ = stated_tallies(open(path).read())
     wrong = sorted(stated - {k})
     assert not wrong, (
         f"{path} states the EDGE budget as {wrong}; {REGISTRATIONS} says "
@@ -251,27 +208,41 @@ def test_the_bonferroni_budget_a_skill_states_matches_the_register(name, path):
 def test_no_skill_claims_more_edge_passes_than_the_verdicts_support(name, path):
     """An upper bound on the `M` of "M passes in N", not an equality.
 
-    Whether a *family* passed is not mechanically derivable, and pretending
-    otherwise would put a false precision in a test file. §44 (K=13) had three
-    of four arms pass and is REJECTED, because its pre-registered reading rule
-    was a conjunction — "one clause failure in one period sinks the whole
-    claim". §72 (K=16) also had three of four and is CONFIRMED, because §68 had
-    frozen a 3-of-4 confirmation rule for it beforehand. Both rules were
-    written down before the runs, which is what makes them binding; neither
-    lives in the spec as a field a test could read.
-
-    So what is checkable is the ceiling: a family with no passing arm under any
-    reading rule did not pass. M may be below this (it is — 2 against a ceiling
-    of 3, because §44's conjunction sank it) and never above it. That is the
-    overclaim direction, which is the one this project guards hardest.
+    See `conftest.edge_pass_ceiling` for why equality is not available: the
+    per-family reading rules (§44's conjunction, §72's 3-of-4) were frozen in
+    prose before their runs, and neither is a field a test can read.
     """
-    latest = {v["id"]: v for v in _rows(VERDICTS)}
-    ceiling = sum(any(latest.get(sid, {}).get("passed") for sid in ids)
-                  for ids in edge_families().values())
-    text = open(path).read()
-    over = sorted({int(m.group("m")) for m in M_STATED_RE.finditer(text)}
-                  - set(range(ceiling + 1)))
+    ceiling = edge_pass_ceiling()
+    _, claimed = stated_tallies(open(path).read())
+    over = sorted(claimed - set(range(ceiling + 1)))
     assert not over, (
         f"{path} claims {over} EDGE passes; at most {ceiling} of the "
         f"registered EDGE families have even one passing arm in "
         f"{VERDICTS}.")
+
+
+@pytest.mark.parametrize("name,path", ALL, ids=[n for n, _ in ALL])
+def test_no_skill_calls_the_edge_record_unique(name, path):
+    """A tally does not need a digit to be stated, or to be wrong.
+
+    Three of the four stale statements §72 left behind carried a number and
+    were caught above. The other two said *"this project's only EDGE pass"* —
+    no number, nothing for a numeric guard to compare, and false since
+    2026-08-12. A guard that only reads digits is a guard that reads half the
+    prose.
+
+    Gated on the ceiling rather than asserted flatly, so the test carries its
+    own justification: while two or more registered families have a passing
+    arm, a bare "only" is at minimum unsupported. §51 can still be described —
+    as *the first of two*, or as the one this audit broke — just not as the
+    only one.
+    """
+    ceiling = edge_pass_ceiling()
+    if ceiling <= 1:
+        return
+    hits = sorted({m.group(0) for m in UNIQUE_PASS_RE.finditer(open(path).read())})
+    assert not hits, (
+        f"{path} calls the EDGE record unique: {hits}. {VERDICTS} shows "
+        f"{ceiling} registered families with a passing arm, and §72 is one of "
+        f"them.\nSay 'the first of two' rather than 'the only' — and check the "
+        f"frontmatter `description:`, not just the body.")

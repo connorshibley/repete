@@ -1,6 +1,6 @@
 ---
 name: bot-survivorship-audit
-description: Use before making, reading or believing ANY performance claim in the three trading bots — whenever a backtest return is compared to a benchmark, whenever a snapshot under data/snapshots/ is used, whenever someone says a strategy "beat buy-and-hold", and whenever building or evaluating a new data source. The measured inflation runs up to +200pp and has already explained away this project's only EDGE pass.
+description: Use before making, reading or believing ANY performance claim in the three trading bots — whenever a backtest return is compared to a benchmark, whenever a snapshot under data/snapshots/ is used, whenever someone says a strategy "beat buy-and-hold", and whenever building or evaluating a new data source. The measured inflation runs up to +200pp and has already explained away one of the record's two EDGE passes.
 ---
 
 # Survivorship: the number that eats every backtest here
