@@ -49,9 +49,19 @@ the drawdown rail and enabled nothing, on purpose.
 ## The Bonferroni budget
 
 `bonferroni_k` in the spec. It is the count of EDGE claims this project has
-made, and it only goes up. **K is 15. The EDGE record is 1 pass in 15**, and
-that one pass (§51) was broken by its own results section — see
-`bot-survivorship-audit`.
+made, and it only goes up. **K is 16. The EDGE record is 2 passes in 16.**
+
+The two passes are not equivalent. §51's was broken by its own results section
+(+200.28pp survivorship — see `bot-survivorship-audit`). §72 (trend_hold,
+latch-off, 1.5x financed) is the **first pass on the survivorship-certified
+`data/pit/` universe**, i.e. the first that is not obviously an artifact.
+
+**Both bar venues are currently frozen, mechanically.** `register_gate.py`
+refuses `data/snapshots/` (§52) and `data/pit/` (§57's reading rule, re-frozen
+by §72 — "the licence was for one spend"). So a new EDGE claim cannot be
+registered today without `--override-freeze`, which is a speed bump with an
+audit trail, not a bypass. DIAGNOSTIC spends no K and is the honest route for
+anything exploratory.
 
 §33's argument governs: *continuing to hunt arms is simply buying more chances
 for a false positive.* If you are reaching for a new arm because the last four

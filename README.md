@@ -164,13 +164,16 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 11 closed round-trips as of 2026-08-11**, first close 2026-07-21 —
+**Live record: 13 closed round-trips as of 2026-08-14**, first close 2026-07-21 —
 +16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
-−1.63%. Realized **−$416.28**, profit factor **0.49**.
+−1.63%, −4.49%, −4.14%. Realized **−$812.46**, profit factor **0.33**.
 
-**Six of the eleven won, and it still lost money** — the losers were bigger. That
-pair of facts is why a win rate is not reported here on its own, and it is the
-kind of number a hit-rate headline is built to hide.
+**Six of the thirteen won, and it still lost money** — the losers were bigger.
+That pair of facts is why a win rate is not reported here on its own, and it is
+the kind of number a hit-rate headline is built to hide. The two closes since
+2026-08-11 were both losers, which is why the profit factor fell from 0.49 to
+0.33 while the win count did not move at all — the clearest illustration on
+record of why a hit rate is not a result.
 
 **n=10 decides nothing** in either direction, and no average of ten numbers
 belongs in a README. Going live is gated behind **≥30 closed trades, ≥60 days,
