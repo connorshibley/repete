@@ -229,94 +229,164 @@ def test_the_readme_open_closed_split_is_current():
 from conftest import (edge_pass_ceiling, live_bonferroni_k,  # noqa: E402
                       stated_tallies, UNIQUE_PASS_RE)
 
-# Globbed, not enumerated: a hardcoded list means a `docs/edge_record.md`
-# landing next month states "1 pass in 15" and nothing notices — the precise
-# failure this file exists to prevent.
+# CLASSIFY, don't enumerate — and don't glob shallowly either.
 #
-# Both globs are NON-RECURSIVE, and that is what makes an exclusion list
-# unnecessary rather than merely absent. The frozen material all sits one level
-# further down or in directories not scanned at all: the append-only research
-# record (`knowledge/backtest_candidates.md`, where §51's "K=15" was TRUE when
-# written), the dated reports and hash-frozen specs under `research/`, and the
-# date-prefixed design docs under `docs/superpowers/specs/`. Editing any of
-# those to satisfy a test would falsify the record that gives every verdict in
-# this repo its weight.
-DOC_DIRS = (ROOT, ROOT / "docs")
+# The first version of this guard globbed `ROOT/*.md` + `docs/*.md`,
+# non-recursively, on the argument that the frozen material all sits a level
+# deeper. True today, and the wrong shape: it is the same move that failed in
+# the first place. `test_skills_are_current.py` globbed
+# `.claude/skills/*/SKILL.md` and the stale number was somewhere else, so a fix
+# for a stale-number bug was itself scoped to a directory.
+#
+# So the list is inverted. EVERY markdown file in the repo that states a K must
+# be classified, and an unclassified one is a failure rather than a silent pass.
+# A new doc quoting the tally costs one line: CHECKED_DOCS if it describes the
+# project now, EXEMPT_DOCS with a reason if its number is not a current-state
+# claim. What it cannot do is arrive unexamined.
+#
+# (Design salvaged from #120, which reached it independently and better.)
 
-# The docs that actually carry the tally today, pinned by name.
-OWNING_DOCS = (ROOT / "README.md", ROOT / "GLOSSARY.md")
+CHECKED_DOCS = [
+    "README.md",
+    "GLOSSARY.md",
+    "docs/data_vendors.md",
+    "docs/divergences.md",
+]
+
+# The docs that must be caught STATING the tally, not merely not-contradicting
+# it. A subset of CHECKED_DOCS: the other two are checked if they mention it and
+# are equally correct saying nothing.
+OWNING_DOCS = ["README.md", "GLOSSARY.md"]
+
+# A path here is a claim that the number in it is NOT a current-state claim.
+# Prefix match, so a directory covers everything under it.
+EXEMPT_DOCS = {
+    ".claude/skills/":
+        "owned by tests/test_skills_are_current.py, which asserts the same "
+        "thing against the same register",
+    "knowledge/":
+        "the append-only record. Each `## §N` states the K that claim was "
+        "registered at; rewriting them to the current K would falsify what the "
+        "record said at the time, which is the whole point of it",
+    "research/":
+        "dated reports, hash-frozen specs (gatespec hashes the parsed spec, so "
+        "an edit breaks its registration), the generated INDEX.md, and "
+        "candidates_2026-08.md — a single-commit dossier that describes the "
+        "K=16 spend as a FUTURE possibility",
+    "docs/superpowers/specs/":
+        "date-prefixed design docs, marked 'Not implemented'. Snapshots of the "
+        "record as it stood on the date in the filename",
+}
+
+_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".site",
+              "build", "dist", "backups"}
 
 
-def tally_docs() -> list[pathlib.Path]:
-    return sorted({p for d in DOC_DIRS for p in d.glob("*.md")})
+def all_markdown() -> list[pathlib.Path]:
+    return sorted(p for p in ROOT.rglob("*.md")
+                  if not _SKIP_DIRS & set(p.relative_to(ROOT).parts))
 
 
-def test_the_tally_scan_still_reaches_the_docs_that_state_it():
-    """A guard that silently stops covering a file is worse than no guard.
-
-    `DOC_DIRS` is a glob, so a refactor could narrow it without any test
-    noticing — the negative assertions below would go green on a smaller
-    corpus and read as coverage."""
-    missing = sorted(str(p.relative_to(ROOT)) for p in OWNING_DOCS
-                     if p not in set(tally_docs()))
-    assert not missing, f"no longer scanned for the EDGE tally: {missing}"
+def _classified(rel: str) -> bool:
+    return (rel in CHECKED_DOCS
+            or any(rel.startswith(e) for e in EXEMPT_DOCS))
 
 
-def test_no_front_door_doc_states_a_stale_bonferroni_k():
+def test_every_doc_that_states_a_k_is_either_checked_or_deliberately_exempt():
+    """The scoping bug, guarded.
+
+    `GLOSSARY.md` was not missed because a check was wrong. It was missed
+    because no check looked there. Listing the files to check cannot catch the
+    file nobody thought to list, so this catches the complement instead.
+    """
+    unclassified = [p.relative_to(ROOT).as_posix() for p in all_markdown()
+                    if not _classified(p.relative_to(ROOT).as_posix())
+                    and any(stated_tallies(p.read_text()))]
+    assert not unclassified, (
+        f"these files state an EDGE budget and are in neither classification: "
+        f"{unclassified}\nAdd each to CHECKED_DOCS (it describes the project as "
+        f"it is) or to EXEMPT_DOCS with the reason its number is not a "
+        f"current-state claim.")
+
+
+@pytest.mark.parametrize("bucket", ["CHECKED_DOCS", "EXEMPT_DOCS"])
+def test_the_classifications_still_point_at_something(bucket):
+    """A classification for a file that no longer exists is a rule nobody reads
+    protecting nothing — and it hides the day a checked doc is moved under an
+    exempt prefix."""
+    entries = {"CHECKED_DOCS": CHECKED_DOCS, "EXEMPT_DOCS": EXEMPT_DOCS}[bucket]
+    known = {p.relative_to(ROOT).as_posix() for p in all_markdown()}
+    dead = [e for e in entries
+            if not (ROOT / e).exists()
+            and not any(k.startswith(e) for k in known)]
+    assert not dead, f"{bucket} entries match no file: {dead}"
+
+
+def test_no_doc_is_classified_twice():
+    """Checked AND exempt is not a state. It reads as covered and behaves as
+    exempt, which is the worst of the two."""
+    both = [d for d in CHECKED_DOCS if any(d.startswith(e) for e in EXEMPT_DOCS)]
+    assert not both, f"classified as both checked and exempt: {both}"
+
+
+def test_no_checked_doc_states_a_stale_bonferroni_k():
     k = live_bonferroni_k()
     bad = {}
-    for p in tally_docs():
-        wrong = sorted(stated_tallies(p.read_text())[0] - {k})
+    for rel in CHECKED_DOCS:
+        wrong = sorted(stated_tallies((ROOT / rel).read_text())[0] - {k})
         if wrong:
-            bad[str(p.relative_to(ROOT))] = wrong
+            bad[rel] = wrong
     assert not bad, (
         f"{bad}\nresearch/registrations.jsonl says K={k}. The register owns "
         f"this number; a doc quoting a stale one is how a reader learns the "
         f"tally is decorative.")
 
 
-def test_no_front_door_doc_claims_more_edge_passes_than_the_verdicts_support():
-    """A bound, not an equality — see `conftest.edge_pass_ceiling` for why the
-    per-family reading rules (§44's conjunction, §72's 3-of-4) are not
-    derivable from the store."""
+def test_no_doc_claims_more_edge_passes_than_the_verdicts_support():
+    """Applies to EXEMPT docs too, and that asymmetry is deliberate: a frozen
+    doc may legitimately state an out-of-date K — that is what the category is
+    for — but nothing in this repo, frozen or not, may claim more passes than
+    the verdicts support. Staleness is a fact about a date; overclaiming is not.
+
+    A bound, not an equality — see `conftest.edge_pass_ceiling`."""
     ceiling = edge_pass_ceiling()
     bad = {}
-    for p in tally_docs():
+    for p in all_markdown():
         over = sorted(stated_tallies(p.read_text())[1] - set(range(ceiling + 1)))
         if over:
-            bad[str(p.relative_to(ROOT))] = over
+            bad[p.relative_to(ROOT).as_posix()] = over
     assert not bad, (
         f"{bad}\nat most {ceiling} registered EDGE families have even one "
         f"passing arm in research/verdicts.jsonl.")
 
 
-def test_no_front_door_doc_calls_the_edge_record_unique():
+def test_no_checked_doc_calls_the_edge_record_unique():
     """"this project's only EDGE pass" states a tally with no number in it.
 
     A guard that reads only digits reads half the prose. `docs/data_vendors.md`
     carried this shape and every numeric assertion above was green on it."""
     if edge_pass_ceiling() <= 1:
         return
-    bad = {p.relative_to(ROOT): sorted({m.group(0) for m in
-                                        UNIQUE_PASS_RE.finditer(p.read_text())})
-           for p in tally_docs() if UNIQUE_PASS_RE.search(p.read_text())}
+    bad = {rel: sorted({m.group(0) for m in
+                        UNIQUE_PASS_RE.finditer((ROOT / rel).read_text())})
+           for rel in CHECKED_DOCS
+           if UNIQUE_PASS_RE.search((ROOT / rel).read_text())}
     assert not bad, (
-        f"{dict(bad)}\n§72 was the second pass. Say 'the first of two' rather "
-        f"than 'the only'.")
+        f"{bad}\n§72 was the second pass. Say 'the first of two' rather than "
+        f"'the only'.")
 
 
 def test_the_owning_docs_still_state_the_tally_in_a_shape_the_guard_reads():
-    """The three tests above cannot tell *correct* from *silent*.
+    """Every test above cannot tell *correct* from *silent*.
 
-    Reword README to "the tally is two in sixteen" and every one of them passes
-    by matching nothing at all. The docs that own the number must therefore be
+    Reword README to "the tally is two in sixteen" and all of them pass by
+    matching nothing at all. The docs that own the number must therefore be
     caught STATING it, which is this file's founding argument (a check that
     cannot fail is worse than no check) applied to the extractor rather than to
     the corpus."""
     k, ceiling = live_bonferroni_k(), edge_pass_ceiling()
-    for p in OWNING_DOCS:
-        ks, ms = stated_tallies(p.read_text())
-        rel = p.relative_to(ROOT)
+    for rel in OWNING_DOCS:
+        ks, ms = stated_tallies((ROOT / rel).read_text())
         assert k in ks, (
             f"{rel} no longer states K={k} in any shape this guard reads. "
             f"Either it stopped carrying the tally, or the wording drifted "
