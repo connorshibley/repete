@@ -38,10 +38,11 @@ does. `scripts/run_gate.py` refuses to score an unregistered or altered spec and
 Only EDGE claims spend the multiple-comparison budget below.
 
 **Bonferroni K** — the number of independent EDGE attempts the project has
-allowed itself. Testing fifteen ideas and reporting the best one is how noise
-gets published, so the significance threshold is divided by K. **K = 15 here,
-and the tally is 1 pass in 15** — a rate consistent with chance, which is why
-that single pass is not treated as a result.
+allowed itself. Testing sixteen ideas and reporting the best one is how noise
+gets published, so the significance threshold is divided by K. **K = 16 here,
+and the tally is 2 passes in 16** — still a rate consistent with chance. The
+two are not equivalent: §51's pass was explained away by the survivorship in
+its own universe, while §72's is the first on survivorship-certified data.
 
 **Enablement gate** — `backtest.enablement_gate`, the function a strategy must
 clear before it may trade live. It is the same function that rejected every
@@ -125,14 +126,20 @@ shipped off, so no single edit or mistaken merge can start trading real money.
 
 ## Things that sound like claims and are not
 
-**"1 pass in 15"** — not "we found an edge". Fifteen pre-registered EDGE attempts
-have produced one pass, on the most survivor-selected universe in the project,
-carrying enough inflation to explain it. The asymmetry was frozen before the run:
+**"2 passes in 16"** — not "we found an edge". Sixteen pre-registered EDGE
+attempts have produced two passes. §51's came from the most survivor-selected
+universe in the project, carrying enough inflation to explain it outright. §72's
+did not — it is the first on survivorship-certified data, which makes it the
+only one that has not already been explained away. That is a reason to take it
+seriously, not a result: at K=16, two passes is still a rate consistent with
+chance, and the asymmetry was frozen before any of these ran:
 **a FAIL is decisive, a PASS is not.**
 
-**"n = 10"** — ten closed round-trips. Not a track record. Six of the ten won and
-the account still lost money, which is exactly why a win rate is never reported
-here on its own.
+**"n = 13"** — thirteen closed round-trips. Not a track record. Six of the
+thirteen won and the account still lost money (−$812.46, profit factor 0.33),
+which is exactly why a win rate is never reported here on its own. The win
+count has not moved since n=11 while the profit factor fell from 0.49 to 0.33 —
+the same six winners, two more losers.
 
 **"+107.77%"** (divergence #17) — a simulator correction, not a return anyone
 could have earned. Survivor-selected universe, no benchmark, and §52's freeze

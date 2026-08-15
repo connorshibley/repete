@@ -120,16 +120,21 @@ than a missed entry.
 
 This is the section most repos leave out.
 
-**One EDGE claim in fifteen has passed — and it does not mean what it looks
-like.** As of 2026-08-12 the tally is **2 passes in 16** — §72 (trend_hold, latch-off, financed 1.5x) is the first pass on survivorship-clean data; the earlier §51 pass was explained by survivorship. The §51 pass ran on the
-most survivor-selected universe in the project, carrying **+200.28pp** of
-survivorship inflation — large enough to explain the result. Every spec froze the
-asymmetry before the run — *a FAIL is decisive, a PASS is not* — so the caveat
-was already in place when the pass arrived. §52 then found survivorship-free
-replication **blocked** and **froze the EDGE budget**. None of it was quietly
-dropped: every claim is written up in `knowledge/backtest_candidates.md` with the
-verdict, the frozen prior, and what the result did and did not license. That file
-carries the running count and is the only place it is kept.
+**Two EDGE claims in sixteen have passed — and they do not mean the same
+thing.** As of 2026-08-12 the tally is **2 passes in 16**, and the difference
+between them is the whole point. §51 ran on the most survivor-selected universe
+in the project, carrying **+200.28pp** of survivorship inflation — large enough
+to explain the result outright. §72 (trend_hold, latch-off, financed 1.5×) is
+the **first pass on survivorship-certified data**, so it is the only one that
+has not already been explained away. Every spec froze the asymmetry before the
+run — *a FAIL is decisive, a PASS is not* — so the caveat was in place before
+either pass arrived, and at K=16 two passes remains a rate consistent with
+chance. §52 found survivorship-free replication **blocked** and froze the EDGE
+budget; §68's pre-committed promotion rule later licensed exactly one
+registration, §72 spent it, and the venue re-froze. None of it was quietly
+dropped: every claim is written up in `knowledge/backtest_candidates.md` with
+the verdict, the frozen prior, and what the result did and did not license.
+That file carries the running count and is the only place it is kept.
 
 **The shipped configuration fails its own gate.** §43 pointed
 `backtest.enablement_gate` — the function that rejected every candidate — at the
@@ -164,13 +169,16 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 11 closed round-trips as of 2026-08-11**, first close 2026-07-21 —
+**Live record: 13 closed round-trips as of 2026-08-14**, first close 2026-07-21 —
 +16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
-−1.63%. Realized **−$416.28**, profit factor **0.49**.
+−1.63%, −4.49%, −4.14%. Realized **−$812.46**, profit factor **0.33**.
 
-**Six of the eleven won, and it still lost money** — the losers were bigger. That
-pair of facts is why a win rate is not reported here on its own, and it is the
-kind of number a hit-rate headline is built to hide.
+**Six of the thirteen won, and it still lost money** — the losers were bigger.
+That pair of facts is why a win rate is not reported here on its own, and it is
+the kind of number a hit-rate headline is built to hide. The two closes since
+2026-08-11 were both losers, which is why the profit factor fell from 0.49 to
+0.33 while the win count did not move at all — the clearest illustration on
+record of why a hit rate is not a result.
 
 **n=10 decides nothing** in either direction, and no average of ten numbers
 belongs in a README. Going live is gated behind **≥30 closed trades, ≥60 days,
