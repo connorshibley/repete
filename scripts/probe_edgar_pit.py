@@ -292,8 +292,8 @@ under invariant #2 it can veto or shrink and can never create a trade;
 ungated; and recorded as a sim/live divergence. That is exactly the
 shape W7 used for news memory.
 
-EDGE stands at 1 pass in 15 and K stays 15. Nothing is adopted
-by this result.
+Nothing is adopted by this result. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
 
@@ -315,7 +315,8 @@ a claim reaching further back needs the full index, and the retained
 window is itself a coverage question this probe does not settle.
 
 This does NOT mean filings help. It means a test of whether they help
-would be meaningful. EDGE still stands at 1 pass in 15.
+would be meaningful, not that they do. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
 

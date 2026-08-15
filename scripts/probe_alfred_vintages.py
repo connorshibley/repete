@@ -19,9 +19,8 @@ first: does ALFRED actually deliver point-in-time values, or does it merely
 claim to? Macro is an input class no hypothesis here has ever referenced. That
 is a real gap. But data carrying lookahead cannot be gated on — a claim scored
 against it would be inflated and indistinguishable from a genuine edge, which
-is the worst possible outcome for a project whose EDGE record stands at ONE
-pass in 15 — and whose single pass (§51) its own write-up showed to be
-explicable by survivorship.
+is the worst possible outcome for a project whose record is kept in
+knowledge/backtest_candidates.md and is not restated here.
 
 THREE WAYS THIS DATA COULD LIE. All fatal, all measurable, all checked here:
 
@@ -341,8 +340,8 @@ This leaves §31's original decision standing unchanged: cross-asset
 prices remain the only orthogonal input that is point-in-time by
 construction.
 
-EDGE stands at 1 pass in 15 and K stays 15. Nothing is adopted
-by this result.
+Nothing is adopted by this result. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
 
@@ -358,7 +357,8 @@ params — the default for both is TODAY, which silently serves current
 values and is the precise failure §31 refused to risk.
 
 This does NOT mean macro helps. It means a test of whether it helps
-would be meaningful. EDGE still stands at 1 pass in 15.
+would be meaningful, not that it does. The EDGE tally is unchanged; the
+count of record lives in knowledge/backtest_candidates.md, not here.
 =======================================================================
 """
 

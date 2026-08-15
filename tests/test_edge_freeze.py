@@ -2,7 +2,7 @@
 
 Why this file exists
 --------------------
-§51 produced this project's only EDGE pass in fifteen claims — and its own
+§51 produced an EDGE pass — and its own
 write-up showed the pass is explicable by survivorship. The 38-name universe
 carries **+200.28pp** of inflation, because those names are in `config.yaml`
 precisely BECAUSE they are today's winners.

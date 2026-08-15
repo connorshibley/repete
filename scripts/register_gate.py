@@ -45,7 +45,7 @@ VERDICTS = "research/verdicts.jsonl"
 # them by construction, not just from the four §48 happened to measure.
 #
 # §48 sized the bias (+130.06pp on 2000-2006: equal-weight +138.74% against
-# SPY's +8.68%). §51 then produced this project's only EDGE pass and showed the
+# SPY's +8.68%). §51 then produced an EDGE pass and showed the
 # bias was large enough to explain it — +200.28pp on the 38-name universe,
 # because those names are in config.yaml precisely BECAUSE they are today's
 # winners.
@@ -71,15 +71,22 @@ FROZEN_CLAIMS = ("EDGE",)
 
 
 def _s52_reason(claim: str, path: str) -> str:
-    """§52's refusal. NOT to be reworded — `test_edge_freeze.py` asserts on this
-    text, and a control whose message drifts is a control nobody trusts."""
+    """§52's refusal. A control whose message drifts is a control nobody
+    trusts, so `test_edge_freeze.py` pins it — but "do not reword this" was
+    too blunt to act on, and left a factually WRONG clause standing for two
+    waves because nobody could tell which words were load-bearing.
+
+    Pinned, and safe to rely on: `FROZEN`, `probe_delisted_coverage.py`,
+    `--override-freeze`, `DIAGNOSTIC`, and that this message stays textually
+    DIFFERENT from `_s57_reason`'s (test_edge_freeze.py:138-140). Everything
+    else is prose and may be corrected when it stops being true."""
     return (f"{claim} claims on {FROZEN_SNAPSHOT_DIR}/ are FROZEN "
             f"(§52).\n\n"
             f"  snapshot: {path}\n\n"
             f"Every snapshot there is built from CURRENT index membership, so "
             f"the companies\nthat failed are missing by construction. §48 sized "
             f"that bias at up to +130pp;\n§51 showed it was large enough to "
-            f"explain this project's only EDGE pass.\n"
+            f"explain the EDGE pass it produced.\n"
             f"`scripts/probe_delisted_coverage.py` then REFUSED: the vendor "
             f"serves no\npre-delisting history for SIVB/FRC/TWTR/ATVI, and "
             f"SBNY's bars all postdate its\nseizure by seventeen months.\n\n"

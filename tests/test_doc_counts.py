@@ -416,3 +416,87 @@ def test_the_live_trade_count_is_checked_only_where_a_ledger_exists(capsys):
     assert m, "the README no longer states a live round-trip count"
     assert int(m.group(1)) == actual, (
         f"README says {m.group(1)} closed round-trips, the ledger has {actual}")
+
+
+# --------------------------------------------------------------------------
+# Operator-facing CODE must not state the tally at all.
+#
+# A stricter rule than the one above, and deliberately so. A doc that states
+# the count correctly is fine; a BANNER that states it correctly today is a
+# copy that will be wrong later and will be read as authoritative in the
+# meantime, because it arrives in the operator's terminal at the moment of a
+# decision.
+#
+# `tests/test_fmp_lookahead_probe.py:299-306` established exactly this for ONE
+# probe, and recorded why: "a count duplicated into a banner drifts from the
+# ledger that owns it and then gets quoted as if it were checked." Nothing
+# generalized it, so its three siblings printed "EDGE stands at 1 pass in 15
+# and K stays 15" through §72 and both waves after it. Neither guard scanned a
+# .py file.
+#
+# `tests/` is exempt wholesale: test files quote stale text on purpose, as
+# fixtures and as the motivating examples in these very docstrings, and
+# tests/data/significance_golden.json carries a frozen `Bonferroni K=15`.
+# --------------------------------------------------------------------------
+
+CODE_DIRS = (ROOT / "scripts", ROOT / "src")
+
+# Files where a bare `K = N` is an ARM COUNT in a bootstrap comparison, not the
+# project's budget — a genuinely different quantity that happens to share the
+# letter. `gate_s35_momentum.py` is the third case: its K=8 is §35's frozen
+# context, correct on the day it was written.
+EXEMPT_CODE = {
+    "scripts/gate_cross_asset.py": "K=3 is the arm count of that comparison",
+    "scripts/gate_wide_universe.py": "K=6 is the arm count of that comparison",
+    "scripts/gate_s35_momentum.py": "K=8 is §35's frozen registration context",
+}
+
+# The probes whose verdict banners must name the file that owns the count.
+PROBES_THAT_DEFER = [
+    "scripts/probe_fmp_lookahead.py",
+    "scripts/probe_alfred_vintages.py",
+    "scripts/probe_edgar_pit.py",
+    "scripts/probe_delisted_coverage.py",
+]
+
+
+def code_files() -> list[pathlib.Path]:
+    return sorted(p for d in CODE_DIRS for p in d.glob("*.py"))
+
+
+def test_no_operator_facing_code_states_the_edge_tally():
+    """Not "states it correctly" — states it at all."""
+    bad = {}
+    for p in code_files():
+        rel = p.relative_to(ROOT).as_posix()
+        if rel in EXEMPT_CODE:
+            continue
+        text = p.read_text()
+        ks, ms = stated_tallies(text)
+        unique = sorted({m.group(0) for m in UNIQUE_PASS_RE.finditer(text)})
+        if ks or ms or unique:
+            bad[rel] = {"K": sorted(ks), "passes": sorted(ms),
+                        "uniqueness": unique}
+    assert not bad, (
+        f"{bad}\nCode must not restate the EDGE tally — not even correctly. "
+        f"Say it is unchanged and name knowledge/backtest_candidates.md, the "
+        f"way scripts/probe_fmp_lookahead.py does.")
+
+
+def test_every_exempt_code_file_still_exists():
+    """An exemption for a deleted file silently re-scopes this guard."""
+    dead = sorted(r for r in EXEMPT_CODE if not (ROOT / r).exists())
+    assert not dead, f"EXEMPT_CODE names files that do not exist: {dead}"
+
+
+@pytest.mark.parametrize("rel", PROBES_THAT_DEFER)
+def test_a_probe_that_says_nothing_still_points_somewhere(rel):
+    """The counterpart to the negative test, and the reason it is not enough.
+
+    "State no tally" is satisfied perfectly by deleting the sentence and
+    pointing nowhere, which would leave an operator with a verdict and no route
+    to the count it should be read against. Silence is not deference."""
+    assert "knowledge/backtest_candidates.md" in (ROOT / rel).read_text(), (
+        f"{rel} no longer names the file that owns the EDGE count. Saying "
+        f"nothing about the tally is only honest while the reader is told "
+        f"where it lives.")

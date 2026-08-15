@@ -18,6 +18,7 @@ All offline: `probe.get` is monkeypatched, no network, no User-Agent needed.
 """
 
 import importlib.util
+import re
 import os
 import sys
 
@@ -192,3 +193,38 @@ def test_missing_user_agent_exits_rather_than_going_anonymous(monkeypatch):
         assert e.code == 2
     else:  # pragma: no cover
         raise AssertionError("missing User-Agent must not silently continue")
+
+
+# --------------------------------------------------------------------------
+# The banner (added 2026-08-15)
+# --------------------------------------------------------------------------
+
+def test_the_verdict_banner_defers_the_tally_instead_of_restating_it(
+        monkeypatch, tmp_path, capsys):
+    """This probe printed "EDGE stands at 1 pass in 15 and K stays 15" to the
+    operator through §72 and both waves after it.
+
+    Nothing caught it because nothing in this file had ever called `main()` —
+    every test above drives a single check and reads the `out` list. So the
+    banner, the only part an operator actually sees, was the one part with no
+    coverage at all.
+
+    `tests/test_fmp_lookahead_probe.py` made this exact argument for the
+    sibling probe and recorded the reason: a count duplicated into a banner
+    drifts from the ledger that owns it and then gets quoted as if it were
+    checked. It was never generalized. This generalizes it.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "research").mkdir()
+    for name in ("check_acceptance_timestamp", "check_no_retroactive_edit",
+                 "check_survivorship"):
+        monkeypatch.setattr(probe, name, lambda out: True)
+    probe.main()
+    text = capsys.readouterr().out
+
+    assert not re.search(r"\d+\s+pass(es)?\s+in\s+\d+", text), \
+        "the banner restates the EDGE tally"
+    assert not re.search(r"K\s+(stays|is|=)\s*\d+", text), \
+        "the banner restates the Bonferroni budget"
+    # Silence is only honest if the reader is told where the count lives.
+    assert "knowledge/backtest_candidates.md" in text

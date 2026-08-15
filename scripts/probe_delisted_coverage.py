@@ -7,8 +7,8 @@ probe showed the data could not support it, so it was NEVER REGISTERED.
 Discovering a claim was unsound after registering it is strictly worse than
 discovering it before.
 
-WHAT IS BEING DECIDED. §51 produced this project's only EDGE pass, and its own
-write-up showed the pass is explicable by survivorship: the 38-name universe
+WHAT IS BEING DECIDED. §51 produced an EDGE pass, and its own results
+section showed the pass is explicable by survivorship: the 38-name universe
 carries +200.28pp of inflation because those names are in config.yaml precisely
 because they are today's winners. §51 named the fix — replication on a universe
 not selected on the outcome — and this probe asks whether that fix is buildable

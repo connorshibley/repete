@@ -13,7 +13,8 @@ to reference — `grep` for price_target/free_cash_flow/analyst/fundamental acro
 src/ returns nothing, and every strategy is pure price. That is a real gap. But
 data that carries lookahead cannot be gated on: a claim scored against it would
 be inflated and indistinguishable from a genuine edge, which is the worst
-possible outcome for a project whose whole record is EDGE 0-for-12.
+possible outcome for a project whose record is kept in
+knowledge/backtest_candidates.md and is not restated here.
 
 THREE WAYS THIS DATA COULD LIE. All fatal, all measurable, all checked here:
 

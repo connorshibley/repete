@@ -656,13 +656,22 @@ def validate_reading(rec: dict, regs: dict) -> None:
 
 
 def calibrate() -> dict:
-    """Score 55 frozen predictions against what happened. Counts, not a grade.
+    """Score every frozen prediction against what happened. Counts, not a grade.
 
     No Brier score and no verdict on whether the project forecasts well. The
     confounder is structural and is reported rather than corrected for: the
-    author of a prior also sets the pass mark, and EDGE stands at 1 pass in 15,
-    so a constant "it fails" scores about 94% while carrying no information.
-    The base rate ships beside the hit rate for exactly that reason.
+    author of a prior also sets the pass mark, so a constant "it fails" scores
+    close to the base rate while carrying no information. `base_rate_always_fail`
+    ships beside `hit_rate` for exactly that reason — compare those two, which
+    are computed below from the same specs.
+
+    This docstring used to illustrate that with a hand-derived percentage and
+    the EDGE tally it came from. Both rotted, and the arithmetic was the
+    instructive half: the percentage was derived from the EDGE-only tally, while
+    the figure this function actually returns is prior-direction accuracy over
+    EVERY claim type. They were never the same quantity, nothing reconciled
+    them, and the prose one could not be checked by anything. So it is gone
+    rather than corrected — the computed number is a few lines below.
 
     `unread` ids are reported and never dropped from the denominator. A
     calibration that quietly excluded what nobody had read would report the
