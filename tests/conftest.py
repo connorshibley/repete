@@ -145,11 +145,16 @@ def digitize(text: str) -> str:
     return _WORD_RE.sub(lambda m: str(_NUMBER_WORDS[m.group(1).lower()]), text)
 
 
+# `\s+` everywhere a space would do, NOT a literal space: these docs are
+# hard-wrapped, and 'Sixteen pre-registered EDGE\nattempts' straddles a
+# newline in GLOSSARY.md. A literal-space pattern read that sentence as
+# ABSENT and passed a stale K green — caught by mutation, not by review.
+#
 # Shapes that state BOTH halves — "2 passes in 16", "One EDGE claim in
 # fifteen", "the tally is unchanged at 1-in-15". Denominator is floor-filtered.
 _TALLY_RE = re.compile(
-    r"\b(?P<m1>\d+) pass(?:es)? in (?P<n1>\d+)\b"
-    r"|\b(?P<m2>\d+) EDGE claims? in (?P<n2>\d+)\b"
+    r"\b(?P<m1>\d+)\s+pass(?:es)?\s+in\s+(?P<n1>\d+)\b"
+    r"|\b(?P<m2>\d+)\s+EDGE\s+claims?\s+in\s+(?P<n2>\d+)\b"
     r"|EDGE tally[^.]{0,60}?\b(?P<m3>\d+)-in-(?P<n3>\d+)\b")
 
 # Shapes that state K alone.
@@ -164,11 +169,11 @@ _TALLY_RE = re.compile(
 # and 14 at K=15 too — it was already wrong when written), which is a different
 # quantity from the budget. Dropping the qualifier silently conflates them.
 _K_ONLY_RE = re.compile(
-    r"\bK is (?:now )?(?P<a>\d+)\b"
+    r"\bK\s+is\s+(?:now\s+)?(?P<a>\d+)\b"
     r"|\bK\s*=\s*(?P<b>\d+)\b"
-    r"|\bK (?:stays|remains|stands at) (?P<c>\d+)\b"
-    r"|\bin (?P<d>\d+) claims\b"
-    r"|\b(?P<e>\d+) pre-registered EDGE (?:attempts|claims)\b")
+    r"|\bK\s+(?:stays|remains|stands\s+at)\s+(?P<c>\d+)\b"
+    r"|\bin\s+(?P<d>\d+)\s+claims\b"
+    r"|\b(?P<e>\d+)\s+pre-registered\s+EDGE\s+(?:attempts|claims)\b")
 
 # A tally stated as a UNIQUENESS claim, with no number in it to compare.
 # Two skills carried this after §72 made it false, and one was the frontmatter
