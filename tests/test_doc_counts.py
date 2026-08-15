@@ -317,17 +317,64 @@ def passing_family_ceiling() -> int:
 
 # `K is 16`, `K = 16`, `2 passes in 16`, `only EDGE pass in 15 claims` — every
 # shape the docs use to state the budget. Deliberately requires a digit, so
-# prose that spells the number out ("one pass in sixteen") is not swept up: a
-# word form cannot be confused with a per-claim `K=13` and is not worth the
-# false positives.
+# prose is matched WHITESPACE-NORMALISED — see `stated_ks`.
+_NUM_WORD = {w: n for n, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve "
+    "thirteen fourteen fifteen sixteen seventeen eighteen nineteen "
+    "twenty".split())}
+_W = "|".join(_NUM_WORD)
+
+# The digit forms, and the SAME phrasings spelled out. The word half is anchored
+# to tally phrasings only and never to a bare `in <word>`: this file says "in
+# three of four periods" in several places, and a rule loose enough to read that
+# as a budget would fire on prose that has nothing to do with K.
+#
+# The word half is not optional politeness. `docs/superpowers/specs/2026-08-04
+# -130-30-long-short-design.md` stated the stale tally as *"the single EDGE pass
+# in fifteen claims"* — spelled out, in the sentence that carried the design's
+# whole premise — and the digit-only version of this regex walked straight past
+# it while catching the `1 pass in 15` forty lines below.
 K_STATED_RE = re.compile(
     r"\bK is (?P<a>\d+)\b"
     r"|\bK\s*=\s*(?P<b>\d+)\b"
     r"|(?:\d+ )?pass(?:es)? in (?P<c>\d+)\b"
-    r"|\bin (?P<d>\d+) claims\b")
+    r"|\bin (?P<d>\d+) claims\b"
+    rf"|\bpass(?:es)? in (?P<e>{_W})\b"
+    rf"|\bin (?P<f>{_W}) claims\b"
+    rf"|\b(?P<g>{_W}) pre-registered EDGE attempts\b"
+    rf"|\bEDGE claims? in (?P<h>{_W})\b", re.I)
+
+_K_GROUPS = ("a", "b", "c", "d", "e", "f", "g", "h")
 
 # The `M` half of "M passes in N".
 M_STATED_RE = re.compile(r"\b(?P<m>\d+) pass(?:es)? in \d+\b")
+
+
+def _norm(text: str) -> str:
+    """Collapse whitespace before matching.
+
+    Every doc here is hard-wrapped at ~79 columns, so a tally sentence breaks
+    across lines wherever it happens to land. Matching raw text made the guard's
+    coverage a function of line width: `1 pass in 15` was caught and
+    `1 pass in\\n15` was invisible. That is worse than an uneven guard — it is
+    one whose gaps move every time somebody reflows a paragraph.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
+def stated_ks(text: str) -> set[int]:
+    out = set()
+    for m in K_STATED_RE.finditer(_norm(text)):
+        for g in _K_GROUPS:
+            v = m.group(g)
+            if v is not None:
+                out.add(int(v) if v.isdigit() else _NUM_WORD[v.lower()])
+    return out
+
+
+def stated_ms(text: str) -> set[int]:
+    return {int(m.group("m")) for m in M_STATED_RE.finditer(_norm(text))}
+
 
 # Docs that describe the project AS IT IS. Each must agree with the register.
 CHECKED_DOCS = [
@@ -335,6 +382,24 @@ CHECKED_DOCS = [
     "GLOSSARY.md",
     "research/candidates_2026-08.md",
 ]
+
+# Docs whose ORIGINAL prose is deliberately frozen at a stale K, and which must
+# therefore carry a dated correction stating the current one. Checked the other
+# way round from CHECKED_DOCS: the stale value is allowed, the *absence* of the
+# current value is the failure.
+#
+# This category exists because the 130/30 design did not fit the other two. Its
+# "Why" and "Risks, stated before the fact" sections argue from the record as it
+# stood on 2026-08-04 and are worth reading against their outcome, so rewriting
+# them would destroy the thing the file is for. But leaving it EXEMPT meant
+# nothing checked that the correction was there at all — and an exemption is
+# indistinguishable from an oversight six months later.
+CORRECTED_DOCS = {
+    "docs/superpowers/specs/2026-08-04-130-30-long-short-design.md":
+        "the design as approved 2026-08-04, kept intact; §72's tally arrives in "
+        "dated `> **Corrected**` notes, in the style of the `Checked "
+        "2026-08-05` note already in the file",
+}
 
 # Docs that legitimately state a K the register will disagree with, and why.
 # A path here is a claim that the number in it is not a current-state claim.
@@ -354,9 +419,6 @@ EXEMPT_DOCS = {
     "research/specs/":
         "spec drafts state the K a registration would spend, frozen when the "
         "spec was written",
-    "docs/superpowers/specs/":
-        "dated design docs ('design approved 2026-08-04. Not implemented.'), "
-        "point-in-time like the frozen record",
 }
 
 _SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".site",
@@ -392,8 +454,7 @@ def test_the_bonferroni_budget_a_doc_states_matches_the_register(rel):
     path = ROOT / rel
     assert path.exists(), f"{rel} is in CHECKED_DOCS and does not exist"
     k = max(edge_families())
-    stated = {int(m.group(g)) for m in K_STATED_RE.finditer(path.read_text())
-              for g in ("a", "b", "c", "d") if m.group(g) is not None}
+    stated = stated_ks(path.read_text())
     assert stated, (
         f"{rel} no longer states the EDGE budget anywhere. If that is "
         f"deliberate, drop it from CHECKED_DOCS; otherwise this test just "
@@ -406,15 +467,37 @@ def test_the_bonferroni_budget_a_doc_states_matches_the_register(rel):
         f"significance threshold.")
 
 
-@pytest.mark.parametrize("rel", CHECKED_DOCS)
+@pytest.mark.parametrize("rel", CHECKED_DOCS + sorted(CORRECTED_DOCS))
 def test_no_doc_claims_more_edge_passes_than_the_verdicts_support(rel):
+    """Applies to the corrected docs too. Their frozen text may state an
+    out-of-date K, which is the whole point of the category — but nothing in
+    this repo, frozen or not, may claim more passes than the verdicts support."""
     ceiling = passing_family_ceiling()
-    text = (ROOT / rel).read_text()
-    over = sorted({int(m.group("m")) for m in M_STATED_RE.finditer(text)}
-                  - set(range(ceiling + 1)))
+    over = sorted(stated_ms((ROOT / rel).read_text()) - set(range(ceiling + 1)))
     assert not over, (
         f"{rel} claims {over} EDGE passes; at most {ceiling} of the registered "
         f"EDGE families have even one passing arm in {VERDICTS}")
+
+
+@pytest.mark.parametrize("rel", sorted(CORRECTED_DOCS))
+def test_a_frozen_doc_still_carries_the_current_tally(rel):
+    """The other half of `CORRECTED_DOCS`: stale is allowed, silent is not.
+
+    `CHECKED_DOCS` asserts `stated ⊆ {k}`. That is the wrong shape for a file
+    whose argument is deliberately preserved at the number it was written
+    against, so this asserts the complement — `k ∈ stated` — which fails
+    exactly when the dated correction is missing, wrong, or quietly dropped in
+    a later edit.
+    """
+    path = ROOT / rel
+    assert path.exists(), f"{rel} is in CORRECTED_DOCS and does not exist"
+    k = max(edge_families())
+    stated = stated_ks(path.read_text())
+    assert k in stated, (
+        f"{rel} states the EDGE budget as {sorted(stated)} and never {k}. Its "
+        f"original prose is frozen on purpose ({CORRECTED_DOCS[rel]}), which "
+        f"is only defensible while a dated correction sits next to it. Add "
+        f"one, or move the file to CHECKED_DOCS and update it in place.")
 
 
 def test_every_doc_that_states_a_k_is_either_checked_or_deliberately_exempt():
@@ -427,32 +510,50 @@ def test_every_doc_that_states_a_k_is_either_checked_or_deliberately_exempt():
     repo that states a K must be classified, and an unclassified one is a
     failure rather than a silent pass.
 
-    A new doc quoting the tally therefore costs one line — in `CHECKED_DOCS`
-    if it describes the project now, or in `EXEMPT_DOCS` with a reason if the
-    number in it is frozen. What it cannot do is arrive unexamined.
+    A new doc quoting the tally therefore costs one line — `CHECKED_DOCS` if it
+    describes the project now, `CORRECTED_DOCS` if its prose is frozen and a
+    dated note carries the current number, `EXEMPT_DOCS` with a reason if the
+    number is not a current-state claim at all. What it cannot do is arrive
+    unexamined.
     """
     unclassified = []
     for path in all_markdown():
         rel = path.relative_to(ROOT).as_posix()
-        if rel in CHECKED_DOCS or any(rel.startswith(e) for e in EXEMPT_DOCS):
+        if (rel in CHECKED_DOCS or rel in CORRECTED_DOCS
+                or any(rel.startswith(e) for e in EXEMPT_DOCS)):
             continue
-        if any(m.group(g) is not None
-               for m in K_STATED_RE.finditer(path.read_text())
-               for g in ("a", "b", "c", "d")):
+        if stated_ks(path.read_text()):
             unclassified.append(rel)
     assert not unclassified, (
-        "these files state an EDGE budget and are neither checked against "
-        f"research/registrations.jsonl nor exempted: {unclassified}\n"
-        "Add each to CHECKED_DOCS (if it describes the project as it is) or "
-        "to EXEMPT_DOCS with the reason its number is frozen.")
+        "these files state an EDGE budget and are in none of the three "
+        f"classifications: {unclassified}\n"
+        "Add each to CHECKED_DOCS (it describes the project as it is), to "
+        "CORRECTED_DOCS (its prose is frozen and a dated note carries the "
+        "current number), or to EXEMPT_DOCS with the reason its number is not "
+        "a current-state claim.")
 
 
-def test_the_exemptions_still_point_at_something():
-    """An exemption for a file that no longer exists is a rule nobody reads
-    protecting nothing — and it hides the day a checked doc gets moved under
-    an exempt prefix."""
-    dead = [e for e in EXEMPT_DOCS
+@pytest.mark.parametrize("bucket", ["CHECKED_DOCS", "CORRECTED_DOCS",
+                                    "EXEMPT_DOCS"])
+def test_the_classifications_still_point_at_something(bucket):
+    """A classification for a file that no longer exists is a rule nobody reads
+    protecting nothing — and it hides the day a checked doc gets moved under an
+    exempt prefix."""
+    entries = {"CHECKED_DOCS": CHECKED_DOCS,
+               "CORRECTED_DOCS": CORRECTED_DOCS,
+               "EXEMPT_DOCS": EXEMPT_DOCS}[bucket]
+    dead = [e for e in entries
             if not (ROOT / e).exists()
             and not any(p.relative_to(ROOT).as_posix().startswith(e)
                         for p in all_markdown())]
-    assert not dead, f"EXEMPT_DOCS entries match no file: {dead}"
+    assert not dead, f"{bucket} entries match no file: {dead}"
+
+
+def test_no_doc_is_classified_twice():
+    """The three buckets assert contradictory things — `stated ⊆ {k}` against
+    `k ∈ stated` against nothing at all. A file in two of them would be judged
+    by whichever test ran, which is not a rule."""
+    overlaps = [rel for rel in list(CHECKED_DOCS) + list(CORRECTED_DOCS)
+                if sum([rel in CHECKED_DOCS, rel in CORRECTED_DOCS,
+                        any(rel.startswith(e) for e in EXEMPT_DOCS)]) > 1]
+    assert not overlaps, f"classified in more than one bucket: {overlaps}"
