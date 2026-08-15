@@ -30,7 +30,26 @@ this repo keeps catching (`ci.yml:55-69` applies the same reasoning to
 `check_secret_exposure.py`). So `test_the_live_trade_count_is_checked_only_where
 _a_ledger_exists` runs the check when a ledger is present and says **SKIPPED**
 out loud when it is not, exactly as the backup drill's off-host check does.
+
+THE EDGE TALLY (added 2026-08-15)
+--------------------------------
+The bottom half of this file pins the Bonferroni budget the front-door docs
+state against `research/registrations.jsonl`, which owns it. It is here because
+the *skills* got the same guard first and the docs did not: after §72 took K to
+16, `GLOSSARY.md` went on saying **"K = 15 here, and the tally is 1 pass in
+15"** in two places and `research/candidates_2026-08.md` quoted it as the
+project's base rate. `README.md` had been updated. Nothing compared them.
+
+That is the same defect this file already exists for — a count copied into
+prose drifts from the ledger that owns it — with one extra lesson. The guard
+that *should* have caught it globbed `.claude/skills/*/SKILL.md`, so the fix
+for a stale-number class of bug was itself scoped to a directory. Hence
+`test_every_doc_that_states_a_k_is_either_checked_or_deliberately_exempt`
+below: a new markdown file that states a K has to be classified before it can
+sit in the repo unchecked.
 """
+import collections
+import json
 import pathlib
 import re
 import subprocess
@@ -40,7 +59,10 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
+GLOSSARY = ROOT / "GLOSSARY.md"
 DIVERGENCES = ROOT / "docs" / "divergences.md"
+REGISTRATIONS = ROOT / "research" / "registrations.jsonl"
+VERDICTS = ROOT / "research" / "verdicts.jsonl"
 
 WORDS = {14: "Fourteen", 15: "Fifteen", 16: "Sixteen", 17: "Seventeen",
          18: "Eighteen", 19: "Nineteen", 20: "Twenty", 21: "Twenty-one",
@@ -229,3 +251,208 @@ def test_the_live_trade_count_is_checked_only_where_a_ledger_exists(capsys):
     assert m, "the README no longer states a live round-trip count"
     assert int(m.group(1)) == actual, (
         f"README says {m.group(1)} closed round-trips, the ledger has {actual}")
+
+
+# --------------------------------------------------------------------------
+# The EDGE tally: the docs must agree with the register that owns it.
+# --------------------------------------------------------------------------
+#
+# `tests/test_skills_are_current.py` makes this same argument for
+# `.claude/skills/*/SKILL.md` and carries its own copy of `edge_families`,
+# `K_STATED_RE` and `M_STATED_RE`. The two copies exist because the skills
+# guard and this one were written on branches that were open at the same time;
+# whoever touches the second of them should lift the three shared pieces into
+# one helper module. Duplicated definitions that must agree are exactly the
+# failure this section is about.
+
+
+def _rows(path: pathlib.Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines()
+            if line.strip()]
+
+
+def edge_families() -> dict[int, list[str]]:
+    """EDGE spec ids grouped by the K they were registered against.
+
+    K is NOT the number of EDGE rows in the register, and asserting that it is
+    would be wrong in two directions at once:
+
+    * **Down**: a claim is registered once per *arm*. §43, §44, §50 and §72 are
+      four period arms each, all sharing one `bonferroni_k`, because they are
+      one hypothesis scored four ways — not four chances at a false positive.
+    * **Up**: `bonferroni_k` was already 8 on the first row in the file (s35),
+      whose own `prior` reads *"EDGE claims stand at 0 for 7 entering this
+      test"*. Seven spends predate the register.
+
+    So K is `max(bonferroni_k)`, which is also the only operator consistent
+    with what the register means by it: it only goes up.
+    """
+    fams: dict[int, list[str]] = collections.defaultdict(list)
+    for row in _rows(REGISTRATIONS):
+        spec = row.get("spec", {})
+        if spec.get("claim") == "EDGE":
+            fams[int(spec["bonferroni_k"])].append(row["id"])
+    return dict(fams)
+
+
+def passing_family_ceiling() -> int:
+    """An upper bound on the `M` of "M passes in N", not an equality.
+
+    Whether a *family* passed is not mechanically derivable, and pretending
+    otherwise would put a false precision in a test file. §44 (K=13) had three
+    of four arms pass and is REJECTED, because its pre-registered reading rule
+    was a conjunction. §72 (K=16) also had three of four and is CONFIRMED,
+    because §68 had frozen a 3-of-4 confirmation rule for it beforehand. Both
+    rules were written down before the runs, which is what binds them; neither
+    lives in the spec as a field a test could read.
+
+    What is checkable is the ceiling: a family with no passing arm under any
+    reading rule did not pass. M may sit below this (it does — 2 against a
+    ceiling of 3) and never above it. That is the overclaim direction.
+    """
+    latest = {v["id"]: v for v in _rows(VERDICTS)}
+    return sum(any(latest.get(sid, {}).get("passed") for sid in ids)
+               for ids in edge_families().values())
+
+
+# `K is 16`, `K = 16`, `2 passes in 16`, `only EDGE pass in 15 claims` — every
+# shape the docs use to state the budget. Deliberately requires a digit, so
+# prose that spells the number out ("one pass in sixteen") is not swept up: a
+# word form cannot be confused with a per-claim `K=13` and is not worth the
+# false positives.
+K_STATED_RE = re.compile(
+    r"\bK is (?P<a>\d+)\b"
+    r"|\bK\s*=\s*(?P<b>\d+)\b"
+    r"|(?:\d+ )?pass(?:es)? in (?P<c>\d+)\b"
+    r"|\bin (?P<d>\d+) claims\b")
+
+# The `M` half of "M passes in N".
+M_STATED_RE = re.compile(r"\b(?P<m>\d+) pass(?:es)? in \d+\b")
+
+# Docs that describe the project AS IT IS. Each must agree with the register.
+CHECKED_DOCS = [
+    "README.md",
+    "GLOSSARY.md",
+    "research/candidates_2026-08.md",
+]
+
+# Docs that legitimately state a K the register will disagree with, and why.
+# A path here is a claim that the number in it is not a current-state claim.
+EXEMPT_DOCS = {
+    ".claude/skills/":
+        "owned by tests/test_skills_are_current.py, which asserts the same "
+        "thing against the same register",
+    "knowledge/backtest_candidates.md":
+        "the frozen record. Each `## §N` header states the K that claim was "
+        "registered at; rewriting them to the current K would falsify what "
+        "the record said at the time, which is the whole point of it",
+    "research/beat_spy_report_2026-08.md":
+        "same — a frozen statement of what the record said on its own date",
+    "research/INDEX.md":
+        "one row per section, each carrying the K of that registration. Not a "
+        "statement about the current budget",
+    "research/specs/":
+        "spec drafts state the K a registration would spend, frozen when the "
+        "spec was written",
+    "docs/superpowers/specs/":
+        "dated design docs ('design approved 2026-08-04. Not implemented.'), "
+        "point-in-time like the frozen record",
+}
+
+_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".site",
+              "build", "dist"}
+
+
+def all_markdown() -> list[pathlib.Path]:
+    return sorted(p for p in ROOT.rglob("*.md")
+                  if not _SKIP_DIRS & set(p.relative_to(ROOT).parts))
+
+
+def test_the_register_can_still_answer_what_k_is():
+    """Every assertion below is vacuous if the parse silently yields nothing —
+    a renamed key or a restructured row would turn this whole section green."""
+    fams = edge_families()
+    assert fams, (
+        f"no rows in {REGISTRATIONS} parse as EDGE claims with a "
+        f"`bonferroni_k`; the tally guard below is measuring nothing")
+    assert passing_family_ceiling() > 0, (
+        f"no EDGE family in {VERDICTS} has a passing arm; the overclaim "
+        f"ceiling below is 0 and would reject every honest number")
+
+
+@pytest.mark.parametrize("rel", CHECKED_DOCS)
+def test_the_bonferroni_budget_a_doc_states_matches_the_register(rel):
+    """No current-state doc may state a K the register disagrees with.
+
+    This is the skills guard's argument moved to the front door, and it is
+    here because the front door is where it actually failed: `GLOSSARY.md`
+    defined **Bonferroni K** as 15 for two waves after §72 made it 16, in the
+    file whose job is to tell a reader what the project's words mean.
+    """
+    path = ROOT / rel
+    assert path.exists(), f"{rel} is in CHECKED_DOCS and does not exist"
+    k = max(edge_families())
+    stated = {int(m.group(g)) for m in K_STATED_RE.finditer(path.read_text())
+              for g in ("a", "b", "c", "d") if m.group(g) is not None}
+    assert stated, (
+        f"{rel} no longer states the EDGE budget anywhere. If that is "
+        f"deliberate, drop it from CHECKED_DOCS; otherwise this test just "
+        f"stopped checking the thing it was written for")
+    wrong = sorted(stated - {k})
+    assert not wrong, (
+        f"{rel} states the EDGE budget as {wrong}; {REGISTRATIONS} says "
+        f"K={k}.\nThe register owns this number. A doc quoting a stale one is "
+        f"how the next claim gets read against the previous claim's "
+        f"significance threshold.")
+
+
+@pytest.mark.parametrize("rel", CHECKED_DOCS)
+def test_no_doc_claims_more_edge_passes_than_the_verdicts_support(rel):
+    ceiling = passing_family_ceiling()
+    text = (ROOT / rel).read_text()
+    over = sorted({int(m.group("m")) for m in M_STATED_RE.finditer(text)}
+                  - set(range(ceiling + 1)))
+    assert not over, (
+        f"{rel} claims {over} EDGE passes; at most {ceiling} of the registered "
+        f"EDGE families have even one passing arm in {VERDICTS}")
+
+
+def test_every_doc_that_states_a_k_is_either_checked_or_deliberately_exempt():
+    """The scoping bug, guarded.
+
+    The stale `GLOSSARY.md` was not missed because the check was wrong — it
+    was missed because the check globbed `.claude/skills/*/SKILL.md` and the
+    stale number was somewhere else. Listing the files to check is the same
+    move that failed, so the list is inverted here: every markdown file in the
+    repo that states a K must be classified, and an unclassified one is a
+    failure rather than a silent pass.
+
+    A new doc quoting the tally therefore costs one line — in `CHECKED_DOCS`
+    if it describes the project now, or in `EXEMPT_DOCS` with a reason if the
+    number in it is frozen. What it cannot do is arrive unexamined.
+    """
+    unclassified = []
+    for path in all_markdown():
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in CHECKED_DOCS or any(rel.startswith(e) for e in EXEMPT_DOCS):
+            continue
+        if any(m.group(g) is not None
+               for m in K_STATED_RE.finditer(path.read_text())
+               for g in ("a", "b", "c", "d")):
+            unclassified.append(rel)
+    assert not unclassified, (
+        "these files state an EDGE budget and are neither checked against "
+        f"research/registrations.jsonl nor exempted: {unclassified}\n"
+        "Add each to CHECKED_DOCS (if it describes the project as it is) or "
+        "to EXEMPT_DOCS with the reason its number is frozen.")
+
+
+def test_the_exemptions_still_point_at_something():
+    """An exemption for a file that no longer exists is a rule nobody reads
+    protecting nothing — and it hides the day a checked doc gets moved under
+    an exempt prefix."""
+    dead = [e for e in EXEMPT_DOCS
+            if not (ROOT / e).exists()
+            and not any(p.relative_to(ROOT).as_posix().startswith(e)
+                        for p in all_markdown())]
+    assert not dead, f"EXEMPT_DOCS entries match no file: {dead}"

@@ -38,10 +38,12 @@ does. `scripts/run_gate.py` refuses to score an unregistered or altered spec and
 Only EDGE claims spend the multiple-comparison budget below.
 
 **Bonferroni K** — the number of independent EDGE attempts the project has
-allowed itself. Testing fifteen ideas and reporting the best one is how noise
-gets published, so the significance threshold is divided by K. **K = 15 here,
-and the tally is 1 pass in 15** — a rate consistent with chance, which is why
-that single pass is not treated as a result.
+allowed itself. Testing many ideas and reporting the best one is how noise gets
+published, so the significance threshold is divided by K. **K = 16 here, and the
+tally is 2 passes in 16** — a rate consistent with chance, which is why neither
+pass is treated as a settled result. The first (§51) is explained by
+survivorship; the second (§72, `trend_hold` latch-off financed at 1.5x) is the
+first pass on the survivorship-certified `data/pit/` universe and is not.
 
 **Enablement gate** — `backtest.enablement_gate`, the function a strategy must
 clear before it may trade live. It is the same function that rejected every
@@ -125,10 +127,13 @@ shipped off, so no single edit or mistaken merge can start trading real money.
 
 ## Things that sound like claims and are not
 
-**"1 pass in 15"** — not "we found an edge". Fifteen pre-registered EDGE attempts
-have produced one pass, on the most survivor-selected universe in the project,
-carrying enough inflation to explain it. The asymmetry was frozen before the run:
-**a FAIL is decisive, a PASS is not.**
+**"2 passes in 16"** — not "we found an edge". Sixteen pre-registered EDGE
+attempts have produced two passes. The first (§51) ran on the most
+survivor-selected universe in the project, carrying enough inflation to explain
+it. The second (§72) does not have that excuse — it is the first pass on the
+survivorship-certified `data/pit/` universe — but it is still one clean pass in
+sixteen attempts, it *lost* to SPY in the 2014-19 grind-up, and the asymmetry
+was frozen before the run: **a FAIL is decisive, a PASS is not.**
 
 **"n = 10"** — ten closed round-trips. Not a track record. Six of the ten won and
 the account still lost money, which is exactly why a win rate is never reported
