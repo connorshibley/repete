@@ -1,6 +1,18 @@
 # A 130/30 long/short book, forward-validated
 
-**Status:** design approved 2026-08-04. Not implemented.
+**Status:** design approved 2026-08-04. Phases 1 and 2 shipped (#88, #92).
+**§53 REFUTED the 130/30 configuration on 2026-08-05** — three of four periods
+failed clause (b), `xsmom` was never enabled, and Phase 3 stopped there under the
+pre-committed reading rule. The finding was the middle arm: in both periods where
+the short leg actually traded it made the book *worse* than the same strategy
+long-only, by **−38.63pp** (2014-19) and **−58.44pp** (2022-26). Write-up in
+`knowledge/backtest_candidates.md` §53. Phase 1's safety work stands, as this
+design said it would.
+
+Everything below is the design **as approved on 2026-08-04**, kept intact so the
+argument can be read against its outcome. Later corrections are marked inline and
+dated.
+
 **Goal:** beat the S&P 500 on total return.
 
 ## Why
@@ -18,6 +30,16 @@ all four periods**, losing to SPY on return in 2014–2019 and 2022–2026 — t
 windows where the benchmark is survivorship-clean. The single EDGE pass in
 fifteen claims (§51) was explained by **+200.28pp** of survivorship in its own
 results section.
+
+> **Corrected 2026-08-15:** the tally is now **2 passes in 16**. §72 confirmed
+> `trend_hold` latch-off, financed at 1.5x, beating SPY total return in 3 of 4
+> periods on the survivorship-certified `data/pit/` universe — the first EDGE
+> pass in this project *not* explained by survivorship. §51's remains explained
+> by it, so the sentence above is still true of §51. What has changed is the
+> premise of this section's opening line: "the bot has never been shown to beat
+> SPY" now needs the qualifier that a **different, unenabled** strategy has been,
+> in backtest, at leverage, and it *lost* to SPY in the 2014-19 grind-up.
+> `research/registrations.jsonl` owns the count.
 
 So the target is to *make* it beat SPY. Chasing incremental signal improvements
 would assume a working edge to improve.
@@ -259,3 +281,9 @@ the ratio was the premise, and Phase 1's safety fixes are worth keeping anyway.
 - **The base rate is 1 pass in 15.** Adding a leg does not change that priors
   should be low. The design is built so a negative answer is cheap to reach and
   trivial to revert.
+
+  > **Corrected 2026-08-15:** the base rate is now **2 passes in 16** (§72). The
+  > risk as written is unaffected — two in sixteen is still a low prior, and this
+  > design's negative answer did arrive cheaply, one day later, in §53. Of the
+  > two passes only §72's survives a survivorship argument, so the honest base
+  > rate for *clean* evidence is one in sixteen.
