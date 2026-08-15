@@ -14,8 +14,8 @@ absolute-return edges live at 2–3x leverage with 1% borrow assumptions the
 bot cannot have, or in pre-publication samples that post-publication
 records contradict. What survives: drawdown-truncation claims, cheap
 calendar/leverage tilts with perfect PIT data, and combinations of the two.
-This mirrors the record's own base rate (EDGE 1 pass in 15, and that one
-explained by survivorship).
+This mirrors the record's own base rate (EDGE 2 passes in 16, and the first of
+those explained by survivorship).
 
 ---
 

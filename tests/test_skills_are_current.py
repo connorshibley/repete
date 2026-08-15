@@ -30,16 +30,25 @@ the same argument about the same tally in a banner.
 """
 from __future__ import annotations
 
-import collections
-import json
 import os
+import pathlib
 import re
 import sys
 
 import pytest
 
 sys.path.insert(0, "src")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import gatespec as gs                                        # noqa: E402
+from edge_tally import (  # noqa: E402
+    REGISTRATIONS,
+    VERDICTS,
+    current_k,
+    edge_families,
+    passing_family_ceiling,
+    stated_ks,
+    stated_ms,
+)
 
 SKILL_DIR = ".claude/skills"
 
@@ -167,39 +176,15 @@ def test_the_divergence_skill_does_not_undercount():
 
 # ------------------------------------------------------------ Bonferroni budget
 
-REGISTRATIONS = "research/registrations.jsonl"
-VERDICTS = "research/verdicts.jsonl"
-
-
-def _rows(path: str) -> list[dict]:
-    with open(path) as fh:
-        return [json.loads(line) for line in fh if line.strip()]
-
-
-def edge_families() -> dict[int, list[str]]:
-    """EDGE spec ids grouped by the K they were registered against.
-
-    K is NOT the number of EDGE rows in the register, and asserting that it is
-    would be wrong in two directions at once:
-
-    * **Down**: a claim is registered once per *arm*. §43, §44, §50 and §72 are
-      four period arms each, all sharing one `bonferroni_k`, because they are
-      one hypothesis scored four ways — not four chances at a false positive.
-      22 EDGE rows are 8 spends.
-    * **Up**: `bonferroni_k` was already 8 on the first row in this file (s35,
-      2026-07-28), whose own `prior` reads *"EDGE claims stand at 0 for 7
-      entering this test"*. Seven spends predate the register.
-
-    So K is `max(bonferroni_k)` — the operator that matches what the skill
-    actually says about it, *"it only goes up"*. Neither a row count (22) nor a
-    distinct-value count (8) would have caught the drift this test exists for.
-    """
-    fams: dict[int, list[str]] = collections.defaultdict(list)
-    for row in _rows(REGISTRATIONS):
-        spec = row.get("spec", {})
-        if spec.get("claim") == "EDGE":
-            fams[int(spec["bonferroni_k"])].append(row["id"])
-    return dict(fams)
+# `edge_families`, the K/M matchers and `stated_ks` used to live here, and a
+# second copy of them lived in `test_doc_counts.py`. Two definitions that must
+# agree, maintained separately, is the exact failure both guards exist to
+# prevent, so they now live once in `tests/edge_tally.py`.
+#
+# The surviving copy is the stricter one: it also matches the tally spelled out
+# in words, and normalises whitespace first. Both mattered — the digit-only
+# version walked past *"the single EDGE pass in fifteen claims"*, and matching
+# raw text made coverage depend on where a hard-wrapped line happened to break.
 
 
 def test_the_register_can_still_answer_what_k_is():
@@ -209,20 +194,6 @@ def test_the_register_can_still_answer_what_k_is():
     assert fams, (
         f"no rows in {REGISTRATIONS} parse as EDGE claims with a "
         f"`bonferroni_k`; the budget guard below is measuring nothing")
-
-
-# `K is 16`, `K = 16`, `2 passes in 16`, `only EDGE pass in 15 claims` — every
-# shape the skills currently use to state the budget. Deliberately requires a
-# digit, so `bot-pre-registration`'s "the only three-of-three pass in the
-# record" (a description of §51's clauses, not of K) is not swept up.
-K_STATED_RE = re.compile(
-    r"\bK is (?P<a>\d+)\b"
-    r"|\bK\s*=\s*(?P<b>\d+)\b"
-    r"|(?:\d+ )?pass(?:es)? in (?P<c>\d+)\b"
-    r"|\bin (?P<d>\d+) claims\b")
-
-# The `M` half of "M passes in N".
-M_STATED_RE = re.compile(r"\b(?P<m>\d+) pass(?:es)? in \d+\b")
 
 
 @pytest.mark.parametrize("name,path", ALL, ids=[n for n, _ in ALL])
@@ -235,10 +206,8 @@ def test_the_bonferroni_budget_a_skill_states_matches_the_register(name, path):
     against, and a session that believes K is 15 registers the sixteenth claim
     at the fifteenth claim's significance threshold.
     """
-    k = max(edge_families())
-    text = open(path).read()
-    stated = {int(m.group(g)) for m in K_STATED_RE.finditer(text)
-              for g in ("a", "b", "c", "d") if m.group(g) is not None}
+    k = current_k()
+    stated = stated_ks(open(path).read())
     wrong = sorted(stated - {k})
     assert not wrong, (
         f"{path} states the EDGE budget as {wrong}; {REGISTRATIONS} says "
@@ -265,12 +234,8 @@ def test_no_skill_claims_more_edge_passes_than_the_verdicts_support(name, path):
     of 3, because §44's conjunction sank it) and never above it. That is the
     overclaim direction, which is the one this project guards hardest.
     """
-    latest = {v["id"]: v for v in _rows(VERDICTS)}
-    ceiling = sum(any(latest.get(sid, {}).get("passed") for sid in ids)
-                  for ids in edge_families().values())
-    text = open(path).read()
-    over = sorted({int(m.group("m")) for m in M_STATED_RE.finditer(text)}
-                  - set(range(ceiling + 1)))
+    ceiling = passing_family_ceiling()
+    over = sorted(stated_ms(open(path).read()) - set(range(ceiling + 1)))
     assert not over, (
         f"{path} claims {over} EDGE passes; at most {ceiling} of the "
         f"registered EDGE families have even one passing arm in "
