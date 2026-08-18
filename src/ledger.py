@@ -237,6 +237,13 @@ class Ledger:
             if r["type"] == "outcome" and r["trade_id"] in decisions:
                 merged = dict(decisions[r["trade_id"]])
                 merged.update({k: r[k] for k in ("exit_price", "pnl", "pnl_pct", "result")})
+                # Absent, never 0.0 — see close_trade()'s docstring. Copied only
+                # when present so a dashboard reading merged.get("alpha_pct")
+                # can tell "no benchmark move was computable" from "matched it".
+                if "benchmark_pnl_pct" in r:
+                    merged["benchmark_pnl_pct"] = r["benchmark_pnl_pct"]
+                if "alpha_pct" in r:
+                    merged["alpha_pct"] = r["alpha_pct"]
                 merged["exit_reason"] = r.get("exit_reason", "")
                 merged["exit_ts"] = r.get("ts")   # when the outcome was recorded
                 out.append(merged)

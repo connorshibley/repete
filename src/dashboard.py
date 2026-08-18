@@ -34,6 +34,7 @@ import sitepaths
 OUT_PATH = "dashboard.html"
 DATA_PATH = "dashboard_data.json"
 N_DECISIONS = 30
+N_CLOSED = 30
 DEFAULT_START_EQUITY = 100_000.0
 
 # Ratio statistics below this many closed trades render as "not yet meaningful"
@@ -1044,6 +1045,53 @@ def _positions_rows(open_trades: dict, now: datetime,
             + "</table></div>")
 
 
+def _closed_positions_rows(closed: list[dict]) -> str:
+    """What closed, and how much it made or lost. Most recent first, capped
+    at N_CLOSED — same reasoning as N_DECISIONS: history keeps growing, the
+    page should not.
+
+    `entry_price` here is the same SIGNAL price _positions_rows() warns about
+    for the unmarked open table — there is no broker fill-price equivalent for
+    a closed trade — so this column carries the same caveat, not a new one.
+
+    `vs SPY` (alpha_pct) prints an em-dash when absent rather than 0.00%: per
+    close_trade()'s docstring, absent means the benchmark move could not be
+    computed, not that the trade matched the market.
+    """
+    if not closed:
+        return "<p class=small>No closed trades yet.</p>"
+
+    ordered = sorted(closed, key=lambda r: r.get("exit_ts") or "", reverse=True)
+    rows = []
+    for r in ordered[:N_CLOSED]:
+        pnl = r.get("pnl")
+        pnl_pct = r.get("pnl_pct")
+        alpha = r.get("alpha_pct")
+        pl_cls = "win" if (pnl or 0) >= 0 else "loss"
+        exit_ts = r.get("exit_ts") or ""
+        entry = r.get("entry_price")
+        exit_px = r.get("exit_price")
+        cells = [
+            f"<td>{_esc(r.get('symbol'))}</td>",
+            f"<td>{_esc(r.get('strategy') or 'ma_crossover')}</td>",
+            f"<td>{r.get('qty') or ''}</td>",
+            f"<td>{_fmt_money(entry) if entry else '—'}</td>",
+            f"<td>{_fmt_money(exit_px) if exit_px is not None else '—'}</td>",
+            (f'<td class={pl_cls}>{_fmt_signed(pnl)}'
+             f'{f" ({pnl_pct:+.2f}%)" if pnl_pct is not None else ""}</td>'
+             if pnl is not None else "<td>—</td>"),
+            f"<td>{f'{alpha:+.2f}%' if alpha is not None else '—'}</td>",
+            f"<td>{_esc(r.get('exit_reason') or '—')}</td>",
+            f"<td>{_esc(exit_ts[:16].replace('T', ' ')) if exit_ts else '—'}</td>",
+        ]
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    head = ("<tr><th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th>"
+            "<th>Exit</th><th>P&amp;L</th><th>vs SPY</th><th>Exit reason</th>"
+            "<th>Closed (UTC)</th></tr>")
+    return "<div class=tblwrap><table>" + head + "".join(rows) + "</table></div>"
+
+
 def _decisions_rows(records: list[dict]) -> str:
     decisions = [r for r in records if r.get("type") == "decision"][-N_DECISIONS:]
     rows = []
@@ -1370,6 +1418,7 @@ def render(cfg: dict | None = None, out_path: str | None = None,
         "hero": _hero(total_pl, start, equity_now, realized_only, speech),
         "cards": cards,
         "positions": _positions_rows(ledger.open_buys(), now, mark),
+        "closed": _closed_positions_rows(ledger.closed_trades()),
         "decisions": _decisions_rows(records),
         "plchart": pl_chart,
         "eqchart": eq_chart + chart_note,
@@ -1406,6 +1455,8 @@ after every cycle from the append-only ledger &nbsp;{badge}</p>
 <div id=rgn-cards>{regions['cards']}</div>
 <h2>💼 Open positions{_mark_age_note(mark_ts, now)}</h2>
 <div id=rgn-positions>{regions['positions']}</div>
+<h2>📉 Closed positions (last {N_CLOSED})</h2>
+<div id=rgn-closed>{regions['closed']}</div>
 <h2>⚖️ Recent decisions (last {N_DECISIONS})</h2>
 <details open><summary>every signal, the judge's verdict, and what
 happened — filter with the chips</summary>

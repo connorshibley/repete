@@ -20,6 +20,7 @@ def test_render_empty_ledger(tmp_path, cfg):
     html = open(out).read()
     assert "[PAPER]" in html
     assert "No open positions" in html
+    assert "No closed trades yet." in html
     assert "No decisions yet" in html
 
 
@@ -143,6 +144,64 @@ def test_trade_bars_below_threshold_list_trades_instead_of_a_lone_bar(
         cfg, out_path=str(tmp_path / "dash.html"))).read()
     assert "too few for the distribution to have a shape" in html
     assert '<rect class="win"' not in html
+
+
+def test_closed_positions_table_shows_prices_and_signed_pnl(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    tid = led.log_decision("NVDA", "buy", "dip", {}, None, executed=True,
+                           entry_price=100.0, qty=5, strategy="meanrev")
+    led.close_trade(tid, exit_price=104.0, pnl=20.0, pnl_pct=4.0,
+                    exit_reason="take_profit", benchmark_pnl_pct=1.5)
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert "Closed positions" in html
+    assert "NVDA" in html
+    assert "$100.00" in html and "$104.00" in html   # entry -> exit
+    assert "+$20.00 (+4.00%)" in html
+    assert "+2.50%" in html                          # alpha: 4.0 - 1.5
+    assert "take_profit" in html
+
+
+def test_closed_positions_losing_trade_gets_loss_class(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    tid = led.log_decision("XOM", "buy", "sig", {}, None, executed=True,
+                           entry_price=100.0, qty=10, strategy="tsmom")
+    led.close_trade(tid, exit_price=96.0, pnl=-40.0, pnl_pct=-4.0,
+                    exit_reason="stop_loss")
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert "-$40.00 (-4.00%)" in html
+    assert "class=loss>-$40.00" in html
+
+
+def test_closed_positions_absent_alpha_renders_an_em_dash_not_zero(
+        tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    tid = led.log_decision("AAPL", "buy", "sig", {}, None, executed=True,
+                           entry_price=200.0, qty=3, strategy="tsmom")
+    led.close_trade(tid, exit_price=210.0, pnl=30.0, pnl_pct=5.0,
+                    exit_reason="strategy_sell")   # no benchmark_pnl_pct
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    assert "<td>—</td><td>strategy_sell</td>" in html
+    assert "0.00%</td><td>strategy_sell" not in html
+
+
+def test_closed_positions_table_caps_at_n_closed_newest_first(tmp_path, cfg):
+    cfg = _cfg_paths(cfg, tmp_path)
+    led = Ledger(cfg["memory"]["ledger_path"])
+    _close_n(led, dashboard.N_CLOSED + 5)
+    html = open(dashboard.render(
+        cfg, out_path=str(tmp_path / "dash.html"))).read()
+    start = html.index("id=rgn-closed>") + len("id=rgn-closed>")
+    end = html.index("<h2>⚖️ Recent decisions", start)
+    closed_section = html[start:end]
+    assert closed_section.count("<tr><td>") == dashboard.N_CLOSED
+    assert f">S{dashboard.N_CLOSED + 4}<" in closed_section   # newest kept
+    assert ">S0<" not in closed_section                        # oldest dropped
 
 
 def test_filter_chips_and_row_classes(tmp_path, cfg):
