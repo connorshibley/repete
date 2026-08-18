@@ -1392,10 +1392,10 @@ def render(cfg: dict | None = None, out_path: str | None = None,
 
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>trading-agent dashboard</title><style>{CSS}</style></head><body>
+<title>Repete dashboard</title><style>{CSS}</style></head><body>
 {_boot(total_pl, len(open_now), n_symbols)}
 <div class=wrap>
-<h1>trading-agent <span class=small>[PAPER] — generated
+<h1>Repete <span class=small>[PAPER] — generated
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>
 &nbsp; <a class=x href="journal.html">trade journal →</a>
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
