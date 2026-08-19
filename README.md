@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**2,537 tests as of 2026-08-15**, offline by design — no credentials, ever, in CI.
+**2,541 tests as of 2026-08-18**, offline by design — no credentials, ever, in CI.
 
 **Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
 regenerates the test count, the divergence total and the open/closed split, and
@@ -169,16 +169,16 @@ hand all scored about the same as random. So a strategy that looks best on this
 data cannot be trusted to be best, and the programme is allowed to reject but
 not yet to accept.
 
-**Live record: 13 closed round-trips as of 2026-08-14**, first close 2026-07-21 —
+**Live record: 14 closed round-trips as of 2026-08-18**, first close 2026-07-21 —
 +16.78%, +10.67%, +6.40%, −8.59%, −3.67%, −5.61%, +2.33%, +0.04%, +0.18%, −2.09%,
-−1.63%, −4.49%, −4.14%. Realized **−$812.46**, profit factor **0.33**.
+−1.63%, −4.49%, −4.14%, −7.27%. Realized **−$1,092.74**, profit factor **0.27**.
 
-**Six of the thirteen won, and it still lost money** — the losers were bigger.
+**Six of the fourteen won, and it still lost money** — the losers were bigger.
 That pair of facts is why a win rate is not reported here on its own, and it is
-the kind of number a hit-rate headline is built to hide. The two closes since
-2026-08-11 were both losers, which is why the profit factor fell from 0.49 to
-0.33 while the win count did not move at all — the clearest illustration on
-record of why a hit rate is not a result.
+the kind of number a hit-rate headline is built to hide. The three closes since
+2026-08-11 were all losers, which is why the profit factor fell further, from
+0.33 to 0.27, while the win count did not move at all — the clearest
+illustration on record of why a hit rate is not a result.
 
 **n=10 decides nothing** in either direction, and no average of ten numbers
 belongs in a README. Going live is gated behind **≥30 closed trades, ≥60 days,
@@ -213,7 +213,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 2537, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2541, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

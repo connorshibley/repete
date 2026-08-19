@@ -1175,6 +1175,15 @@
         "s73d"
       ],
       "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§74",
+      "heading": "## §74 CANDIDATE (not registered) — factor tilts from the \"Beating the S&P 500\" review",
+      "start_line": 6880,
+      "body_sha256": "3ceee64c9d3c9e119aa151d7b90a808121104d63ae50a0f8692ef79d2cc61296",
+      "subheadings": [],
+      "specs": [],
+      "spec_source": "id+header+trailer"
     }
   ]
 }

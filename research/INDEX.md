@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **78 sections, 6,878 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **79 sections, 6,927 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -100,6 +100,7 @@ column has been corrected — they are placed side by side.
 | §71 | GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED | DIAGNOSTIC | pre-registered | 0/3 | 2026-08-12 |
 | §72 | THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 | EDGE | pre-registered | 3/4 | 2026-08-12 |
 | §73 | MACRO ENTRY GATE (UNRATE): 0 OF 4 — THE FAMILY IS CLOSED | DIAGNOSTIC | pre-registered | 0/4 | 2026-08-12 |
+| §74 | CANDIDATE (not registered) — factor tilts from the "Beating the S&P 500" revi… | — | not registered | — | — |
 
 A `gate result` of `—` means no spec was registered against that
 section; the first registered section is §35. And a ratio is not a section

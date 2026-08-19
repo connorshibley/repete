@@ -310,6 +310,12 @@ EXEMPT_DOCS = {
         "the record said at the time, which is the whole point of it",
     "research/beat_spy_report_2026-08.md":
         "same — a frozen statement of what the record said on its own date",
+    "knowledge/source-review-beating-the-sp500.md":
+        "a dated source review. Its only K is §67's own registration (K=15), "
+        "cited as a historical fact about that section, not a claim about the "
+        "current budget. Listed by name rather than exempting the "
+        "source-review prefix: a future review that argues from the CURRENT "
+        "budget should fail this and be classified deliberately",
     "research/INDEX.md":
         "one row per section, each carrying the K of that registration. Not a "
         "statement about the current budget",
