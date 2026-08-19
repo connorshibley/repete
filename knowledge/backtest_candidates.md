@@ -6876,3 +6876,52 @@ hard entry block, the shape invariant #2 originally scoped it for) is not
 foreclosed and is not licensed by this section either.
 
 <!-- recall: section=§73 specs=s73a,s73b,s73c,s73d -->
+
+## §74 CANDIDATE (not registered) — factor tilts from the "Beating the S&P 500" review
+
+**2026-08-18.** Nothing here was registered, no K was spent, no gate ran —
+same shape as §52. Source review: `knowledge/source-review-beating-the-sp500.md`.
+
+**The claim, in one sentence.** A quality tilt (QMJ/RMW), and secondarily a
+value (HML) or F-Score screen, applied to the equity universe would beat
+buy-and-hold SPY net of costs — the report scores quality as the *"most
+implementable factor tilt"* of the set at RMW 2.87% ann., Sharpe 0.37, on low
+turnover.
+
+**What it would cost to test.**
+- Snapshot: a **point-in-time** universe with fundamentals. `data/pit/` is the
+  only candidate and is frozen for a spent licence; `data/snapshots/` cannot
+  serve this, because a factor screen ranks names *within* a universe and a
+  survivorship-contaminated universe silently rewrites the ranking.
+- Rule: `beats_benchmark_symbol` with `symbol: SPY`, plus
+  `beats_benchmark_risk_adjusted`. **Never `beats_exposure_matched`** — §48
+  established that any long-biased strategy passes that clause.
+- Arms: at minimum a `baseline` long-only SPY arm against a quality-ranked arm
+  at matched deployment, across the standard period splits. Rebalance
+  frequency, universe construction, and cost model are all **unspecified by
+  the source** and would be our design decisions, not the report's — which is
+  itself a reason the report's numbers would not transfer to the result.
+- Cost: one full K slot per period arm, against a budget that is frozen.
+
+**What would have to be true first.**
+1. The §52 freeze lifts — i.e. a fundamentals-carrying, point-in-time source
+   passes `scripts/probe_delisted_coverage.py`.
+2. Hands-off ends: the decay monitor reaches n=20 closed trades (it has not).
+3. A spec exists that is ours and is written down before the run, per
+   `bot-pre-registration`.
+
+**The honest prior — supplied by the source itself.** Low. The report's own
+synthesis is that *"for the large majority of approaches surveyed here, the
+evidence does not support a durable edge over the S&P 500 net of costs and
+taxes."* Specifically: value has run **−0.39% ann. since 2015**; smart-beta
+products carrying exactly these tilts fall from ~3% pre-listing to −0.50% to
+−1% post-listing, with the edge *"virtually disappearing"* once live; only
+~35% of published anomalies replicate value-weighted (Hou-Xue-Zhang); and
+F-Score's sample ends in 1996 with a ~35% post-publication haircut expected.
+Quality's own recent stretch in the table is **−8.95% ann. 2024–2026:06**.
+
+The momentum family is **not** parked here — it is closed. §67/§71 returned
+0 of 3 twice ("THE FAMILY IS PERMANENTLY CLOSED") and §53 rejected xsmom
+130/30 3 of 4.
+
+<!-- recall: section=§74 specs= -->
