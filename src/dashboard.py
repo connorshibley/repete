@@ -302,6 +302,22 @@ details>summary{cursor:pointer;color:var(--ink2);font-size:13px;
       color:var(--ink2);background:var(--surf)}
 .chip:hover{border-color:var(--blue)}
 .chip.on{color:var(--ink);border-color:var(--blue);background:var(--surf2)}
+/* First-time-visitor explainer. Reuses the .veto/.downsize/.approve verdict
+   colours from the decisions table below, so a reader learns the code once
+   here and recognises it later rather than twice. */
+.howworks{background:var(--surf);border:1px solid var(--line);
+      border-radius:12px;padding:14px 18px;margin:14px 0}
+.howworks summary{font-size:14px;color:var(--ink)}
+.howworks>p{margin-top:10px}
+.hwsteps{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
+.hwstep{flex:1 1 190px;background:#ffffff;border:1px solid var(--line);
+      border-radius:10px;padding:14px 14px 12px;position:relative}
+.hwstep .n{position:absolute;top:-9px;left:12px;width:20px;height:20px;
+      border-radius:50%;background:var(--violet);color:#fff;font-size:11px;
+      font-weight:700;display:flex;align-items:center;justify-content:center}
+.hwstep .hwicon{font-size:22px;line-height:1;margin-bottom:6px}
+.hwstep h4{font-size:13px;margin:0 0 6px}
+.hwstep p{font-size:12px;color:var(--ink2);margin:0;line-height:1.55}
 #tip{position:absolute;display:none;background:var(--surf2);
      border:1px solid var(--line);color:var(--ink);padding:6px 10px;
      border-radius:6px;font-size:12px;pointer-events:none;z-index:10;
@@ -959,6 +975,76 @@ def _mark_age_note(mark_ts: str | None, now: datetime) -> str:
     return f' <span class=small>— valued {stamp}</span>'
 
 
+def _how_it_works() -> str:
+    """First-time-visitor explainer: what Repete is and how one decision
+    happens, in plain language. Static chrome, not a `regions` entry — this
+    doesn't change between cycles, so it isn't part of the hash-poll payload.
+
+    The three verdict words and their colors (approve/downsize/veto, green/
+    amber/red) are the exact strings `src/llm.py` returns and the exact
+    `.badge` classes the decisions table below renders — reused rather than
+    paraphrased, so a reader learns the vocabulary once, here, and recognizes
+    it later instead of meeting a second, softer set of words for the same
+    thing.
+    """
+    steps = [
+        ("📐", "A simple math rule spots a pattern",
+         "No AI yet. Plain arithmetic on a stock's recent price history "
+         "checks for one of three shapes: has it been trending up for "
+         "months, did it dip after a longer uptrend, or did a short "
+         "average cross a longer one. If a shape matches, this step raises "
+         "its hand: “I want to buy X” or “I want to sell "
+         "Y.” That's the whole idea at this point — a rule, not "
+         "a hunch."),
+        ("🤖", "An AI gives it a second opinion",
+         "The same kind of AI language model you might chat with reads "
+         "the day's news, the stock's recent story, and Repete's own "
+         "track record so far, then rules one of exactly three ways: "
+         "<span class=approve><b>approve</b></span> it as proposed, "
+         "<span class=downsize><b>downsize</b></span> it to a smaller "
+         "bet, or <span class=veto><b>veto</b></span> it outright. The "
+         "one thing it can never do is make the trade bigger than the "
+         "rule asked for, or invent a trade nobody proposed — it's "
+         "a brake, never an accelerator."),
+        ("🛑", "Hard-coded safety rules get the final word",
+         "No AI here either, and no appeal: plain code checks things "
+         "like “is this trade too big a slice of the account,"
+         "” “has the account already lost too much today,"
+         "” and “is too much money already riding on similar "
+         "stocks.” If any check fails, the trade is blocked "
+         "— even if the rule and the AI both said yes."),
+        ("📝", "If it clears every step, the trade is placed",
+         "With pretend money only, through a real stock brokerage "
+         "(Alpaca), with an automatic “sell if this goes wrong” "
+         "price set the same moment the trade is placed."),
+        ("🧾", "Every decision is written down — permanently",
+         "Including the ideas that got downsized, vetoed, or blocked "
+         "before they ever became a trade. Nothing is edited or deleted "
+         "after the fact. That record is everything you see on the rest "
+         "of this page."),
+    ]
+    cards = "".join(
+        f'<div class=hwstep><div class=n>{i}</div>'
+        f'<div class=hwicon>{icon}</div><h4>{_esc(title)}</h4>'
+        f'<p>{body}</p></div>'
+        for i, (icon, title, body) in enumerate(steps, 1))
+    return (
+        '<details class=howworks><summary><b>\U0001F916 How does Repete '
+        'decide what to trade? — read this first</b></summary>'
+        '<p class=small>Repete is a computer program that trades pretend '
+        'money automatically, once a day, on a short list of well-known '
+        'stocks. Nobody clicks “buy” — every decision goes '
+        'through the same five steps below, and every step’s outcome '
+        'is logged, including the ideas that never became a trade:</p>'
+        f'<div class=hwsteps>{cards}</div>'
+        '<p class=small>Is it actually any good at this? '
+        '<b>Not proven yet.</b> Scroll down to “Closed positions” '
+        'and “Per-strategy” for the real, unedited track record '
+        '— wins and losses both, nothing smoothed over. Nothing on '
+        'this page is real money, and nothing on it is investment '
+        'advice.</p></details>')
+
+
 def _positions_rows(open_trades: dict, now: datetime,
                     mark: dict | None = None) -> str:
     """Open book. With a mark, each row also carries what it is worth now.
@@ -1450,6 +1536,7 @@ def render(cfg: dict | None = None, out_path: str | None = None,
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
 <p class=small><span class=livedot></span>live paper account · rebuilt
 after every cycle from the append-only ledger &nbsp;{badge}</p>
+{_how_it_works()}
 <div id=rgn-tape>{regions['tape']}</div>
 <div id=rgn-hero>{regions['hero']}</div>
 <div id=rgn-cards>{regions['cards']}</div>

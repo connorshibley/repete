@@ -275,6 +275,23 @@ def test_boot_splash_present_and_safe(tmp_path, cfg, monkeypatch):
     assert "click anywhere to skip" in html_text
 
 
+def test_how_it_works_explainer_present_and_collapsed(tmp_path, cfg,
+                                                       monkeypatch):
+    """First-time-visitor explainer: collapsed by default (unlike the site's
+    other <details>, which ship `open`), and uses the exact verdict words/
+    colors the decisions table below it renders — not paraphrased synonyms."""
+    html_text = _render_html(tmp_path, cfg, monkeypatch)
+    assert "How does Repete decide what to trade?" in html_text
+    assert "<details class=howworks>" in html_text
+    assert "<details class=howworks open>" not in html_text
+    assert html_text.count('class=hwstep>') == 5
+    assert "<span class=approve><b>approve</b></span>" in html_text
+    assert "<span class=downsize><b>downsize</b></span>" in html_text
+    assert "<span class=veto><b>veto</b></span>" in html_text
+    assert "Not proven yet" in html_text
+    assert "nothing on it is investment advice" in html_text
+
+
 # ---- position marks: current value and +/- % (2026-07-25) ----
 #
 # The dashboard is a STATIC file on GitHub Pages and this suite pins that it
