@@ -14,22 +14,18 @@ services:
         # stale for three days and nothing noticed). deploy/deploy.sh exports
         # this; an empty value degrades the guard to config-drift only.
         GIT_SHA: ${GIT_SHA:-}
+        # Bakes the agent user to the host's own uid/gid (Dockerfile) so it
+        # can read a bind-mounted deploy_key without that key needing to be
+        # world-readable, and can still write everywhere in /app that a
+        # uid-10001-owned image normally could. deploy/deploy.sh exports
+        # these from `id -u`/`id -g`; unset on any host without a
+        # deploy_key mount, which keeps the image's original uid 10001.
+        HOST_UID: ${HOST_UID:-10001}
+        HOST_GID: ${HOST_GID:-10001}
     restart: unless-stopped
     env_file: .env
     environment:
       TZ: America/New_York
-    # Runs as the host's own uid instead of the image's baked-in agent
-    # (10001), so it can read deploy_key without that file needing to be
-    # world-readable -- a private key wide enough for uid 10001 to read is
-    # wide enough for every other local user to read too, which defeats the
-    # point of a deploy key scoped narrowly to one repo. deploy/deploy.sh
-    # exports HOST_UID/HOST_GID (mirrors how it already exports GIT_SHA);
-    # the default keeps every host that doesn't export them on the
-    # image's original uid 10001, unchanged. Still non-root either way, and
-    # the mounted state dirs (memory/logs/backups/.site) were already made
-    # world-writable this session for the same UID-mismatch reason, so this
-    # doesn't need any further chmod on them.
-    user: "${HOST_UID:-10001}:${HOST_GID:-10001}"
     volumes:
       # State is a volume, not image content: the audit trail must survive
       # every rebuild and redeploy.
