@@ -36,6 +36,11 @@ services:
       # credentials (never baked into the image); this just wires the mount
       # the docs already promised.
       - ./.site:/app/.site
+      # The push credential itself: a deploy key scoped to write-access on
+      # ONLY repete-dashboard (not a personal token with account-wide
+      # scope). .site/.git/config's core.sshCommand points at this exact
+      # path. Read-only — the container never needs to write it.
+      - ./deploy_key:/app/deploy_key:ro
     healthcheck:
       test: ["CMD", "python", "src/health.py"]
       interval: 5m
