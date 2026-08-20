@@ -1,4 +1,12 @@
 .env
+# `.env` alone matches that exact name and nothing else, so every SIBLING an
+# editor or a shell leaves behind stayed committable: `.env.save` (vi),
+# `.env.bak`, `.env.swp`, `.env.local`. A real one was sitting untracked in
+# this repo on 2026-08-20 holding live Alpaca and Anthropic keys — one
+# `git add -A` from being published. Ignore the whole family and re-include
+# the one member that is meant to be tracked.
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 HALT
