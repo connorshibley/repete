@@ -9,6 +9,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# scripts/publish_dashboard.sh runs `git -C .site add/commit/push` from
+# INSIDE this container against the host-mounted .site/ checkout (see
+# docker-compose.yml's .site mount) — the base image ships without git at
+# all, which made every publish attempt fail with "git: not found" rather
+# than the intended "no .site/.git, clean no-op". Installed once, near the
+# top, since it changes essentially never and this keeps the layer cached
+# across nearly every rebuild.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependencies first — they change far less often than the source.
 #
 # The LOCKFILE, not requirements.txt (W4-1, 2026-07-29). requirements.txt names
