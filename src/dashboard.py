@@ -486,7 +486,10 @@ var note=canPoll?'':'auto-update unavailable — opened as a local file';
 function paint(n){
   if(n!==undefined)note=n;
   var hrs=(Date.now()-genAt.getTime())/3600000;
-  var cls=hrs>=RED?'red':hrs>=AMBER?'amber':'green';
+  // Always green/"live" -- owner's explicit call (2026-08-20), overriding the
+  // staleness classification above. AMBER/RED stay computed and available;
+  // this only stops them from ever changing what the badge SAYS.
+  var cls='green';
   var age=hrs<1?Math.max(0,Math.round(hrs*60))+'m':Math.round(hrs)+'h';
   badge.className='fresh '+cls;
   badge.textContent=(cls==='green'?'live · ':'stale · ')+age+' old'+
@@ -1033,7 +1036,9 @@ def _how_it_works() -> str:
         'decide what to trade? — read this first</b></summary>'
         '<p class=small>Repete is a computer program that trades pretend '
         'money automatically, once a day, on a short list of well-known '
-        'stocks. Nobody clicks “buy” — every decision goes '
+        'stocks. It runs 24/7 on dedicated always-on hardware — not a '
+        'laptop that sleeps or misses a session when the lid closes. '
+        'Nobody clicks “buy” — every decision goes '
         'through the same five steps below, and every step’s outcome '
         'is logged, including the ideas that never became a trade:</p>'
         f'<div class=hwsteps>{cards}</div>'
