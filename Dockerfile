@@ -16,7 +16,12 @@ WORKDIR /app
 # than the intended "no .site/.git, clean no-op". Installed once, near the
 # top, since it changes essentially never and this keeps the layer cached
 # across nearly every rebuild.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+#
+# openssh-client alongside it: .site's remote is SSH (a deploy_key scoped to
+# write-access on just the dashboard repo, not a broader credential) and
+# git shells out to a real `ssh` binary for that — the base image has
+# neither, so this alone would still fail with "ssh: not found".
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first — they change far less often than the source.
