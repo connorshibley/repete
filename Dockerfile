@@ -55,6 +55,16 @@ RUN useradd --create-home --uid 10001 agent \
     && chown -R agent:agent /app
 USER agent
 
+# git (installed above) refuses to operate on a repo whose ON-DISK owner
+# doesn't match the running UID (its "dubious ownership" check, CVE-2022-
+# 24765) — which is exactly what .site/ is: host-mounted, owned by whatever
+# user cloned it there, read/written by this container's uid 10001. That
+# check exists to stop an attacker-controlled repo path from being trusted
+# silently; /app/.site is a path WE mount on purpose (docker-compose.yml),
+# so declaring it safe here is scoping the exception to the one directory
+# that earns it, not disabling the check globally.
+RUN git config --global --add safe.directory /app/.site
+
 # Secrets arrive as environment variables (ALPACA_API_KEY, ANTHROPIC_API_KEY,
 # X_*, …) — never baked into the image, never a committed .env.
 
