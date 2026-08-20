@@ -51,6 +51,14 @@ else
   printf '  NOTE: no git sha available; the drift guard degrades to config-drift\n'
   printf '        only (which still catches a stale config.yaml).\n'
 fi
+# Runs the container as this host's own uid/gid instead of the image's
+# baked-in agent (10001) -- lets it read a host-mounted deploy_key without
+# that key needing to be world-readable. docker-compose.yml defaults to
+# 10001:10001 (the image's original user) when these are unset, so a host
+# that doesn't need this (no deploy_key mount) is unaffected.
+HOST_UID="$(id -u)"
+HOST_GID="$(id -g)"
+export HOST_UID HOST_GID
 docker compose build
 
 say "start"

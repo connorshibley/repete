@@ -18,6 +18,18 @@ services:
     env_file: .env
     environment:
       TZ: America/New_York
+    # Runs as the host's own uid instead of the image's baked-in agent
+    # (10001), so it can read deploy_key without that file needing to be
+    # world-readable -- a private key wide enough for uid 10001 to read is
+    # wide enough for every other local user to read too, which defeats the
+    # point of a deploy key scoped narrowly to one repo. deploy/deploy.sh
+    # exports HOST_UID/HOST_GID (mirrors how it already exports GIT_SHA);
+    # the default keeps every host that doesn't export them on the
+    # image's original uid 10001, unchanged. Still non-root either way, and
+    # the mounted state dirs (memory/logs/backups/.site) were already made
+    # world-writable this session for the same UID-mismatch reason, so this
+    # doesn't need any further chmod on them.
+    user: "${HOST_UID:-10001}:${HOST_GID:-10001}"
     volumes:
       # State is a volume, not image content: the audit trail must survive
       # every rebuild and redeploy.
@@ -36,6 +48,11 @@ services:
       # credentials (never baked into the image); this just wires the mount
       # the docs already promised.
       - ./.site:/app/.site
+      # The push credential itself: a deploy key scoped to write-access on
+      # ONLY repete-dashboard (not a personal token with account-wide
+      # scope). .site/.git/config's core.sshCommand points at this exact
+      # path. Read-only — the container never needs to write it.
+      - ./deploy_key:/app/deploy_key:ro
     healthcheck:
       test: ["CMD", "python", "src/health.py"]
       interval: 5m
