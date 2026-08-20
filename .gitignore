@@ -38,3 +38,12 @@ backups/
 # had reviewed", and editing risk.py in place while a cycle fires is that exact
 # shape.
 .worktrees/
+
+# The dashboard-publish deploy key, mounted read-only into the container
+# (docker-compose.yml). It is a private key scoped to write on the
+# repete-dashboard repo alone; it lives on the host that publishes and must
+# never enter git. Added here after finding it as an UNCOMMITTED local edit
+# on the Bizon — a hand-fix on one host is not a repo-level guarantee, and
+# any other host that clones this would have had no rule at all.
+deploy_key
+deploy_key.pub
