@@ -28,6 +28,14 @@ services:
       # container's ephemeral layer and vanish on every rebuild/redeploy,
       # defeating the "a backup that has never been restored is a hope" goal.
       - ./backups:/app/backups
+      # deploy/README.md documents this mount ("push credentials mounted at
+      # /app/.site") but nothing here ever actually defined it — so on any
+      # host that followed only this file, scripts/publish_dashboard.sh's own
+      # `[ -d .site/.git ] || exit 0` made publishing a silent, permanent
+      # no-op. The host is responsible for the checkout and its push
+      # credentials (never baked into the image); this just wires the mount
+      # the docs already promised.
+      - ./.site:/app/.site
     healthcheck:
       test: ["CMD", "python", "src/health.py"]
       interval: 5m
