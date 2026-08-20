@@ -50,7 +50,19 @@ ARG GIT_SHA=""
 ENV REPETE_GIT_SHA=$GIT_SHA
 
 # Non-root: the agent never needs privileges. memory/ and logs/ are volumes.
-RUN useradd --create-home --uid 10001 agent \
+#
+# HOST_UID/HOST_GID (default 10001, the original fixed value) let a host
+# bake the agent user to match its own uid at build time -- deploy.sh
+# exports these from `id -u`/`id -g`. Needed for deploy_key (docker-
+# compose.yml): a bind-mounted private key has to stay mode 600, which
+# only the matching uid can read, so "run as some arbitrary fixed uid" and
+# "read a 600 host file" are only both possible if the container's user
+# uid equals the host owner's. A host that doesn't mount a deploy_key
+# never sets these and gets uid 10001 exactly as before.
+ARG HOST_UID=10001
+ARG HOST_GID=10001
+RUN groupadd -g "${HOST_GID}" agent \
+    && useradd --create-home --uid "${HOST_UID}" --gid "${HOST_GID}" agent \
     && mkdir -p memory logs \
     && chown -R agent:agent /app
 USER agent
