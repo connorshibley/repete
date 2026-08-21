@@ -18,9 +18,12 @@ defined.
 **How an alert reaches him:** `ALERT_WEBHOOK_URL` if set, otherwise a macOS
 banner on a Mac, otherwise nothing but a CRITICAL log line. Ask which one is
 in force rather than assuming — `python src/health.py` prints it as
-`alerts=webhook|desktop|log-only`, and preflight refuses to start when there
-is neither a channel nor a named owner. `log-only` on the always-on Linux host
-means an incident is written to a file and nobody is told.
+`alerts=webhook|desktop|log-only`, and the cycle logs a loud
+`preflight_warning` at startup when there is neither a channel nor a named
+owner (a warning, deliberately — alerting never blocks a trading path, and a
+bot that refused to trade because monitoring was unreachable would invert
+that). `log-only` on the always-on Linux host means an incident is written to
+a file and nobody is told.
 
 ## Severity levels
 

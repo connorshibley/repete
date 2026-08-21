@@ -804,7 +804,13 @@ def _bootstrap_cycle():
     # bot WORSE, not unsafe, and must not be able to stop it trading. §61 — the
     # judge silently lost four blocks of its prompt for months because nothing
     # said so out loud.
-    for w_msg in preflight.warnings(cfg):
+    # host_warnings after warnings: same treatment, different jurisdiction —
+    # warnings() convicts the config, host_warnings() convicts this machine
+    # (would an alert reach anyone, and is anyone named?). Env-aware, so it
+    # must never live inside run(): its first draft did, and CI convicted it
+    # in one commit when the same config passed on a Mac and failed on the
+    # Linux runner.
+    for w_msg in preflight.warnings(cfg) + preflight.host_warnings(cfg):
         log.warning("PREFLIGHT: %s", w_msg)
         try:
             ledger.log_event("preflight_warning", w_msg[:500])

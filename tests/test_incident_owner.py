@@ -71,9 +71,9 @@ def test_channel_is_honest_about_a_headless_host(monkeypatch):
     assert alerting.channel() == "log-only"
 
 
-def test_preflight_refuses_when_nobody_is_named_and_nothing_delivers(
+def test_host_warns_when_nobody_is_named_and_nothing_delivers(
         cfg, monkeypatch):
-    """The genuinely unsafe combination, and only that one.
+    """The genuinely unsafe combination, and only that one — as a WARNING.
 
     A named owner with no webhook is a laptop. An unnamed owner with a working
     webhook is a documentation gap. Both alone are survivable. Neither —
@@ -84,16 +84,43 @@ def test_preflight_refuses_when_nobody_is_named_and_nothing_delivers(
     monkeypatch.setattr("sys.platform", "linux")
 
     cfg.setdefault("ops", {})["incident_owner"] = ""
-    fails = preflight.run(cfg)
-    assert any("nobody would be told" in f for f in fails), fails
+    warns = preflight.host_warnings(cfg)
+    assert any("NOBODY WOULD BE TOLD" in w for w in warns), warns
 
     cfg["ops"]["incident_owner"] = "Connor Shibley"
-    assert not any("nobody would be told" in f for f in preflight.run(cfg))
+    assert not any("NOBODY WOULD BE TOLD" in w
+                   for w in preflight.host_warnings(cfg))
 
 
 def test_a_working_channel_alone_is_enough(cfg, monkeypatch):
-    """No name but a real webhook must not block a start — an alert reaches
-    someone, which is the property that matters."""
+    """No name but a real webhook: quiet — an alert reaches someone, which is
+    the property that matters."""
     monkeypatch.setenv(alerting.WEBHOOK_ENV, "https://example.invalid/hook")
     cfg.setdefault("ops", {})["incident_owner"] = ""
-    assert not any("nobody would be told" in f for f in preflight.run(cfg))
+    assert preflight.host_warnings(cfg) == []
+
+
+def test_the_host_check_stays_out_of_pure_preflight(cfg, monkeypatch):
+    """THE REGRESSION CI CAUGHT, pinned.
+
+    The first draft of the host check lived inside preflight.run(), whose
+    contract is "failures the config alone can convict." Reading the platform
+    and an env var inside it made the same config pass on a Mac and fail on
+    the Linux CI runner, which took down every cycle test in one commit — the
+    exact 'CI measures the laptop' class this project keeps cataloguing,
+    committed by the check meant to close an audit finding.
+
+    run() must return the same verdict on this cfg regardless of host state.
+    """
+    monkeypatch.delenv(alerting.WEBHOOK_ENV, raising=False)
+    monkeypatch.setattr("sys.platform", "linux")
+    cfg.setdefault("ops", {})["incident_owner"] = ""
+    fails_bare = preflight.run(cfg)
+
+    monkeypatch.setenv(alerting.WEBHOOK_ENV, "https://example.invalid/hook")
+    fails_wired = preflight.run(cfg)
+
+    assert fails_bare == fails_wired, (
+        "preflight.run() changed its verdict based on host environment — "
+        "host-aware checks belong in host_warnings()")
+    assert not any("NOBODY WOULD BE TOLD" in f for f in fails_bare)
