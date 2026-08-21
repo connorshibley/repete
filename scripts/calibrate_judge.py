@@ -43,15 +43,40 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEDGER = os.path.join(ROOT, "memory", "ledger.jsonl")
 OUT = os.path.join(ROOT, "knowledge", "judge_calibration.json")
 
+sys.path.insert(0, os.path.join(ROOT, "src"))
+# Shared with src/judgments.py so the "was this actually judged?" rule is one
+# definition. A second copy here is how the two would silently disagree about
+# which rows count.
+from llm import is_fallback_review  # noqa: E402
+
 # Below this many judged buys the distribution is noise dressed as data. The
 # haircut model refuses to load a calibration that did not clear it.
 MIN_SAMPLE = 50
 
 
-def collect(ledger_path: str) -> tuple[list[dict], str]:
-    """Every buy decision carrying a judge verdict, plus the ledger's sha."""
+def collect(ledger_path: str) -> tuple[list[dict], str, int]:
+    """Every buy decision ACTUALLY JUDGED, plus the ledger's sha and the count
+    of fallback rows excluded.
+
+    The exclusion was added 2026-08-21 and it is not cosmetic. Until then this
+    filter took any row with a truthy `llm_review`, which includes the fallback
+    dict written when the judge was unreachable — and a fallback is always
+    `scale: 1.0`, so every one of them pulled the modelled haircut toward "no
+    haircut". Measured on the ledger at the time: 15 degraded rows of 301,
+    inflating mean_scale from 0.6482 to 0.6664 in the PERMISSIVE direction.
+
+    That number is not confined to a report. It lands in
+    knowledge/judge_calibration.json, which src/judge_model.py applies to every
+    simulated entry, so the contamination sized up entries in every backtest
+    scored with the judge on.
+
+    The count is returned rather than silently dropped so the emitted
+    calibration can state how many rows it refused — an exclusion nobody can
+    see is indistinguishable from a filter that never fired.
+    """
     h = hashlib.sha256()
     rows = []
+    n_degraded = 0
     with open(ledger_path, "rb") as f:
         for raw in f:
             h.update(raw)
@@ -60,8 +85,11 @@ def collect(ledger_path: str) -> tuple[list[dict], str]:
             r = json.loads(raw)
             if (r.get("type") == "decision" and r.get("action") == "buy"
                     and r.get("llm_review")):
+                if is_fallback_review(r["llm_review"]):
+                    n_degraded += 1
+                    continue
                 rows.append(r)
-    return rows, h.hexdigest()[:16]
+    return rows, h.hexdigest()[:16], n_degraded
 
 
 def calibrate(rows: list[dict]) -> dict:
@@ -114,10 +142,15 @@ def main() -> int:
         print(f"no ledger at {args.ledger}", file=sys.stderr)
         return 2
 
-    rows, sha = collect(args.ledger)
+    rows, sha, n_degraded = collect(args.ledger)
     cal = calibrate(rows)
     cal["source_ledger_sha256_16"] = sha
     cal["min_sample"] = MIN_SAMPLE
+    # Emitted into the calibration file, not just printed. A reader six months
+    # from now needs to know this number was measured on judged rows only —
+    # and if the count is ever large relative to n_judged_buys, that is a
+    # degradation problem showing up in the one place someone will look.
+    cal["n_degraded_excluded"] = n_degraded
 
     for k, v in cal.items():
         print(f"  {k}: {v}")

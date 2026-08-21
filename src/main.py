@@ -1737,10 +1737,19 @@ def _run_cycle(completed_bars_only: bool = False):
                 "outcome": None,
             }
         if sig.action in ENTRY_ACTIONS:  # judge accountability: approvals scored on close
+            # `kind` is conditional because calibration_metrics filters on
+            # kind == "llm", and a fallback approval is not a judgement —
+            # nothing judged it. Recording it as "llm" is exactly how 100% of
+            # this bot's recorded judge approvals came to be fallbacks
+            # (audit, 2026-08-21). The degraded_block path above already makes
+            # this distinction; an entry that EXECUTES under a fallback needs
+            # the same treatment, or the contamination just moves.
             memory.judgments.log_judgment(
                 trade_id, symbol, sig.action, review["verdict"],
                 review.get("scale", 1.0),
-                price, regime_label, kind="llm", executed=True,
+                price, regime_label,
+                kind=("degraded" if llm.is_fallback_review(review) else "llm"),
+                executed=True,
                 reasoning=review.get("reasoning", ""),
                 stop_price=order.get("stop_price"),
                 tp_price=order.get("take_profit_price"), strategy=sig.strategy,

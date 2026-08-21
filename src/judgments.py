@@ -17,6 +17,11 @@ MIN_RESOLVED_FOR_SIGNAL = 30  # below this, calibration is labeled noise
 
 
 import store as store_mod
+# The one literal that identifies a fallback verdict written before the
+# degraded markers existed. Imported rather than copied so the exclusion here
+# and in scripts/calibrate_judge.py cannot drift apart. Cheap: llm imports only
+# llm_client, which imports logging and os — the vendor SDK is loaded lazily.
+from llm import FALLBACK_REASONING
 
 
 class JudgmentStore:
@@ -156,9 +161,30 @@ def downsize_value_usd(judgment: dict, pnl: float) -> float:
     return -pnl * (1 / scale - 1)
 
 
+def _was_actually_judged(j: dict) -> bool:
+    """Did a model produce this verdict, or did the fallback?
+
+    Two filters, because there are two eras. Going forward, main.py and
+    swing_scan.py write kind="degraded" for a fallback, so kind alone is
+    enough. But SIX rows already on disk carry kind="llm" with a fallback
+    verdict — they were written before any degraded marker existed, and the
+    ledger is append-only so they cannot be amended. Their only discriminator
+    is the reasoning string, which is why llm.FALLBACK_REASONING is a shared
+    constant rather than three copies of a literal.
+
+    Those six matter more than their count suggests: they were 100% of the
+    `approve` verdicts on record, so approve_accuracy was computed entirely
+    from trades no model ever approved — and calibration_line feeds that
+    number back into the review prompt.
+    """
+    if j.get("kind") != "llm":
+        return False
+    return str(j.get("reasoning", "")).strip() != FALLBACK_REASONING
+
+
 def calibration_metrics(judgments: dict, min_n: int = 5) -> dict:
     llm = [j for j in judgments.values()
-           if j["kind"] == "llm" and j["resolution"]]
+           if _was_actually_judged(j) and j["resolution"]]
     vetoes = [j for j in llm if j["verdict"] == "veto"]
     approves = [j for j in llm if j["executed"]]
     rails = [j for j in judgments.values()

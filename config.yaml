@@ -1031,8 +1031,21 @@ llm:                   # optional judgment layer (Anthropic API)
                           # latency is single-digit seconds, so 30 is generous.
                           # Non-positive or unparseable values fall back to the
                           # 30s default rather than restoring an unbounded call.
-  on_unavailable: approve # what to do with an ENTRY the judge could not judge
+  on_unavailable: block   # what to do with an ENTRY the judge could not judge
                           # (key absent, API error, unusable reply).
+                          #
+                          # CHANGED approve -> block on 2026-08-21 (owner
+                          # decision, audit remediation). The measurement that
+                          # moved it: SIX live entries were taken at FULL SIZE
+                          # with no risk review, and those six were 100% of the
+                          # `approve` verdicts in the judgment ledger. The judge,
+                          # on every occasion it was actually reached, never once
+                          # approved at full size — every genuine verdict was a
+                          # downsize or a veto. So fail-open was not a rare edge
+                          # case; it was the only path by which this bot ever
+                          # recorded an approval, and those entries were sized
+                          # larger than any trade the judge ever blessed.
+                          #
                           #   approve — degrade to full-size rule-based
                           #             execution. THE HISTORICAL DEFAULT: every
                           #             result in knowledge/backtest_candidates.md

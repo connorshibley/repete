@@ -119,7 +119,13 @@ def test_cycle_logs_judgment_on_executed_buy(cycle_env, cfg):
     js = JudgmentStore(cfg["learning"]["judgments_path"]).replay()
     assert len(js) == 1
     j = next(iter(js.values()))
-    assert j["kind"] == "llm" and j["executed"] and j["verdict"] == "approve"
+    # kind is "degraded", not "llm", and the distinction is the point: this
+    # fixture runs with llm.enabled False, so the "approve" came from the
+    # fallback and NO MODEL JUDGED THIS TRADE. Recording it as "llm" is exactly
+    # how six fabricated approvals entered the live calibration — see
+    # tests/test_fallback_approvals_are_not_judgements.py. If this reads "llm"
+    # again while the judge is off, that contamination is back.
+    assert j["kind"] == "degraded" and j["executed"] and j["verdict"] == "approve"
     assert j["symbol"] == "SPY" and j["price_at_decision"] == 20
     assert j["stop_price"] is not None  # bracket snapshot captured
 
