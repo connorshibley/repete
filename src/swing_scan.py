@@ -258,9 +258,14 @@ def _enter(cand: dict, live: float, cfg, ledger, memory, broker, account,
                                    entry_price=price, qty=qty,
                                    detail="swing_scan", regime=regime_label,
                                    strategy=STRATEGY, trade_plan=plan)
+    # kind is conditional for the same reason as main.py's executed judgment:
+    # a fallback approval is not a judgement, and counting it as one is how
+    # every recorded approval in this bot's history came to be a fallback.
     memory.judgments.log_judgment(
         trade_id, symbol, "buy", review["verdict"], review.get("scale", 1.0),
-        price, regime_label, kind="llm", executed=True,
+        price, regime_label,
+        kind=("degraded" if llm.is_fallback_review(review) else "llm"),
+        executed=True,
         reasoning=review.get("reasoning", ""),
         stop_price=order.get("stop_price"),
         tp_price=order.get("take_profit_price"), strategy=STRATEGY,

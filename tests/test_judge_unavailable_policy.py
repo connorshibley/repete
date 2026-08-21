@@ -166,12 +166,45 @@ def test_a_real_verdict_is_unaffected_by_the_block_policy(monkeypatch):
 def test_a_deliberately_disabled_judge_is_not_an_outage(monkeypatch):
     """`enabled: false` is a choice, not a failure — it must not block trading
     even under the block policy, or switching the judge off would silently
-    switch trading off with it."""
+    switch trading off with it.
+
+    `degraded` stays FALSE here on purpose. It means something FAILED, and
+    main.py ledgers a degradation event for every truthy one — so marking a
+    deliberate switch-off would fire one per signal and breach the 3/day SLO
+    every day the judge is off. That the record is nonetheless excluded from
+    calibration is handled separately, by is_fallback_review(), which keys on
+    the reasoning string and needs no marker.
+    """
     out = llm.review_signal(_Sig(), "",
                             _cfg(enabled=False, on_unavailable="block"))
     assert out["verdict"] == "approve"
     assert not out.get("degraded")
     assert not out.get("unavailable_block")
+    # ...but it is still not a judgement, and must never be counted as one.
+    assert llm.is_fallback_review(out)
+
+
+def test_every_fallback_verdict_is_recognisable_as_one():
+    """The four fallback paths must all be classifiable by one shared rule.
+
+    is_fallback_review is what keeps the live ledger honest, and it has to work
+    on rows written BEFORE the markers existed — six such rows are on disk and
+    the ledger is append-only, so the reasoning string is their only tell.
+    """
+    disabled = llm.review_signal(_Sig(), "", _cfg(enabled=False))
+    assert llm.is_fallback_review(disabled)
+
+    # A historical row: marker absent, reasoning is the only discriminator.
+    historical = {"verdict": "approve", "scale": 1.0,
+                  "reasoning": llm.FALLBACK_REASONING}
+    assert llm.is_fallback_review(historical)
+
+    # A real judgement must NOT match, or the filter would delete the record.
+    real = {"verdict": "downsize", "scale": 0.5,
+            "reasoning": "Momentum is extended and the analogs lost."}
+    assert not llm.is_fallback_review(real)
+    assert not llm.is_fallback_review(None)
+    assert not llm.is_fallback_review({})
 
 
 # ---- the asymmetry that would actually hurt --------------------------------

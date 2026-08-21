@@ -191,3 +191,28 @@ def test_shipped_config_keeps_the_swing_timeframe(shipped):
     than a day-trading bot."""
     assert shipped["strategy"]["timeframe"] == "1Day"
     assert shipped["risk"]["min_holding_days"] >= 1
+
+
+def test_the_shipped_judge_does_not_fail_open(shipped):
+    """An ENTRY the judge could not judge must not execute at full size.
+
+    THIS TEST EXISTS BECAUSE NOTHING PROTECTED THE VALUE. On 2026-08-21 the
+    fail-open default was flipped `approve` -> `block`, and a mutation putting
+    it straight back left ALL 2,548 TESTS GREEN. Every existing test drives
+    `unavailable_policy` with an explicit `_cfg(on_unavailable=...)`, so the
+    behaviour was covered in both directions while the SHIPPED ARTIFACT was
+    covered in neither — the exact fixture-versus-artifact gap this file was
+    written for, and the same shape as the dashboard badge that was hardcoded
+    without a single test going red.
+
+    What the flip is worth: the audit found six live entries taken at full size
+    with no risk review, and those six were 100% of the `approve` verdicts on
+    record. The judge, on every occasion it was actually reached, never once
+    approved at full size.
+
+    If this is ever deliberately reverted, change it here and say why. A pin
+    does not forbid the change; it makes it a decision rather than a drift.
+    """
+    assert shipped["llm"]["on_unavailable"] == "block", (
+        "the shipped config must refuse an entry the judge could not judge; "
+        "'approve' silently executes unreviewed trades at full size")

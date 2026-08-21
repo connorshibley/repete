@@ -68,6 +68,31 @@ Rules:
   the trade's real outcome, and dishonest citations corrupt your own lesson book."""
 
 
+# The exact reasoning string every fallback verdict carries. It is a module
+# constant rather than three copies of a literal because it is the ONLY
+# discriminator available for the six historical judgment rows written before
+# the degraded markers existed: those rows are on disk, the ledger is
+# append-only, and nothing else distinguishes them from a real approval.
+# judgments.py and scripts/calibrate_judge.py both import it, so the historical
+# exclusion is one shared literal that cannot drift out of sync.
+FALLBACK_REASONING = "LLM review disabled/unavailable — rule-based execution."
+
+
+def is_fallback_review(review: dict | None) -> bool:
+    """Was this 'verdict' produced by the fallback rather than by the judge?
+
+    Checks the marker first and the literal reasoning second. The marker is
+    authoritative going forward; the string is what makes records written
+    before 2026-08-21 classifiable at all. A record matching either was never
+    judged, and must not reach any calibration.
+    """
+    if not review:
+        return False
+    if review.get("degraded"):
+        return True
+    return str(review.get("reasoning", "")).strip() == FALLBACK_REASONING
+
+
 def unavailable_policy(cfg: dict) -> str:
     """What to do with an ENTRY when the judge could not judge it.
 
@@ -103,8 +128,20 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     block = unavailable_policy(cfg) == "block"
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
                 "bull_case": "", "bear_case": "", "confidence": None,
-                "reasoning": "LLM review disabled/unavailable — rule-based execution."}
+                "reasoning": FALLBACK_REASONING}
     if not cfg["llm"]["enabled"]:
+        # NOT marked degraded, and that is deliberate — `degraded` means
+        # SOMETHING FAILED, and main.py ledgers a "degradation" event for every
+        # truthy one. A switch-off is a choice, not an outage; marking it here
+        # would fire a degradation per signal and blow the 3/day SLO every day
+        # the judge is deliberately off. test_judge_failure_classes.py pins
+        # exactly that and caught it during this change.
+        #
+        # "was this a failure?" and "was this actually judged?" are different
+        # questions, and conflating them is what made the fix look like a
+        # one-liner. The second question is answered by is_fallback_review()
+        # via FALLBACK_REASONING, which needs no marker at all — and which also
+        # covers the six historical rows on disk that predate every marker.
         return fallback                      # switched off deliberately
     if not _key_present(cfg):
         # Configured ON but unusable. Marked degraded so main.py ledgers it and
