@@ -143,6 +143,31 @@ def run(cfg: dict) -> list[str]:
     # waits and retries, not what it is allowed to trade.
     o = cfg.get("ops") or {}
     if isinstance(o, dict):
+        # Would a failure reach a human, and is there a human named?
+        #
+        # Fails only on the COMBINATION, deliberately. A named owner with no
+        # webhook is a laptop; an unnamed owner with a webhook is a
+        # documentation gap. Both alone are survivable. Neither — nothing
+        # delivers and nobody is named — is the state deploy/SECRETS.md warns
+        # about: "a missed cycle, preflight failure or SLO breach is written
+        # to a log file and NOBODY IS TOLD."
+        #
+        # This calls alerting.channel(), which until 2026-08-21 was called
+        # from nowhere in src/, scripts/ or publisher/ — a correct, tested,
+        # unused function. It was written to make "who gets paged" answerable
+        # BEFORE an incident rather than during one, and nothing ever asked.
+        # It never probes, so this cannot page anyone.
+        owner = str(o.get("incident_owner") or "").strip()
+        try:
+            import alerting
+            reach = alerting.channel()
+        except Exception:  # noqa: BLE001 — preflight never dies on monitoring
+            reach = "unknown"
+        if reach == "log-only" and not owner:
+            fails.append(
+                "no alert channel and no ops.incident_owner — a failure here "
+                "would be written to a log file and nobody would be told. Set "
+                "ALERT_WEBHOOK_URL, or name an owner who checks the logs")
         for key, why in (
             ("broker_timeout_sec",
              "it is the socket timeout; 0 restores the 2026-08-05 hang"),

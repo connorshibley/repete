@@ -100,10 +100,18 @@ def build_cfg(fixture: str, out: str) -> dict:
     return cfg
 
 
-def _spy_bars(fixture: str) -> list[dict] | None:
+def _spy_bars(fixture: str) -> list[dict]:
+    """SPY bars from the fixture, or [] — never None.
+
+    [] and None mean different things to dashboard.render() as of 2026-08-21:
+    None asks it to FETCH the benchmark itself (the fix for the S&P column the
+    16:20 review kept wiping), while [] is the explicit opt-out. QA renders
+    must stay offline and byte-reproducible, so a fixture with no
+    spy_bars.json opts out rather than reaching for the network.
+    """
     path = os.path.join(fixture, "spy_bars.json")
     if not os.path.exists(path):
-        return None
+        return []
     with open(path) as f:
         return json.load(f)
 

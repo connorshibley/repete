@@ -4,6 +4,24 @@ One person operates this system. The value of a written process at N=1 is
 that during an incident you follow steps instead of improvising at the worst
 possible moment.
 
+## Owner
+
+**Connor Shibley.** Also named in `config.yaml` as `ops.incident_owner`, and
+the two must agree — `tests/test_incident_owner.py` fails if they drift.
+
+Added 2026-08-21. Until then this file had a severity table, a six-step
+process, and timeline and postmortem templates — and no name, no contact and
+no escalation target anywhere in it. Every runbook said "alert" without saying
+who receives one, and one refers to "a second operator" who was nowhere
+defined.
+
+**How an alert reaches him:** `ALERT_WEBHOOK_URL` if set, otherwise a macOS
+banner on a Mac, otherwise nothing but a CRITICAL log line. Ask which one is
+in force rather than assuming — `python src/health.py` prints it as
+`alerts=webhook|desktop|log-only`, and preflight refuses to start when there
+is neither a channel nor a named owner. `log-only` on the always-on Linux host
+means an incident is written to a file and nobody is told.
+
 ## Severity levels
 
 | Sev | Definition | Examples | Response |

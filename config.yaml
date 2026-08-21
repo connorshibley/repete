@@ -1437,6 +1437,18 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     vol_high: 0.25
 
 ops:
+  incident_owner: "Connor Shibley"
+                                 # WHO GETS PAGED. Added 2026-08-21: the audit
+                                 # found docs/incident_response.md is the
+                                 # "solo-operator edition" — a severity table,
+                                 # a six-step process, timeline and postmortem
+                                 # templates — with no name, no contact and no
+                                 # escalation target anywhere in it. N is 1
+                                 # here, so this names the operator rather
+                                 # than implying a rota that does not exist.
+                                 # Preflight warns when this is blank, and
+                                 # reports which channel would actually carry
+                                 # an alert.
   max_degradations_per_day: 3    # SLO (2026-07-21): >= this many ledgered fail-open
                                  # 'degradation' events in one day -> single slo_breach
                                  # event + macOS alert. Escalates to a human; never HALTs

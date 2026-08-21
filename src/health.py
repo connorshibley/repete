@@ -319,11 +319,24 @@ def main() -> int:
                   f" (headroom {dd['headroom_pp']:.2f}pp)"
                   if dd.get("drawdown_pct") is not None
                   and dd.get("headroom_pp") is not None else "")
+        # Who would actually be told, printed rather than assumed.
+        # alerting.channel() never probes, so asking is free and cannot page
+        # anyone. It was written for exactly this question and was called from
+        # NOWHERE until 2026-08-21 — so the only moment you could learn the
+        # channel reached nobody was during an incident, through a
+        # notification you were not going to receive. "log-only" here means a
+        # failure goes to a file and no further.
+        try:
+            import alerting
+            alerts_txt = f" | alerts={alerting.channel()}"
+        except Exception:  # noqa: BLE001 — monitoring never breaks the report
+            alerts_txt = ""
         print(f"{'HEALTHY' if s['healthy'] else 'DEGRADED'} | mode={s['mode']}"
               f" | storage={s['storage_backend']}"
               f" | heartbeat={s['heartbeat_age_hours']}h"
               f" | open={s['open_positions']}"
               f"{dd_txt}"
+              f"{alerts_txt}"
               f" | degradations today={s['degradations_today']}")
         for p in s["problems"]:
             print(f"  - {p}")
