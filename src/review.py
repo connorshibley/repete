@@ -147,6 +147,34 @@ def build_report(records: list, learnings_lines: list, now: datetime) -> dict:
     }
 
 
+def spy_benchmark_bars(cfg: dict, days: int) -> list[dict]:
+    """SPY daily bars for the monthly benchmark column. [] when unavailable.
+
+    Extracted from report() 2026-08-21 so the dashboard can reuse it. The
+    dashboard's S&P column had been rendering "n/a" for months, not because
+    the data was missing but because two of the four render() callers passed
+    no bars: the 15:45 cycle populated the column and the 16:20 review
+    re-rendered the same file without it. Last writer wins, and the evening
+    review always ran last.
+
+    Returns a LIST rather than the scalar spy_benchmark_pct() gives, because
+    scorecard.monthly_scorecard needs per-bar data to split by month.
+
+    Never raises: a benchmark is a reporting nicety and must not be able to
+    take down a trading cycle's cosmetic render.
+    """
+    if days < 1:
+        return []
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), ".env"))
+        from broker import Broker as _B
+        return _B(cfg).bars("SPY", "1Day", max(days, 2))
+    except (Exception, SystemExit):  # noqa: BLE001 — offline still renders
+        return []
+
+
 def spy_benchmark_pct(days: int) -> float | None:
     """SPY buy-and-hold % over the review window. None when unavailable."""
     if days < 1:
@@ -289,14 +317,7 @@ def main():
     # measured month by month. SPY bars fetched once; offline => "n/a".
     import scorecard
     records = ledger.all_records()
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), ".env"))
-        from broker import Broker as _B
-        spy_bars = _B(cfg).bars("SPY", "1Day", max(r["history_days"] + 5, 10))
-    except (Exception, SystemExit):  # noqa: BLE001 — offline review still renders
-        spy_bars = []
+    spy_bars = spy_benchmark_bars(cfg, max(r["history_days"] + 5, 10))
     card = scorecard.monthly_scorecard(
         records, spy_bars, scorecard.realized_pnl_by_month(records))
     print()

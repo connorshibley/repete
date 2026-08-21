@@ -462,6 +462,18 @@ if(bl&&src&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
 # the badge still goes amber and then red on schedule. A staleness indicator
 # that depends on the update path working is exactly the control that fails
 # silently when you need it.
+#
+# RESTORED 2026-08-21 (owner's call, reversing his own 2026-08-20 decision on
+# new evidence). For one day paint() read `var cls='green'` and the badge said
+# "live" however stale the page was — shipped in the same commit that added a
+# continuous-uptime claim to the explainer below, so the page asserted it never
+# missed a session while disabling the indicator that would have shown one. No
+# test went red: every badge test asserted the thresholds were PRESENT, none
+# that they were READ.
+#
+# This note lives here, in Python, and NOT in the JS below — LIVE_JS is served
+# to every reader, so a comment inside it is bytes on the wire. The honesty
+# test caught an earlier draft of this very note doing that.
 LIVE_JS = """
 (function(){
 var badge=document.getElementById('fresh');
@@ -486,10 +498,8 @@ var note=canPoll?'':'auto-update unavailable — opened as a local file';
 function paint(n){
   if(n!==undefined)note=n;
   var hrs=(Date.now()-genAt.getTime())/3600000;
-  // Always green/"live" -- owner's explicit call (2026-08-20), overriding the
-  // staleness classification above. AMBER/RED stay computed and available;
-  // this only stops them from ever changing what the badge SAYS.
-  var cls='green';
+  // Keep this a COMPARISON, never an assignment -- see dashboard.py.
+  var cls=hrs>=RED?'red':hrs>=AMBER?'amber':'green';
   var age=hrs<1?Math.max(0,Math.round(hrs*60))+'m':Math.round(hrs)+'h';
   badge.className='fresh '+cls;
   badge.textContent=(cls==='green'?'live · ':'stale · ')+age+' old'+
@@ -528,6 +538,47 @@ def ratio_is_meaningful(n_closed: int | None,
     """Is there enough closed history for a win rate / profit factor to mean
     anything? Pure and separately testable — see MIN_CLOSED_FOR_RATIOS."""
     return bool(n_closed) and n_closed >= min_n
+
+
+def staleness_class(hours: float) -> str:
+    """green / amber / red from the age of the page's data. Pure on purpose.
+
+    Extracted 2026-08-21 so the rule can be asserted directly. Both render
+    paths — the JS repaint and the server-side badge — must go through this or
+    an equivalent comparison, because the failure this guards against is not
+    "the rule is wrong" but "the rule stopped being consulted".
+
+    That is exactly what happened: on 2026-08-20 the JS was changed to
+    `var cls='green'` while STALE_AMBER_HOURS and STALE_RED_HOURS stayed
+    defined and stayed interpolated into the page. Every badge test asserted
+    the thresholds were PRESENT; not one asserted they were READ. All of them
+    passed.
+    """
+    if hours >= STALE_RED_HOURS:
+        return "red"
+    if hours >= STALE_AMBER_HOURS:
+        return "amber"
+    return "green"
+
+
+def data_age_hours(records: list[dict], now) -> float:
+    """Hours since the newest ledger record — the age of what the page SHOWS.
+
+    Deliberately not `now - render_time`: at render time that is always ~0, so
+    a badge computed from it would be green by construction. That would be a
+    second way of never going red, which is the bug this is fixing rather than
+    a fix for it.
+    """
+    stamps = [r.get("ts") for r in records if r.get("ts")]
+    if not stamps:
+        return 0.0
+    try:
+        newest = datetime.fromisoformat(max(stamps))
+    except (TypeError, ValueError):
+        return 0.0
+    if newest.tzinfo is None:
+        newest = newest.replace(tzinfo=timezone.utc)
+    return max(0.0, (now - newest).total_seconds() / 3600.0)
 
 
 def _ratio_cell(text: str, n_closed: int | None) -> tuple[str, str]:
@@ -1034,10 +1085,24 @@ def _how_it_works() -> str:
     return (
         '<details class=howworks><summary><b>\U0001F916 How does Repete '
         'decide what to trade? — read this first</b></summary>'
+        # The line here used to read "It runs 24/7 on dedicated always-on
+        # hardware — not a laptop that sleeps or misses a session when the lid
+        # closes." Removed 2026-08-21. Two problems: it is an availability
+        # claim this page cannot substantiate, and it shipped in the same
+        # commit that stopped the freshness badge from ever saying "stale" —
+        # so the page asserted it never misses a session while disabling the
+        # one indicator that would have shown a missed one.
+        #
+        # What replaces it is the true half plus a pointer to the surface that
+        # MEASURES rather than asserts: publisher/status_view.py reports real
+        # heartbeat age. Same register as "Not proven yet" four lines down,
+        # which is the tone this page earns its credibility from.
         '<p class=small>Repete is a computer program that trades pretend '
         'money automatically, once a day, on a short list of well-known '
-        'stocks. It runs 24/7 on dedicated always-on hardware — not a '
-        'laptop that sleeps or misses a session when the lid closes. '
+        'stocks. It runs on a dedicated always-on machine rather than a '
+        'laptop, so a closed lid is no longer a missed session — but nothing '
+        'is guaranteed, and the badge at the top of this page shows how old '
+        'this data actually is. '
         'Nobody clicks “buy” — every decision goes '
         'through the same five steps below, and every step’s outcome '
         'is logged, including the ideas that never became a trade:</p>'
@@ -1293,6 +1358,23 @@ def render(cfg: dict | None = None, out_path: str | None = None,
     records = ledger.all_records()
     now = datetime.now(timezone.utc)
 
+    # Fetch the benchmark when the caller did not supply one.
+    #
+    # This page's stated goal is to beat the S&P, and its S&P column read
+    # "n/a" with a footer of "Beaten 0/0 months" — not because the data was
+    # missing but because of WHO CALLS THIS. main.py passes spy_bars from the
+    # cycle's own fetch; daily_posts.py and backfill_posts.py passed nothing,
+    # and the 16:20 review re-renders the same file the 15:45 cycle just
+    # wrote. Last writer wins, so the column the cycle populated was wiped
+    # every evening.
+    #
+    # Fixing it at the callers would work until someone adds a fifth one, so
+    # the default lives here instead. `is None` and not `not spy_bars`: an
+    # explicit [] is how qa_render.py renders fixtures offline without a
+    # network call, and that has to keep working.
+    if spy_bars is None:
+        spy_bars = review.spy_benchmark_bars(cfg, 120)
+
     try:
         with open(cfg["memory"]["learnings_path"]) as f:
             learnings = f.readlines()
@@ -1526,9 +1608,17 @@ def render(cfg: dict | None = None, out_path: str | None = None,
 
     live_js = LIVE_JS % {"amber": STALE_AMBER_HOURS, "red": STALE_RED_HOURS,
                          "data": DATA_PATH}
-    badge = (f'<span id=fresh class="fresh green" '
+    # The SERVER-RENDERED badge, and it was never computed — this hardcoded
+    # green predates the 2026-08-20 JS change and survived it, so fixing only
+    # the JS would have left the page permanently "live" for any reader whose
+    # JS is blocked, slow, or throws before paint(). Classified against the
+    # newest ledger record rather than `now`, which at render time is always
+    # ~0 hours old and would be green by construction.
+    _age_h = data_age_hours(records, now)
+    _cls = staleness_class(_age_h)
+    badge = (f'<span id=fresh class="fresh {_cls}" '
              f'data-gen="{now.isoformat()}" data-hash="{payload["hash"]}">'
-             f'live</span>')
+             f'{"live" if _cls == "green" else "stale"}</span>')
 
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

@@ -579,6 +579,52 @@ def _last_nonempty_line(path: str) -> str | None:
         return None  # no ledger yet — first run is fine
 
 
+def host_warnings(cfg: dict) -> list[str]:
+    """Faults only the RUNNING HOST can convict. Warn-only, never blocking.
+
+    Deliberately a third channel, separate from both `run()` and `warnings()`,
+    because those two are pure by contract — "failures the config alone can
+    convict" — and this cannot be: it reads an env var and the platform.
+
+    The first draft of this check lived inside `run()` and CI convicted it in
+    one commit: the same config passed on a Mac (banner channel exists) and
+    failed on the Linux runner (no webhook, fixture with no owner), which took
+    down every cycle test — the exact "CI measures the laptop" class this
+    project keeps cataloguing, committed by the check that was supposed to
+    close an audit finding. Purity is what makes `run()`'s verdicts portable;
+    an env-reading check inside it makes them host-dependent.
+
+    Warn-only is also the correct STRENGTH, not just the correct channel:
+    alerting's own contract is that it never raises into a trading path, and a
+    bot that refuses to TRADE because MONITORING is unreachable would invert
+    that — the failure it guards against is "nobody is told", and the answer
+    to that is to tell someone loudly at startup, not to stand the book down.
+
+    Flags only the combination: no channel that reaches anyone AND no named
+    owner. A named owner with no webhook is a laptop; an unnamed owner with a
+    webhook is a documentation gap. Both alone are survivable. Neither is the
+    state deploy/SECRETS.md warns about: the failure "is written to a log file
+    and nobody is told."
+
+    Uses alerting.channel(), which was called from NOWHERE until 2026-08-21 —
+    correct, tested, unused. It never probes, so this cannot page anyone.
+    """
+    out: list[str] = []
+    owner = str(((cfg.get("ops") or {}).get("incident_owner")) or "").strip()
+    try:
+        import alerting
+        reach = alerting.channel()
+    except Exception as e:  # noqa: BLE001 — a warning must never break startup
+        out.append(f"alert channel could not be determined: {e}")
+        return out
+    if reach == "log-only" and not owner:
+        out.append(
+            "no alert channel and no ops.incident_owner on this host — a "
+            "failure would be written to a log file and NOBODY WOULD BE TOLD. "
+            "Set ALERT_WEBHOOK_URL, or name an owner who checks the logs")
+    return out
+
+
 def warnings(cfg: dict) -> list[str]:
     """Config faults worth SAYING but not worth refusing to trade over.
 
