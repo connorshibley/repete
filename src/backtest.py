@@ -5,7 +5,7 @@ deterministic code the live bot uses (`strategy.generate_signal`, `strategy.atr`
 Isolation guarantees:
   * never imports Ledger/Memory/llm/x_poster — the live audit trail, learnings
     and X posting are untouchable from here;
-  * the only file it writes is the trials log (memory/backtest_trials.jsonl,
+  * the only file it writes is the trials log (DEFAULT_TRIALS_PATH below,
     append-only — every parameter variant tried is recorded, per the
     False-Strategy-Theorem discipline in GUIDE.md);
   * `broker` is imported lazily inside fetch_bars() only when no --bars-file is
@@ -1482,7 +1482,31 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
+# THE trials log path, owned here and nowhere else.
+#
+# Until 2026-08-22 this literal existed in fifteen places — two here, one in
+# revalidate.py, seven gate_*.py scripts, conftest, a test docstring, CLAUDE.md
+# and twice in config.yaml — which is the exact bug src/statepaths.py was
+# written to end ("Three constants can drift where one cannot"). Moving the
+# file without collapsing them would have re-created it with fifteen.
+#
+# research/, not memory/. Two reasons, and the second is the decisive one:
+#   * research/registrations.jsonl and research/verdicts.jsonl live there and
+#     are tracked; the trial log is the third leg of the same record.
+#   * memory/ is gitignored, so a test that reads it is SKIPPED on CI and in
+#     every worktree — "the check that cannot fail", as test_doc_counts.py
+#     already argued for the live trade count. A trial count nobody can
+#     re-derive is not accounting.
+DEFAULT_TRIALS_PATH = "research/trials.jsonl"
+
+
 def append_trial(path: str, record: dict):
+    """Append one trial. Mutates `record` (adds logged_at) — pass a fresh dict.
+
+    Raw open(), not store.open_store(): the sqlite backend is for the live
+    bot's streams, and a research log that nothing on the trading path reads
+    does not need to follow it there.
+    """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     record["logged_at"] = datetime.now(timezone.utc).isoformat()
     with open(path, "a") as f:
@@ -1664,7 +1688,7 @@ def main():
                         "strategy under test (global cap still applies)")
     p.add_argument("--fee", type=float, default=bt.get("fee_per_trade_usd", 0.0))
     p.add_argument("--trials-path",
-                   default=bt.get("trials_path", "memory/backtest_trials.jsonl"))
+                   default=bt.get("trials_path", DEFAULT_TRIALS_PATH))
     args = p.parse_args()
 
     cfg.setdefault("backtest", {})

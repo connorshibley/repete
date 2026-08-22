@@ -104,7 +104,7 @@ def main() -> int:
     p.add_argument("--bars", required=True)
     p.add_argument("--cash", type=float, default=100_000.0)
     p.add_argument("--resamples", type=int, default=sig.DEFAULT_RESAMPLES)
-    p.add_argument("--trials", default="memory/backtest_trials.jsonl")
+    p.add_argument("--trials", default=bt.DEFAULT_TRIALS_PATH)
     args = p.parse_args()
 
     print("§35 pre-specified momentum | claim type: EDGE | NO SELECTION STEP")

@@ -73,7 +73,7 @@ def main() -> int:
     p.add_argument("--baseline", default="baseline",
                    help="name of the arm to treat as the incumbent")
     p.add_argument("--resamples", type=int, default=sig.DEFAULT_RESAMPLES)
-    p.add_argument("--trials", default="memory/backtest_trials.jsonl")
+    p.add_argument("--trials", default=bt.DEFAULT_TRIALS_PATH)
     args = p.parse_args()
 
     cfg = bt.load_config()
