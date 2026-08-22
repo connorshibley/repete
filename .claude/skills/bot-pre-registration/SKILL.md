@@ -53,8 +53,10 @@ made, and it only goes up. **K is 16. The EDGE record is 2 passes in 16.**
 
 The two passes are not equivalent. §51's was broken by its own results section
 (+200.28pp survivorship — see `bot-survivorship-audit`). §72 (trend_hold,
-latch-off, 1.5x financed) is the **first pass on the survivorship-certified
-`data/pit/` universe**, i.e. the first that is not obviously an artifact.
+latch-off, 1.5x financed) was the **first pass on the survivorship-certified
+`data/pit/` universe** — measured with the judge off. **§75 (METHOD, the
+project's first) re-measured it with the judge on and one period of four
+stands.** Neither pass is an edge; the tally is what the register says it is.
 
 **Both bar venues are currently frozen, mechanically.** `register_gate.py`
 refuses `data/snapshots/` (§52) and `data/pit/` (§57's reading rule, re-frozen

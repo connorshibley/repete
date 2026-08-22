@@ -125,7 +125,7 @@
       "key": "METHOD NOTE 2",
       "heading": "## METHOD NOTE 2 — the OOS window is contaminated (2026-07-23)",
       "start_line": 302,
-      "body_sha256": "42aa4050b719e6774ebb4a46853b97b1bd83fb8300ff46c9106059361b395e3c",
+      "body_sha256": "c07292f756e28465ed92ee9ad9d33907804e32480e26398270c894180882c1f4",
       "subheadings": [],
       "specs": [],
       "spec_source": "no registration"
@@ -1152,7 +1152,7 @@
       "key": "§72",
       "heading": "## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)",
       "start_line": 6800,
-      "body_sha256": "3ee1f1eb955a9d915d7bd8575ddf06cc5eff3c39bc249ac19bd56efe99609d1a",
+      "body_sha256": "53aaa62798791eb4f32904c6dc6186c2fbae65ac51273e35dc08cae75e9ef458",
       "subheadings": [],
       "specs": [
         "s72a",
@@ -1165,7 +1165,7 @@
     {
       "key": "§73",
       "heading": "## §73 — MACRO ENTRY GATE (UNRATE): 0 OF 4 — THE FAMILY IS CLOSED (DIAGNOSTIC, K=16, pre-registered 2026-08-12)",
-      "start_line": 6829,
+      "start_line": 6835,
       "body_sha256": "6b72818890c0cd95240ddce9018fc32a316f1a690df997e2d229918aaa5bb33d",
       "subheadings": [],
       "specs": [
@@ -1179,10 +1179,28 @@
     {
       "key": "§74",
       "heading": "## §74 CANDIDATE (not registered) — factor tilts from the \"Beating the S&P 500\" review",
-      "start_line": 6896,
+      "start_line": 6902,
       "body_sha256": "3ceee64c9d3c9e119aa151d7b90a808121104d63ae50a0f8692ef79d2cc61296",
       "subheadings": [],
       "specs": [],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§75",
+      "heading": "## §75 — §72 RE-MEASURED WITH THE JUDGE ON: 1 OF 4 SURVIVES (METHOD, K stays 16, pre-registered 2026-08-22)",
+      "start_line": 6951,
+      "body_sha256": "d037679e58315b43b2fc55960ad4776ca9946d38f922e5addc2d78e7bdc37673",
+      "subheadings": [
+        "### The result",
+        "### What this does and does not mean",
+        "### What this licenses"
+      ],
+      "specs": [
+        "s75a",
+        "s75b",
+        "s75c",
+        "s75d"
+      ],
       "spec_source": "id+header+trailer"
     }
   ]
