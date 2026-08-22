@@ -21,6 +21,14 @@ class Ledger:
         self.model_version: str | None = None  # set once per cycle (modelver)
         # Backend chosen once at startup (store.configure); JSONL by default.
         self._store = store_mod.open_store(path)
+        # The prompt sidecar is opened LAZILY, on the first write, and by
+        # nothing that reads. That is the property the whole design rests on:
+        # all_records()/open_buys()/closed_trades() parse the entire ledger
+        # stream, and closed_trades() runs once per signal inside the cycle
+        # (main.py, via risk.live_kill_blocked). Prompt bodies at ~11 KB each
+        # would make that ~132 MB/year of JSON on the hot path. Kept in a
+        # separate stream, they cost the cycle nothing.
+        self._prompts = None
 
     def set_model_version(self, version: str | None):
         """Stamp every subsequent record with the decision-surface
@@ -44,6 +52,25 @@ class Ledger:
                      trade_plan: dict | None = None,
                      rail: str | None = None) -> str:
         trade_id = str(uuid.uuid4())[:8]
+        # Pull the prompt record OUT of llm_review before it is written.
+        # llm_review is read by review.py, dashboard.py, learn.py,
+        # counterfactual.py and measured by calibrate_judge.py; a blob in it
+        # is a key some reader will iterate. Hashes go top-level; bodies go
+        # to the sidecar keyed by hash; neither goes into llm_review.
+        #
+        # Three states, deliberately distinguishable on disk:
+        #   judged        -> prompt_sha256 is a hex string
+        #   not judged    -> prompt_sha256 is None  (fallback's `_prompt: None`)
+        #   pre-2026-08-22-> key absent entirely
+        # A reader must never treat the third as the second.
+        prompt_fields = {"prompt_sha256": None, "context_sha256": None,
+                         "system_sha256": None, "prompt_chars": None}
+        if llm_review is not None and "_prompt" in llm_review:
+            llm_review = dict(llm_review)
+            pr = llm_review.pop("_prompt")
+            if pr:
+                prompt_fields = {k: pr[k] for k in prompt_fields}
+                self._store_prompt(trade_id, pr)
         self._append({
             "type": "decision",
             "trade_id": trade_id,
@@ -54,6 +81,10 @@ class Ledger:
             "strategy_reason": reason,
             "indicators": indicators,
             "llm_review": llm_review,      # verdict + reasoning from the judgment layer
+            # What the judge was SENT, as hashes (2026-08-22, audit Gate 1d).
+            # The bodies are in the prompt sidecar keyed by these; see
+            # _store_prompt. None = a fallback verdict no model produced.
+            **prompt_fields,
             "executed": executed,
             "detail": detail,              # e.g. risk-rejection reason
             # WHICH rail refused this, as a queryable key rather than prose
@@ -115,6 +146,49 @@ class Ledger:
 
     def log_event(self, event: str, detail: str = ""):
         self._append({"type": "event", "event": event, "detail": detail})
+
+    # Where the sidecar lives: next to the ledger, same backend. With the
+    # sqlite backend store.stream_name() makes this its own stream for free.
+    PROMPT_STREAM_SUFFIX = "decision_prompts.jsonl"
+
+    def prompt_store_path(self) -> str:
+        import os
+        return os.path.join(os.path.dirname(self.path) or ".",
+                            self.PROMPT_STREAM_SUFFIX)
+
+    def _store_prompt(self, trade_id: str, pr: dict):
+        """Write the prompt bodies the ledger row only hashes.
+
+        Content-addressed: one `context` body per context_sha256, one `user`
+        body per prompt_sha256, both joined to the decision by trade_id. Within
+        a cycle the context is identical across symbols, so the first decision
+        writes the body and the rest write only the (cheap) join row.
+
+        DISPLAY AND DIAGNOSIS ONLY — same rule as log_context_eviction.
+        Nothing reads this back to make a trading decision, and nothing on the
+        cycle path reads it at all. Best-effort: a sidecar write must never
+        take down a decision record.
+        """
+        try:
+            if self._prompts is None:
+                self._prompts = store_mod.open_store(self.prompt_store_path())
+                self._seen_contexts: set = set()
+            if pr["context_sha256"] not in self._seen_contexts:
+                self._prompts.append({
+                    "type": "context", "context_sha256": pr["context_sha256"],
+                    "chars": pr["context_chars"], "body": pr["_context"],
+                    "ts": datetime.now(timezone.utc).isoformat()})
+                self._seen_contexts.add(pr["context_sha256"])
+            self._prompts.append({
+                "type": "prompt", "trade_id": trade_id,
+                "prompt_sha256": pr["prompt_sha256"],
+                "system_sha256": pr["system_sha256"],
+                "context_sha256": pr["context_sha256"],
+                "user": pr["_user"],
+                "ts": datetime.now(timezone.utc).isoformat()})
+        except Exception as e:  # noqa: BLE001 — the audit trail is not a trading path
+            import logging
+            logging.getLogger("ledger").warning("prompt sidecar write failed: %s", e)
 
     def log_context_eviction(self, cap: int, assembled_chars: int,
                              blocks_lost: list, budget_overage: int = 0,
