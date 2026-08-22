@@ -42,7 +42,8 @@ allowed itself. Testing sixteen ideas and reporting the best one is how noise
 gets published, so the significance threshold is divided by K. **K = 16 here,
 and the tally is 2 passes in 16** — still a rate consistent with chance. The
 two are not equivalent: §51's pass was explained away by the survivorship in
-its own universe, while §72's is the first on survivorship-certified data.
+its own universe, while §72's was the first on survivorship-certified data —
+and §75 then re-measured it with the judge on, where one period of four stands.
 
 **Enablement gate** — `backtest.enablement_gate`, the function a strategy must
 clear before it may trade live. It is the same function that rejected every
@@ -129,11 +130,11 @@ shipped off, so no single edit or mistaken merge can start trading real money.
 **"2 passes in 16"** — not "we found an edge". Sixteen pre-registered EDGE
 attempts have produced two passes. §51's came from the most survivor-selected
 universe in the project, carrying enough inflation to explain it outright. §72's
-did not — it is the first on survivorship-certified data, which makes it the
-only one that has not already been explained away. That is a reason to take it
-seriously, not a result: at K=16, two passes is still a rate consistent with
-chance, and the asymmetry was frozen before any of these ran:
-**a FAIL is decisive, a PASS is not.**
+was the first on survivorship-certified data — and was measured with the judge
+off. §75 re-measured it with the judge on, the live bot's own haircut
+distribution, and one period of four survives. Neither pass is a result: at
+K=16, two passes is still a rate consistent with chance, and the asymmetry was
+frozen before any of these ran: **a FAIL is decisive, a PASS is not.**
 
 **"n = 13"** — thirteen closed round-trips. Not a track record. Six of the
 thirteen won and the account still lost money (−$812.46, profit factor 0.33),

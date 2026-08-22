@@ -1,0 +1,80 @@
+s75c — METHOD: §72's pass re-measured with the judge on and cost at measured (2014-2019)
+claim METHOD | K=16 | frozen 2026-08-22T18:05:03 | sha 2f9cce94392fd39c… | judge ON
+
+prior: I EXPECT §72's PASS TO DEGRADE, AND I NAME THE CLAUSE AND THE PERIODS BEFORE
+RUNNING. §60 measured that this project's 55 priors carried no information —
+every one said "fail" — so a prior earns its place only by committing a
+specific, falsifiable pattern.
+
+The judge is the only lever that matters. The CORRECTED calibration (mean
+scale 0.595, veto 4.4%) is roughly a 40% position haircut on a levered
+long-only trend follower whose return scales near-linearly with exposure.
+§72's margins over SPY on clause (b) were +41.75pp (2000-06), +3.78pp
+(2007-13) and +8.51pp (2022-26); it already lost 2014-19 by 27.42pp. A 40%
+haircut on +55.08% and +75.57% erases the second and third margins with
+room to spare; it does not erase +51.76% vs +10.01%.
+
+SO: I predict clause (b) on latch_off SURVIVES in 2000-2006 and FAILS in
+2007-2013, 2014-2019 and 2022-2026 — taking the tally from 3-of-4 to
+1-of-4. Under the frozen reading rule below that is the "substantially an
+artifact" branch, and I commit to that reading now.
+
+Slippage decides nothing, and I say so before seeing it: ~0.8pp in §72's
+FAVOUR against margins of 8.5-41.8pp. If a number improves, the cause is
+already named and cannot be claimed as new evidence.
+
+TWO THINGS I DO NOT KNOW. (1) Clause (d) is risk-MATCHED: the judge shrinks
+drawdown as well as return and the scale factor partly compensates. (d) may
+survive where (b) dies; I cannot sign that in advance. (2) s72d cleared
+min_trades by exactly zero (8 vs 8). Whole-share truncation under a 40%
+haircut (judge_model.py zeroed) could fail clause (a) on arithmetic before
+any return question is asked.
+
+READING RULE, FROZEN BEFORE ANY RUN, across s75a-d together, on clause (b),
+latch_off arm — the clause §72's own promotion rule was written in:
+
+  3 of 4, failing 2014-2019 and ONLY 2014-2019 — the same pattern §72
+    recorded. §72 SURVIVES its two known measurement gaps. This licenses
+    NOTHING FURTHER: no enablement, no config change, no new EDGE
+    registration; the venue stays frozen. A METHOD pass removes a doubt; it
+    adds no evidence.
+
+  2 of 4, or 3 of 4 with a DIFFERENT period failing — §72's pass is
+    REGIME-CONTINGENT ON THE MEASUREMENT. Annotate: knowledge/
+    backtest_candidates.md §72, GLOSSARY.md's "first on survivorship-
+    certified data", README.md's "2 passes in 16", and bot-pre-registration/
+    SKILL.md each get a pointer here. The tally line becomes "2 passes in
+    16, one of which does not survive re-measurement with the judge on."
+
+  1 or fewer of 4 — §72's pass was IN SUBSTANTIAL PART an artifact of a
+    judge-less, flat-cost measurement. Same annotations, and the §72
+    headline is SUPERSEDED rather than footnoted. K does NOT move: a
+    withdrawn pass does not refund budget.
+
+In every branch this spends no K, enables nothing, and is not an EDGE claim.
+
+  verified bars_etf_2014-01-01_2019-12-31.json.gz  sha256 847a1ec84edaa40e…
+  verified irx_2000-01-01_2026-08-11.json.gz  sha256 44c3f3f580c0d615…
+  judge calibration n=250 (2026-07-16..2026-08-19)  veto 4.4%  downsize 85.8%  mean scale 0.595
+
+  15 symbols | 2 arms | 2 worker(s)
+
+  baseline                 ret  +29.00%  PF 3.648  maxDD  9.81%  trades    10  symbols   1  deploy  52.62%  (0s)
+                           signals     29  blocked     19  |  regime_exposure 19
+  latch_off                ret  +29.00%  PF 3.648  maxDD  9.81%  trades    10  symbols   1  deploy  52.62%  (0s)
+                           signals     29  blocked     19  |  regime_exposure 19
+
+  judge on baseline               sized     29  cut     25  vetoed     0  truncated to 0     0
+  judge on latch_off              sized     29  cut     25  vetoed     0  truncated to 0     0
+
+  buy-and-hold on this universe: +83.25%
+
+-- PRE-REGISTERED PASS MARK (latch_off) --
+  [PASS] (a) min_trades  10 vs 8
+  [FAIL] (b) beats_benchmark_symbol  +29.00% vs SPY +97.49% | maxDD 9.81% vs SPY 19.35% (reported, not gated)
+  [FAIL] (d) beats_benchmark_risk_adjusted  +29.00% at 9.81% maxDD -> +57.21% levered to SPY's 19.35% maxDD, vs SPY +97.49%
+
+VERDICT: REJECTED  (0s wall)
+  Nothing is enabled. The incumbent stands.
+
+recorded -> research/verdicts.jsonl

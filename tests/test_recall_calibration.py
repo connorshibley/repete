@@ -117,10 +117,16 @@ def test_the_finding_every_scored_prior_predicted_failure():
     # three s72 confirmations — a DETERMINISTIC RE-SCORING of s68's measured
     # result, where predicting pass was arithmetic, not forecasting (s72c,
     # whose frozen rule predicted its own period FAILS, reads expected_fail).
-    # The §60 finding stands for genuine first-run forecasts: none has ever
-    # predicted its own pass.
-    assert out["predicted_pass"] == 3
-    assert out["cells"]["expected_pass|passed"] == 3
+    # AMENDED 2026-08-22 (§75): the FIRST genuine first-run forecast to
+    # predict its own pass. s75a's prior named, before running, that clause
+    # (b) would survive in 2000-2006 and fail the other three periods — a
+    # specific pattern, not arithmetic on a measured result — and it did.
+    # hit_rate moved to 0.83 against an always-fail base of 0.79: the first
+    # time the author's forecasts have beaten the rubber stamp. On ONE
+    # genuine first-run prediction, which is worth exactly that much; the
+    # §60 finding is amended, not overturned, and it is written up in §75.
+    assert out["predicted_pass"] == 4
+    assert out["cells"]["expected_pass|passed"] == 4
     assert out["cells"]["expected_pass|failed"] == 0
     assert out["hit_rate"] >= out["base_rate_always_fail"], (
         "if these ever separate on FIRST-RUN priors, they have started carrying information "
@@ -138,7 +144,7 @@ def test_the_sidecar_is_append_only_json_lines():
     text = recall._read(recall.PRIOR_READINGS)
     rows = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
     # 55 at P13; 63 after s62a-h (Phase 15, 2026-08-11).
-    assert len(rows) == 102  # 55 at P13; 63 after s62; 79 after s64-s67;
+    assert len(rows) == 106  # 55 at P13; 63 after s62; 79 after s64-s67; 102 after s73; 106 after s75;
                               # 98 after s72; 102 after s73a-d (2026-08-12)
     for r in rows:
         assert set(r) == {"id", "spec_sha256", "read_at", "read_by",

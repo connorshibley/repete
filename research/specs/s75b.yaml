@@ -1,0 +1,175 @@
+# §75b — METHOD: does §72's EDGE pass survive its own known measurement gaps?
+#         (2007-2013)
+#
+# NOT AN EDGE CLAIM AND CANNOT BECOME ONE. §72's venue re-froze with its own
+# spend. This asserts no new edge. It re-executes §72's frozen pass mark,
+# byte-for-byte, on §72's frozen snapshot, with §72's arms character for
+# character — changing ONLY how the measurement is taken. Its asymmetry is the
+# opposite of an EDGE claim's: it can only WITHDRAW support from §72, never add
+# any. Hence no Bonferroni spend and no --override-freeze: freeze_violation()
+# returns None for a non-EDGE claim before the path is read
+# (register_gate.py:160, pinned both ways by tests/test_edge_freeze.py:143-148).
+#
+# THE FIRST METHOD CLAIM IN THIS PROJECT: 102 registrations are 76 DIAGNOSTIC,
+# 22 EDGE, 4 CAPACITY, 0 METHOD. DIAGNOSTIC was rejected for this question
+# because run_gate.py prints that a DIAGNOSTIC "decides NOTHING ... cannot
+# enable, reject or support anything", and this must be able to withdraw
+# support from §72. METHOD — "is the way we are measuring sound?" — is the
+# only fit.
+#
+# CONTROL RAN FIRST (2026-08-22, this checkout, main @ 86f28f1): s72a-d
+# re-executed unchanged. Zero drifted fields across every arm. §72
+# reproduces byte-for-byte, so config.yaml — which is NOT in the spec hash —
+# has moved nothing load-bearing since 2026-08-12, and this comparison holds.
+#
+# GAP 1 CLOSED — the judge (divergence #8). §72 ran judge_model: false. This
+#   runs it ON, against knowledge/judge_calibration.json at sha
+#   c19b2ab9adbfed7d5e4f5d8a97f8b51635ea0072a7861d6885b3bc4f0f578e21 —
+#   the CORRECTED calibration (PR #133): n=250, mean_scale 0.595188, veto
+#   0.044, downsize 0.858, 51 degraded rows excluded, observed to 2026-08-19.
+#   Named here because the calibration is referenced by NO other spec and is
+#   not in the hash; this is the first verdict in the project pinned to its
+#   calibration. A ~40% position haircut — larger than the ~27% the
+#   pre-correction file implied, because 22% of its sample was fallbacks.
+#   THIS IS THE ONLY LEVER WITH THE SIZE TO FLIP A CLAUSE.
+# GAP 2 CLOSED — the cost model. §72 scored at the flat 5 bps default.
+#   backtest.measured_slippage_bps() at shipped defaults (min_fills=10,
+#   sane_bps=100) over the live ledger returns 1.55 bps: 30 clean of 41
+#   fill_quality rows, 2026-07-16..2026-08-17, ledger sha256
+#   9a23fcfb85071061d86ddb6b6e1bd36a7c493799ac208bef395682e70715a0c0.
+#   Frozen as a LITERAL on purpose: memory/ is gitignored and appends daily,
+#   so a runner reading it live would score the same frozen spec differently
+#   on different days. Direction stated honestly: 1.55 < 5 makes the backtest
+#   CHEAPER and is FAVOURABLE to §72; at 8-17 round trips it moves ~0.8pp
+#   against margins of 8.5-41.8pp, and SPY is charged the same number
+#   (backtest.py benchmark_stats). Included for completeness; it cannot
+#   decide anything, and saying so in advance is the point.
+# GAP 3 IS NOT A GAP HERE — the earnings blackout (#19). Deliberately NOT
+#   supplied, with proof: this universe is 13-15 ETFs with no earnings dates;
+#   the guard at backtest.py reads earnings_blackout_days from the STRATEGY's
+#   params and only tsmom carries that key; §72 disables tsmom and
+#   trend_hold has no such key. Supplying an earnings aux would change
+#   nothing while implying a gap was shut. Adding the key to trend_hold would
+#   model a filter live does not apply — a fabricated divergence.
+#
+# STILL OPEN and not closed here: #14, #15 (the live judge reads news memory
+# and principles; this model replays a marginal distribution, not a judge —
+# judge_model.py:19-23), plus #13, #16, #18, #21. Judge-on NARROWS #8. It does
+# not close it, and no verdict here may be written up as closing it.
+id: s75b
+claim: METHOD
+title: 'METHOD: §72''s pass re-measured with the judge on and cost at measured (2007-2013)'
+judge_model: true
+snapshot:
+  path: data/pit/bars_etf_2007-01-01_2013-12-31.json.gz
+  sha256: 37e2609b8515998a54729a476ab1a39778e1db9fd0bca6c27992b2972bebc29a
+aux:
+  rate_bars:
+    path: data/aux/irx_2000-01-01_2026-08-11.json.gz
+    sha256: 44c3f3f580c0d61574499732dd46bea3655b92877efbc3ec343ff15d1507aade
+cash: 100000.0
+bonferroni_k: 16
+shared:
+  set:
+    backtest.slippage_bps: 1.55
+arms:
+- name: baseline
+  replace:
+    symbols:
+    - SPY
+  set:
+    strategies.ma_crossover.enabled: false
+    strategies.tsmom.enabled: false
+    strategies.meanrev.enabled: false
+    strategies.trend_hold.enabled: true
+    risk.risk_per_trade_pct: 400.0
+    risk.max_position_pct: 400.0
+    risk.max_portfolio_heat_pct: 10000.0
+    risk.margin.multiplier: 1.5
+    risk.max_drawdown_pct: 10.0
+- name: latch_off
+  replace:
+    symbols:
+    - SPY
+  set:
+    strategies.ma_crossover.enabled: false
+    strategies.tsmom.enabled: false
+    strategies.meanrev.enabled: false
+    strategies.trend_hold.enabled: true
+    risk.risk_per_trade_pct: 400.0
+    risk.max_position_pct: 400.0
+    risk.max_portfolio_heat_pct: 10000.0
+    risk.margin.multiplier: 1.5
+    risk.max_drawdown_pct: 0
+clauses:
+- id: a
+  rule: min_trades
+  n: 8
+- id: b
+  rule: beats_benchmark_symbol
+  symbol: SPY
+- id: d
+  rule: beats_benchmark_risk_adjusted
+  symbol: SPY
+prior: "I EXPECT §72's PASS TO DEGRADE, AND I NAME THE CLAUSE AND THE PERIODS BEFORE\n\
+  RUNNING. §60 measured that this project's 55 priors carried no information —\n\
+  every one said \"fail\" — so a prior earns its place only by committing a\nspecific,\
+  \ falsifiable pattern.\n\nThe judge is the only lever that matters. The CORRECTED\
+  \ calibration (mean\nscale 0.595, veto 4.4%) is roughly a 40% position haircut\
+  \ on a levered\nlong-only trend follower whose return scales near-linearly with\
+  \ exposure.\n§72's margins over SPY on clause (b) were +41.75pp (2000-06), +3.78pp\n\
+  (2007-13) and +8.51pp (2022-26); it already lost 2014-19 by 27.42pp. A 40%\nhaircut\
+  \ on +55.08% and +75.57% erases the second and third margins with\nroom to spare;\
+  \ it does not erase +51.76% vs +10.01%.\n\nSO: I predict clause (b) on latch_off\
+  \ SURVIVES in 2000-2006 and FAILS in\n2007-2013, 2014-2019 and 2022-2026 — taking\
+  \ the tally from 3-of-4 to\n1-of-4. Under the frozen reading rule below that is\
+  \ the \"substantially an\nartifact\" branch, and I commit to that reading now.\n\
+  \nSlippage decides nothing, and I say so before seeing it: ~0.8pp in §72's\nFAVOUR\
+  \ against margins of 8.5-41.8pp. If a number improves, the cause is\nalready named\
+  \ and cannot be claimed as new evidence.\n\nTWO THINGS I DO NOT KNOW. (1) Clause\
+  \ (d) is risk-MATCHED: the judge shrinks\ndrawdown as well as return and the scale\
+  \ factor partly compensates. (d) may\nsurvive where (b) dies; I cannot sign that\
+  \ in advance. (2) s72d cleared\nmin_trades by exactly zero (8 vs 8). Whole-share\
+  \ truncation under a 40%\nhaircut (judge_model.py zeroed) could fail clause (a)\
+  \ on arithmetic before\nany return question is asked.\n\nREADING RULE, FROZEN\
+  \ BEFORE ANY RUN, across s75a-d together, on clause (b),\nlatch_off arm — the\
+  \ clause §72's own promotion rule was written in:\n\n  3 of 4, failing 2014-2019\
+  \ and ONLY 2014-2019 — the same pattern §72\n    recorded. §72 SURVIVES its two\
+  \ known measurement gaps. This licenses\n    NOTHING FURTHER: no enablement, no\
+  \ config change, no new EDGE\n    registration; the venue stays frozen. A METHOD\
+  \ pass removes a doubt; it\n    adds no evidence.\n\n  2 of 4, or 3 of 4 with\
+  \ a DIFFERENT period failing — §72's pass is\n    REGIME-CONTINGENT ON THE MEASUREMENT.\
+  \ Annotate: knowledge/\n    backtest_candidates.md §72, GLOSSARY.md's \"first\
+  \ on survivorship-\n    certified data\", README.md's \"2 passes in 16\", and\
+  \ bot-pre-registration/\n    SKILL.md each get a pointer here. The tally line\
+  \ becomes \"2 passes in\n    16, one of which does not survive re-measurement\
+  \ with the judge on.\"\n\n  1 or fewer of 4 — §72's pass was IN SUBSTANTIAL PART\
+  \ an artifact of a\n    judge-less, flat-cost measurement. Same annotations, and\
+  \ the §72\n    headline is SUPERSEDED rather than footnoted. K does NOT move:\
+  \ a\n    withdrawn pass does not refund budget.\n\nIn every branch this spends\
+  \ no K, enables nothing, and is not an EDGE claim."
+failure_modes:
+- THE CALIBRATION IS OFF-DISTRIBUTION, AND THIS IS THE SHARPEST RISK. Its 250 judged
+  buys come from the shipped 38-name ensemble book on individual megacaps over 34
+  days in Jul-Aug 2026. This applies that marginal distribution to a SPY-only 200-DMA
+  switch at 1.5x over 2000-2026. The judge never saw a signal of this shape; exchangeability
+  is assumed and probably false. A FAIL reads as '§72 does not survive THE JUDGE
+  AS CALIBRATED', not '§72 is refuted' — that distinction must survive into the
+  write-up.
+- 'A DISTRIBUTION IS NOT A REPLAY. judge_model.py cannot recover WHICH trades the
+  judge would have cut; nothing can, retroactively. #14 and #15 stay OPEN. Judge-on
+  NARROWS divergence #8 and may not be written up as closing it.'
+- 'THE MEASURED SLIPPAGE IS A PAPER-BROKER NUMBER: 30 clean fills over one month
+  under mode: paper, largely measuring a fill model that quotes and fills at the
+  same price. It contains no market impact because there is none to contain. Included
+  because it is the repo''s own estimator at its own defaults, not because it is
+  known to be right.'
+- THE BASE CONFIG IS NOT IN THE FROZEN HASH (bt.load_config reads config.yaml from
+  CWD). Comparability rests on the CONTROL run above, not on any check the apparatus
+  performs. Standing hole, recorded here where it binds most.
+- A METHOD FAIL IS NOT AN EDGE CLAIM IN REVERSE. If latch_off degrades that is not
+  evidence that latch_on (the baseline arm) is good or that any config should change.
+  The baseline arm exists only to hold §72's comparison shape fixed.
+- 'FEW INDEPENDENT EPISODES: four periods of regime switches are a handful of bets
+  and re-measuring them creates no new ones. Latch-off is not shippable as-is; remaining
+  rails stay on; gap-through and financing realism carry over from s64/s68/s72 verbatim.'

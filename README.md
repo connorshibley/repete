@@ -120,16 +120,18 @@ than a missed entry.
 
 This is the section most repos leave out.
 
-**Two EDGE claims in sixteen have passed — and they do not mean the same
-thing.** As of 2026-08-12 the tally is **2 passes in 16**, and the difference
-between them is the whole point. §51 ran on the most survivor-selected universe
-in the project, carrying **+200.28pp** of survivorship inflation — large enough
-to explain the result outright. §72 (trend_hold, latch-off, financed 1.5×) is
-the **first pass on survivorship-certified data**, so it is the only one that
-has not already been explained away. Every spec froze the asymmetry before the
-run — *a FAIL is decisive, a PASS is not* — so the caveat was in place before
-either pass arrived, and at K=16 two passes remains a rate consistent with
-chance. §52 found survivorship-free replication **blocked** and froze the EDGE
+**Two EDGE claims in sixteen have passed — and neither survives its own
+caveats.** The tally on the register is **2 passes in 16**. §51 ran on the most
+survivor-selected universe in the project, carrying **+200.28pp** of
+survivorship inflation — large enough to explain the result outright. §72
+(trend_hold, latch-off, financed 1.5×) was the **first pass on
+survivorship-certified data**, measured with the LLM judge switched off in the
+simulator. **§75 re-measured it with the judge on** — the live bot's own
+haircut distribution, applied to the same frozen arms and pass mark — and
+**one period of four stands**, not three. The prior named that pattern before
+the run. Every spec froze the asymmetry before running — *a FAIL is decisive,
+a PASS is not* — so the caveats were in place before either pass arrived, and
+at K=16 two passes remains a rate consistent with chance. §52 found survivorship-free replication **blocked** and froze the EDGE
 budget; §68's pre-committed promotion rule later licensed exactly one
 registration, §72 spent it, and the venue re-froze. None of it was quietly
 dropped: every claim is written up in `knowledge/backtest_candidates.md` with

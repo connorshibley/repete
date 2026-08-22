@@ -317,7 +317,7 @@ Consequences, binding on all future work:
    with it: with N prior comparisons, a marginal pass is more likely to be luck
    than edge. Prefer candidates that pass by a clear margin.
 
-Trial count through §73: 225 arm runs — from `research/verdicts.jsonl`, checked
+Trial count through §75: 241 arm runs — from `research/verdicts.jsonl`, checked
 by `tests/test_trial_count.py`, printed by `scripts/trial_report.py`. This line
 was last hand-typed as "through §11: ~11" and then left for sixty-two
 sections; it is now the one the guard reads, so it cannot drift again.
@@ -6799,6 +6799,12 @@ favorable long bear.
 
 ## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)
 
+> **SUPERSEDED BY §75 (2026-08-22).** This section's result was measured with
+> `judge_model: false`. Re-measured with the judge on — the live bot's own
+> haircut distribution — clause (b) survives in **1 of 4** periods, not 3.
+> The numbers below stand as the record of what was measured; the headline
+> does not. K is unchanged.
+
 The one registration §68's promotion rule licensed, spent on owner
 direction, registered with the audited `--override-freeze` (argument in
 the registration rows) and run as a deterministic re-scoring of s68's
@@ -6941,3 +6947,129 @@ The momentum family is **not** parked here — it is closed. §67/§71 returned
 130/30 3 of 4.
 
 <!-- recall: section=§74 specs= -->
+
+## §75 — §72 RE-MEASURED WITH THE JUDGE ON: 1 OF 4 SURVIVES (METHOD, K stays 16, pre-registered 2026-08-22)
+
+**The project's first METHOD claim.** 102 registrations before this were
+76 DIAGNOSTIC, 22 EDGE, 4 CAPACITY, 0 METHOD. DIAGNOSTIC could not do this
+job: `run_gate.py` prints that a DIAGNOSTIC *"decides NOTHING … cannot
+enable, reject or support anything"*, and this question had to be able to
+**withdraw support** from §72. METHOD — *"is the way we are measuring
+sound?"* — is the only fit. It spends no Bonferroni budget and needed no
+`--override-freeze`: `freeze_violation()` returns `None` for a non-EDGE
+claim before it ever reads the path.
+
+**The question.** §72 is the project's only EDGE pass on
+survivorship-certified data, and it was measured with two known gaps:
+`judge_model: false` (divergence #8 — the live judge cuts most entries and
+the simulator modelled none of that) and the flat 5 bps cost default. §75
+re-executes §72's frozen pass mark, on §72's frozen snapshots, with §72's
+arms **character for character**, changing only how the measurement is
+taken. A third gap, the earnings blackout (#19), is provably inapplicable
+here — the universe is ETFs, and the guard reads `earnings_blackout_days`
+from the strategy, which `trend_hold` does not carry — and was deliberately
+not supplied, because declaring an aux that changes nothing while implying
+a gap was shut is theatre.
+
+**Control first, because two inputs are outside the hash.** `config.yaml`
+is read from the working directory at run time and
+`knowledge/judge_calibration.json` is referenced by no spec and no
+registration row — both are unhashed inputs to every verdict. So before
+§75 ran, `s72a`–`d` were re-executed unchanged on `main @ 86f28f1`. **Zero
+drifted fields across every arm** (`research/s72*_control_2026-08-22.txt`).
+That control, not the apparatus, is what makes the comparison below hold.
+
+**The calibration, pinned for the first time.** This is the first verdict in
+the project that names the calibration it ran against:
+`c19b2ab9adbfed7d…` — the **corrected** file from PR #133 (n=250,
+mean scale 0.595, veto 4.4%, 51 fallback rows excluded). That is roughly a
+**40% position haircut**, not the ~27% the pre-correction file implied,
+because 22% of its sample had been fallback approvals at scale 1.0.
+
+### The result
+
+Clause (b), `beats_benchmark_symbol`, on the `latch_off` arm — the clause
+§72's own promotion rule was written in:
+
+| period | §72 (judge off) | §75 (judge on, 1.55 bps) | judge cut | (b) | (d) |
+|---|---|---|---|---|---|
+| 2000–2006 | +51.76% vs SPY +10.01% | **+49.60%** vs +10.08% | 37 of 48 | **PASS** | PASS |
+| 2007–2013 | +55.08% vs +51.30% | **+23.55%** vs +51.43% | 39 of 46 | FAIL | PASS |
+| 2014–2019 | +69.97% vs +97.39% | **+29.00%** vs +97.49% | 25 of 29 | FAIL | FAIL |
+| 2022–2026 | +75.57% vs +67.06% | **+47.12%** vs +67.15% | 17 of 18 | FAIL | PASS |
+
+**1 of 4.** Under the reading rule frozen in the spec before any run, that is
+the bottom branch: *"§72's pass was IN SUBSTANTIAL PART an artifact of a
+judge-less, flat-cost measurement. The §72 headline is SUPERSEDED rather than
+footnoted. K does NOT move."*
+
+**The prior held — and it committed to this exact pattern.** It named,
+before running, *"clause (b) SURVIVES in 2000-2006 and FAILS in 2007-2013,
+2014-2019 and 2022-2026."* §60 found this project's 55 earlier priors
+carried no information because every one said "fail"; this one said which
+period would not. Both of its named unknowns resolved as flagged:
+
+- **Clause (d), the risk-matched one, survived 3 of 4.** The judge shrinks
+  drawdown as it shrinks return — maxDD 16.95%→10.90%, 26.18%→19.75%,
+  15.80%→8.73% — and the scale factor in (d) rewards that. The prior said
+  *"(d) may survive where (b) dies; I cannot sign that in advance,"* and it
+  did. That is not a back door for §72: (d) was never the clause §68's
+  promotion rule turned on.
+- **`s75d` cleared `min_trades` at exactly 8 vs 8**, again. Whole-share
+  truncation under the haircut zeroed nothing. The arithmetic failure the
+  prior flagged did not fire.
+
+**Slippage decided nothing, as predicted.** 1.55 bps against 5 moves ~0.8pp
+in §72's favour; no clause turned on it.
+
+### What this does and does not mean
+
+It means §72 **does not survive the judge as calibrated.** Three of its four
+periods lose to SPY once the live bot's own haircut distribution is applied
+to its entries. The "first pass on survivorship-certified data" is, with the
+judge modelled, one period of four — and 2000–2006 is the period §48 showed
+carries the most regime-switch benefit for a trend follower.
+
+It does **not** mean §72 is refuted, and the spec's own failure modes say
+why: the calibration is **off-distribution**. Its 250 judged buys came from
+the 38-name megacap ensemble book over 34 days of 2026; this applies that
+marginal distribution to a SPY-only 200-DMA switch at 1.5× over 2000–2026.
+The judge never saw a signal of this shape. A replay could settle it;
+`judge_model.py` is a distribution, not a replay, and says so. #14 and #15
+stay open. Judge-on narrows #8 and does not close it.
+
+### What this licenses
+
+**Nothing.** No K movement — a withdrawn pass does not refund budget. No
+enablement, no config change, no new EDGE registration; the venue stays
+frozen under §57. The baseline arm held §72's comparison shape and is not
+evidence that `latch_on` is better.
+
+The EDGE tally line across the repo now reads: **2 passes in 16 on the
+register, of which §72 does not survive re-measurement with the judge on
+(§75) — one period of four stands.** README, GLOSSARY and the
+pre-registration skill carry the same sentence.
+
+**Trial accounting, first live use.** All 16 arm runs here — 8 control, 8
+§75 — were written to `research/trials.jsonl` by the runner itself, not
+backfilled. `trial_report.py` reads `delta (verdicts - log) : 0` at 241.
+Each row carries the run's per-bar Sharpe, skew and kurtosis
+(`s72a/latch_off`: SR 0.038, kurtosis 7.05 — fat tails), which is what a
+Deflated Sharpe will need and which no verdict before 2026-08-22 has.
+
+**A footnote on §60 that is not a footnote.** §60 scored all 55 priors the
+project had written and found the author's hit rate and a constant "it
+fails" were the *same strategy* — not one prior had predicted its own
+hypothesis would pass. §72's three `expected_pass` readings did not change
+that: they were a deterministic re-scoring where predicting pass was
+arithmetic. **§75a is the first genuine first-run forecast in this project
+to predict its own pass, and it was right.** `recall.calibrate()` moved:
+hit rate **0.83** against an always-fail base of **0.79**, the first time
+the two have separated. On a sample of one genuine prediction, which is
+worth exactly that much — §60 is amended, not overturned. What changed is
+the *form*: a prior that names a clause and a period is falsifiable, and a
+falsifiable prior can be right.
+
+Trial count through §75: 241 arm runs.
+
+<!-- recall: section=§75 specs=s75a,s75b,s75c,s75d -->
