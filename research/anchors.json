@@ -125,7 +125,7 @@
       "key": "METHOD NOTE 2",
       "heading": "## METHOD NOTE 2 — the OOS window is contaminated (2026-07-23)",
       "start_line": 302,
-      "body_sha256": "2458aa2a7f0891db7fc6b032379fe6ac005a30e01ac80a1c45db437874e75908",
+      "body_sha256": "42aa4050b719e6774ebb4a46853b97b1bd83fb8300ff46c9106059361b395e3c",
       "subheadings": [],
       "specs": [],
       "spec_source": "no registration"
@@ -133,7 +133,7 @@
     {
       "key": "§12",
       "heading": "## §12 — position-slot cap `max_open_positions` (2026-07-23) — RULE PRE-REGISTERED",
-      "start_line": 322,
+      "start_line": 338,
       "body_sha256": "ab0a0b3b08cc1b47513b48861e3374ccf64f501675f4d38e880cbab1c838883f",
       "subheadings": [
         "### §12 RESULT — SPLIT: meanrev PASSES, tsmom FAILS. Global raise NOT adopted."
@@ -144,7 +144,7 @@
     {
       "key": "§13",
       "heading": "## §13 — PER-STRATEGY slot allocation (2026-07-23) — PRE-REGISTERED, NOT YET RUN",
-      "start_line": 390,
+      "start_line": 406,
       "body_sha256": "a6d257c2eba9a1442e41da35305bd528e6f90d1626bd5797985bec833304d0e3",
       "subheadings": [
         "### §13 RESULT — ADOPTED for meanrev (alloc 8); tsmom + ma_crossover pinned at 5."
@@ -155,7 +155,7 @@
     {
       "key": "METHOD NOTE 3",
       "heading": "## METHOD NOTE 3 — the §1–§13 snapshot is GONE; those numbers are unreproducible (2026-07-23)",
-      "start_line": 459,
+      "start_line": 475,
       "body_sha256": "ddb3631484114d456fbae6db794d92e2fc58fa78959037c6013f508d7d96f59f",
       "subheadings": [
         "### Re-baselined on `bars_2020-01-01_2026-07-10.json.gz` (sha256 6abb20b5…)"
@@ -166,7 +166,7 @@
     {
       "key": "METHOD NOTE 4",
       "heading": "## METHOD NOTE 4 — multiple-testing correction is now arithmetic, not judgement (2026-07-23)",
-      "start_line": 501,
+      "start_line": 517,
       "body_sha256": "0d3a460dd0c0532be7dc2ab1c6830fbd9a590ca7d1326b08f97e8167a07ba8c1",
       "subheadings": [],
       "specs": [],
@@ -175,7 +175,7 @@
     {
       "key": "§14–§17",
       "heading": "## §14–§17 — PRE-REGISTERED RULES, WRITTEN BEFORE ANY CANDIDATE WAS RUN",
-      "start_line": 518,
+      "start_line": 534,
       "body_sha256": "4b2941795be53173beedb861518057e1cffb0effb6d69557859eae72b7f25af4",
       "subheadings": [
         "### §14–§17 RESULTS (2026-07-23) — FOUR CANDIDATES RUN, **ZERO ADOPTED**"
@@ -186,7 +186,7 @@
     {
       "key": "§18",
       "heading": "## §18 — Concentration + bootstrap edge report (2026-07-23) — NEW STANDING DIAGNOSTIC",
-      "start_line": 615,
+      "start_line": 631,
       "body_sha256": "ff55ecf2677e1890ff1aa65f0dedbaf51d5d4bb8db0a3d47ba4f4c2def171563",
       "subheadings": [],
       "specs": [],
@@ -195,7 +195,7 @@
     {
       "key": "§19",
       "heading": "## §19 — Faster entries (2026-07-23) — RULE PRE-REGISTERED, results in the next commit",
-      "start_line": 658,
+      "start_line": 674,
       "body_sha256": "c2e3eb05d9f68c29b2b8af5a97bdbe2ef58a8189aad9906a33fd205acda388fd",
       "subheadings": [
         "### §19b RESULT — the gate could not answer this; measured directly. ADOPTED 3 -> 5."
@@ -206,7 +206,7 @@
     {
       "key": "§20",
       "heading": "## §20 — RE-GATE UNDER THE ENSEMBLE SIMULATOR (2026-07-23) — RULES PRE-REGISTERED",
-      "start_line": 769,
+      "start_line": 785,
       "body_sha256": "11fc421741c65d03068efd362f58d8287be775ab2b7f8762fe3c1ef03cfbcedd",
       "subheadings": [
         "### The ensemble baseline — a number that has never existed before",
@@ -221,7 +221,7 @@
     {
       "key": "METHOD NOTE 5",
       "heading": "## METHOD NOTE 5 — edge claims vs capacity claims (2026-07-23)",
-      "start_line": 939,
+      "start_line": 955,
       "body_sha256": "55e9856064d833dcaf5863881f7ea5719293a2f7bc1def1ad374e2402a283abd",
       "subheadings": [],
       "specs": [],
@@ -230,7 +230,7 @@
     {
       "key": "§21",
       "heading": "## §21 — EXIT SPEED UNDER THE ENSEMBLE (2026-07-23) — RULES PRE-REGISTERED",
-      "start_line": 966,
+      "start_line": 982,
       "body_sha256": "755593292d07efbf14c7960b92e10cb4f53fe1e43107b373627d0d568368bdea",
       "subheadings": [
         "### §21 RESULTS — both velocity levers REJECTED"
@@ -241,7 +241,7 @@
     {
       "key": "§22",
       "heading": "## §22 — SYMBOL ORDER: §20a REVERTED (2026-07-23)",
-      "start_line": 1032,
+      "start_line": 1048,
       "body_sha256": "989faae6b63d0e04cdce6386145924c7dcb5904fe4eb9f3b3ea26f3a6565e710",
       "subheadings": [],
       "specs": [],
@@ -250,7 +250,7 @@
     {
       "key": "§23",
       "heading": "## §23 — RELATIVE-VOLUME ENTRY FILTER (2026-07-24) — RULES PRE-REGISTERED",
-      "start_line": 1074,
+      "start_line": 1090,
       "body_sha256": "7cd886ec0e56dc7c23abdc3502291db8f8f97c33a620b91d4d1f3e83e2b9c577",
       "subheadings": [
         "### §23 RESULT — REJECTED. The best deterministic numbers in this repo, and still not evidence."
@@ -261,7 +261,7 @@
     {
       "key": "§24",
       "heading": "## §24 — SCAN-ORDER ROTATION (2026-07-24) — ADOPTED as a correctness fix",
-      "start_line": 1175,
+      "start_line": 1191,
       "body_sha256": "98f43f80a36ac027981b596e615ce941083464a8464e09813b9bf6815caaed1b",
       "subheadings": [],
       "specs": [],
@@ -270,7 +270,7 @@
     {
       "key": "PHASE 0",
       "heading": "## PHASE 0 — INTRADAY FEASIBILITY (2026-07-24) — VERDICT: PROCEED, with one large caveat",
-      "start_line": 1234,
+      "start_line": 1250,
       "body_sha256": "4f1ff6680346c429fc20c5376759c047965bc31a59213d69e91bd5034c2784a8",
       "subheadings": [
         "### 1. Data — SOLVED (this was expected to be the blocker)",
@@ -284,7 +284,7 @@
     {
       "key": "§25",
       "heading": "## §25 — INTRADAY FILL TIMING (2026-07-24) — RULES PRE-REGISTERED",
-      "start_line": 1312,
+      "start_line": 1328,
       "body_sha256": "e16ea58af97100b31b560764b32b7d17037e02140b340e9485f7a84d1a66222f",
       "subheadings": [
         "### §25 RUN 1 — VOID. The data had 11 unadjusted stock splits.",
@@ -297,7 +297,7 @@
     {
       "key": "§26",
       "heading": "## §26 — TWO LIVE DIVERGENCES FOUND BY AUDITING PRODUCTION (2026-07-25)",
-      "start_line": 1469,
+      "start_line": 1485,
       "body_sha256": "7e941f546be25d32db7cc2906a664194031d46515a9d0f3ce68357153149788b",
       "subheadings": [
         "### DIVERGENCE #7 — the repo and production had silently diverged",
@@ -310,7 +310,7 @@
     {
       "key": "§27",
       "heading": "## §27 — POSITION BUDGET (2026-07-25) — RULES PRE-REGISTERED",
-      "start_line": 1621,
+      "start_line": 1637,
       "body_sha256": "b5096ece648af5195d2e00d8517dc77a780de6d2d3a15a48409759fdf3ca1aae",
       "subheadings": [
         "### Motivation",
@@ -332,7 +332,7 @@
     {
       "key": "§28",
       "heading": "## §28 — ONE-SHARE FLOOR: NOT REGISTERED. The probe said the gate could not work.",
-      "start_line": 1868,
+      "start_line": 1884,
       "body_sha256": "4894159889def55ccffc7191811abf43ee5e0e9571220ac0e2ca1d97bdb7de3a",
       "subheadings": [
         "### Why it was going to be registered",
@@ -348,7 +348,7 @@
     {
       "key": "§29",
       "heading": "## §29 — UNCAP THE BOOK AND RAISE SIZING (owner decision, 2026-07-26)",
-      "start_line": 1972,
+      "start_line": 1988,
       "body_sha256": "18f87417cf117cd2eca15d4975571af648af9b8353596cdb6d74e97199b47dd0",
       "subheadings": [
         "### Why this is not §27 again",
@@ -369,7 +369,7 @@
     {
       "key": "§30",
       "heading": "### §30 CANDIDATE — tighter down-regime gross cap. NOT ADOPTED.",
-      "start_line": 2105,
+      "start_line": 2121,
       "body_sha256": "740c32eb766306da546b2ca3957335920d8927ddc3d3401ef532c2fca21b2bd3",
       "subheadings": [
         "### §31 CANDIDATE — `daily_loss_limit_pct` is now inconsistent with the DD ceiling",
@@ -382,7 +382,7 @@
     {
       "key": "§31",
       "heading": "## §31 — CROSS-ASSET RISK GATE (pre-registered 2026-07-27, before any run)",
-      "start_line": 2180,
+      "start_line": 2196,
       "body_sha256": "9c25aa3e157da9745169ea713f5bfa77ccc3c9667a73829811b2ea1c414a5787",
       "subheadings": [
         "### Why this idea, and why now",
@@ -403,7 +403,7 @@
     {
       "key": "§32",
       "heading": "## §32 — WIDE-UNIVERSE CROSS-SECTIONAL FACTORS (pre-registered 2026-07-27, before the runner existed)",
-      "start_line": 2395,
+      "start_line": 2411,
       "body_sha256": "a94baf3f7d02b83b7143388442ac4c10abae33f01504dd34b45cc77732dee6ce",
       "subheadings": [
         "### Why, and why this is different from §14–§31",
@@ -424,7 +424,7 @@
     {
       "key": "§33",
       "heading": "## §33 — DOES WALK-FORWARD SELECTION PREDICT? (pre-registered 2026-07-27, before the runner existed)",
-      "start_line": 2667,
+      "start_line": 2683,
       "body_sha256": "cf76ca72251a73d2ead4a55dd785218a3b8364d14345913d6a87cbb3f1b383e1",
       "subheadings": [
         "### Why this comes before any further factor hunting",
@@ -447,7 +447,7 @@
     {
       "key": "§34",
       "heading": "## §34 — IS FOLD-MAJORITY SELECTION ANY BETTER? (pre-registered 2026-07-27, before the runner existed)",
-      "start_line": 2913,
+      "start_line": 2929,
       "body_sha256": "0aae371f856e72a4cb10d4d9c340131ded7f536732dab2aa65e52dfefdd5643c",
       "subheadings": [
         "### The trap this registration exists to avoid",
@@ -468,7 +468,7 @@
     {
       "key": "§35",
       "heading": "## §35 — ONE HYPOTHESIS, NO SELECTION (pre-registered 2026-07-27, before the runner existed)",
-      "start_line": 3067,
+      "start_line": 3083,
       "body_sha256": "628b67b06dbfa3531243f10bc5af40ff1aa67c9a4f6527fb03bc1e181e732f03",
       "subheadings": [
         "### Why this is shaped differently from §14–§32",
@@ -493,7 +493,7 @@
     {
       "key": "§36",
       "heading": "## §36 — THE REFEREE BECOMES A PROGRAM (2026-07-28, tooling — not a claim)",
-      "start_line": 3270,
+      "start_line": 3286,
       "body_sha256": "b9dd1870dded38124c4ab3db2fa17c803048ae2778a1d01c1e77eb36092b8b88",
       "subheadings": [
         "### Why",
@@ -509,7 +509,7 @@
     {
       "key": "§37",
       "heading": "## §37 — FAMILY COHERENCE ON THE FINANCIAL CRISIS (pre-registered 2026-07-28, before the snapshot finished building)",
-      "start_line": 3404,
+      "start_line": 3420,
       "body_sha256": "e89c32e21e9b28f3d1ef295776a19c12eb813a0f8b5929af6f36796342a58fbc",
       "subheadings": [
         "### Why this shape",
@@ -531,7 +531,7 @@
     {
       "key": "§38",
       "heading": "## §38 — THE SAME FAMILY ON 2022-2026. **DIAGNOSTIC — decides nothing.**",
-      "start_line": 3545,
+      "start_line": 3561,
       "body_sha256": "b127d920172f6cb39c763d21cc92ac0de16f9cdf960e96d17e62572068bfcdf5",
       "subheadings": [
         "### The numbers, against §37's",
@@ -547,7 +547,7 @@
     {
       "key": "ALREADY-SEEN OBSERVATION",
       "heading": "## ALREADY-SEEN OBSERVATION (2026-07-28) — the incumbent against its own exposure",
-      "start_line": 3628,
+      "start_line": 3644,
       "body_sha256": "4b9cb48fb39227c2d8456ab9f0fe34d318885331de43c55d55d0d8712aa6bb6f",
       "subheadings": [
         "### Why this is not §39",
@@ -559,7 +559,7 @@
     {
       "key": "§39",
       "heading": "## §39 — THE INCUMBENT FACES ITS OWN GATE (pre-registered 2026-07-29, before the run)",
-      "start_line": 3666,
+      "start_line": 3682,
       "body_sha256": "1aa211ac09110a2f513903e2e0de9d91d23f3d91b1ed992b3a30c7283e56a352",
       "subheadings": [
         "### §39 RESULT — **REJECTED. The incumbent fails its own gate, 3 of 4.**",
@@ -576,7 +576,7 @@
     {
       "key": "§40",
       "heading": "## §40 — WHERE DOES THE CAPITAL GO? (2026-07-29) — **DIAGNOSTIC. And it found the thing.**",
-      "start_line": 3757,
+      "start_line": 3773,
       "body_sha256": "d5bd9a15ceb256df9378ecbfcceb70fb10e2e65c9a61d55d1bd53222d2b33057",
       "subheadings": [
         "### The census",
@@ -594,7 +594,7 @@
     {
       "key": "§41",
       "heading": "## §41 — CAN THE DRAWDOWN CIRCUIT BREAKER RE-CLOSE? (CAPACITY, K=11)",
-      "start_line": 3872,
+      "start_line": 3888,
       "body_sha256": "44e1e72813f1774b07965cc3c8ad36b619c591bc7087f7678fc43daa5b906bcb",
       "subheadings": [
         "### Results",
@@ -616,7 +616,7 @@
     {
       "key": "§42",
       "heading": "## §42 — DIAGNOSTIC: what the judge does to the census (W2-1, 2026-07-29)",
-      "start_line": 3998,
+      "start_line": 4014,
       "body_sha256": "e1ad54affb367328cae99a903ea818ae4fd0ad9b7221e0a7f0c903d6793f4c99",
       "subheadings": [
         "### The control reproduces §40 to the digit",
@@ -631,7 +631,7 @@
     {
       "key": "§43",
       "heading": "## §43 — THE INCUMBENT FACES ITS OWN GATE ON A SIMULATOR THAT MATCHES LIVE",
-      "start_line": 4090,
+      "start_line": 4106,
       "body_sha256": "d70263018965bd9dfb2e09059ec1f4e256fc1263b34841f379fd55dce6c43ec8",
       "subheadings": [
         "### Result",
@@ -651,7 +651,7 @@
     {
       "key": "§44",
       "heading": "## §44 — DECAY + REDUCED SIZING: DOES RETURN IMPROVE AT MATCHED DRAWDOWN? (EDGE, K=13, 2026-08-02)",
-      "start_line": 4179,
+      "start_line": 4195,
       "body_sha256": "60b6ccb5506e5cdee83199be3a0fe88f233388e2a337069aeff8f1bce36aecc2",
       "subheadings": [
         "### The sizing value, derived not tuned",
@@ -672,7 +672,7 @@
     {
       "key": "§45",
       "heading": "## §45 — WHY DOESN'T THE BOOK TURN OVER? (DIAGNOSTIC, 2026-07-29)",
-      "start_line": 4299,
+      "start_line": 4315,
       "body_sha256": "24becf28f69cb364a4ec1b309cd6c405aa95c4e4986ccab7051799d3fd4f6727",
       "subheadings": [
         "### Why this and why now",
@@ -689,7 +689,7 @@
     {
       "key": "§46",
       "heading": "## §46 CANDIDATE (not registered) — fundamentals, blocked on a lookahead probe",
-      "start_line": 4465,
+      "start_line": 4481,
       "body_sha256": "ead7632891d0706837853a9de4ac9f5fbc562e0e1ea1622696cf4b3e8bed6bf3",
       "subheadings": [
         "### Why nothing is registered yet",
@@ -702,7 +702,7 @@
     {
       "key": "§47",
       "heading": "## §47 — RANDOM-ENTRY DECAY MONITOR (DIAGNOSTIC, pre-registered 2026-08-01, before first run)",
-      "start_line": 4543,
+      "start_line": 4559,
       "body_sha256": "5d0e6725bd4a9a1e74732758d6d1870b84332d22669a0c9d78b7e64c3944f0f3",
       "subheadings": [
         "### The gap it closes",
@@ -719,7 +719,7 @@
     {
       "key": "§48",
       "heading": "## §48 — IS THERE SIGNAL AT FULL DEPLOYMENT? (DIAGNOSTIC, pre-registered 2026-08-03, before the run)",
-      "start_line": 4655,
+      "start_line": 4671,
       "body_sha256": "10eea66f00e195b5e45cb73d269248a65c287708728b62427a6fad6a410d5443",
       "subheadings": [
         "### The question, and why nobody has asked it",
@@ -744,7 +744,7 @@
     {
       "key": "§49",
       "heading": "## §49 — HOW MANY INDEPENDENT BETS IS THE BOOK TAKING? (DIAGNOSTIC, 2026-08-03)",
-      "start_line": 4887,
+      "start_line": 4903,
       "body_sha256": "c6af4581eecf74902824b172ab3fc7e6441f18753311ccd15601802d7ed6a5f7",
       "subheadings": [
         "### Why this, and why it has never been asked",
@@ -760,7 +760,7 @@
     {
       "key": "§50",
       "heading": "## §50 — THE INCUMBENT AT FULL DEPLOYMENT, vs A SURVIVORSHIP-FREE BENCHMARK (EDGE, K=14, pre-registered 2026-08-03)",
-      "start_line": 4994,
+      "start_line": 5010,
       "body_sha256": "783b3ff5582e694c10c535c89392f3741577854d76152eda57f24cd79c397f46",
       "subheadings": [
         "### What licenses this",
@@ -785,7 +785,7 @@
     {
       "key": "§51",
       "heading": "## §51 — IS THE RISK-ADJUSTED EDGE REAL, OR SURVIVORSHIP? (EDGE, K=15, pre-registered 2026-08-03)",
-      "start_line": 5187,
+      "start_line": 5203,
       "body_sha256": "4135830711a2d6a2ef16ffddd7d34d22f82625438ef7b77abe3d59db1a3a942a",
       "subheadings": [
         "### What licenses this",
@@ -810,7 +810,7 @@
     {
       "key": "§52",
       "heading": "## §52 CANDIDATE (not registered) — survivorship-free replication is BLOCKED, and the EDGE budget is FROZEN",
-      "start_line": 5394,
+      "start_line": 5410,
       "body_sha256": "1cdcf4e84d6fb6506296998fdc9c0a1dabb79fc6123d24fef1a414379ccf7023",
       "subheadings": [
         "### The probe REFUSED, for two separate reasons",
@@ -823,7 +823,7 @@
     {
       "key": "§53",
       "heading": "## §53 — DOES THE 130/30 CONFIGURATION BEHAVE? — REJECTED ×3 of 4, 2026-08-05",
-      "start_line": 5476,
+      "start_line": 5492,
       "body_sha256": "29950dcb7814ffae158f8b2b58c734312fe5535c5b22063c991379f6c9f01ed8",
       "subheadings": [
         "### The finding is not the failure count — it is the middle column",
@@ -843,7 +843,7 @@
     {
       "key": "§54",
       "heading": "## §54 — WHAT DOES RUNNING `reclaim` ALONGSIDE THE 130/30 BOOK COST? (DIAGNOSTIC, K=15, pre-registered 2026-08-05)",
-      "start_line": 5576,
+      "start_line": 5592,
       "body_sha256": "71c9b5917a984feffbc345852049348d6cb57e6ce04f92081c0ffe9f578d3c29",
       "subheadings": [
         "### The finding that arrived before the run, and changed it",
@@ -864,7 +864,7 @@
     {
       "key": "§55",
       "heading": "## §55 — THE REFEREE GETS A SHARPER INSTRUMENT (2026-08-06, tooling — not a claim)",
-      "start_line": 5701,
+      "start_line": 5717,
       "body_sha256": "bc3d2f2d99aa4525b4fdb914c31823e48ee4ff9bc558f959c763f5313b432902",
       "subheadings": [
         "### The defect, and it was written down in this module from the start",
@@ -882,7 +882,7 @@
     {
       "key": "§56",
       "heading": "## §56 — A UNIVERSE WITH NOTHING THAT LEFT (2026-08-09, tooling — not a claim)",
-      "start_line": 5848,
+      "start_line": 5864,
       "body_sha256": "037b7b76139d93f459528c2dcb55b0b9b263373a8c4e6ea0ec6a73179e6a23a4",
       "subheadings": [
         "### The question §52 left open",
@@ -899,7 +899,7 @@
     {
       "key": "§57",
       "heading": "## §57 — THE INCUMBENT ON DATA THAT IS NOT FLATTERING IT (DIAGNOSTIC, K=15, pre-registered 2026-08-09)",
-      "start_line": 5967,
+      "start_line": 5983,
       "body_sha256": "2a47ad4c0f0322facd36b0cb8d5da42b62d73fbd66dd07c94cc758859f767c14",
       "subheadings": [
         "### The result",
@@ -920,7 +920,7 @@
     {
       "key": "§58",
       "heading": "## §58 — THE COIL: A VOLATILITY-CONTRACTION PRECONDITION (DIAGNOSTIC, K=15, pre-registered 2026-08-10)",
-      "start_line": 6040,
+      "start_line": 6056,
       "body_sha256": "8d633c14b3fca1c9e82cc125bce4e8ab970196535f04eef670028ef452f5dc41",
       "subheadings": [
         "### Why a DIAGNOSTIC, when Phase 10 was built to make an EDGE claim possible",
@@ -946,7 +946,7 @@
     {
       "key": "§59",
       "heading": "## §59 — 52-WEEK-HIGH PROXIMITY, GEORGE & HWANG (2004) (DIAGNOSTIC, K=15, pre-registered 2026-08-10)",
-      "start_line": 6153,
+      "start_line": 6169,
       "body_sha256": "535202ad6f0390af218e806287d08070b5f5b3de76d31a9695cb411af76f6893",
       "subheadings": [
         "### The result — REJECTED in eight of eight",
@@ -970,7 +970,7 @@
     {
       "key": "§60",
       "heading": "## §60 — THE PROJECT SCORES ITS OWN PREDICTIONS (2026-08-11, tooling — not a claim)",
-      "start_line": 6220,
+      "start_line": 6236,
       "body_sha256": "e1f13198cd7bcf06a4e431679937b23c9ed3e8808495391997d47438a09bda1c",
       "subheadings": [
         "### What was built",
@@ -986,7 +986,7 @@
     {
       "key": "§61",
       "heading": "## §61 — THE JUDGE HAD NOT BEEN SEEING ITS OWN SCOREBOARD (2026-08-11, tooling — not a claim)",
-      "start_line": 6325,
+      "start_line": 6341,
       "body_sha256": "4c720af638182d027d44b3c59f6254443a8b235b850b3abf9d38af6168f407df",
       "subheadings": [
         "### What was asked, and what was actually wrong",
@@ -1002,7 +1002,7 @@
     {
       "key": "§62",
       "heading": "## §62 — SWING_SECTORS ON THE CERTIFIED ETF UNIVERSE (DIAGNOSTIC, K=15, pre-registered 2026-08-11)",
-      "start_line": 6448,
+      "start_line": 6464,
       "body_sha256": "56fa49d8c49d97c41d2a6e98ff71a141fefa5a8b84eaebb2780742da7635100b",
       "subheadings": [
         "### The strategy alone (s62a–d): REJECTED, four of four",
@@ -1026,7 +1026,7 @@
     {
       "key": "§63",
       "heading": "## §63 — TWO LOOKAHEAD PROBES: ALFRED VINTAGES AND EDGAR FILINGS",
-      "start_line": 6528,
+      "start_line": 6544,
       "body_sha256": "4e64c4a5eff9c53bc6a11f398a841f2f9cb40e971c2cad5a7d9d1ee55e633e16",
       "subheadings": [
         "### Why now, and why this is not a new idea",
@@ -1040,7 +1040,7 @@
     {
       "key": "§64",
       "heading": "## §64 — TREND_HOLD: THE LEVERED 200-DMA SWITCH, AND THE LATCH THAT ATE THE WAVE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6616,
+      "start_line": 6632,
       "body_sha256": "cefbe3d6cb59cd36f94c8d995b0d1fa2f35394122573d30908f8f85994239bb8",
       "subheadings": [],
       "specs": [
@@ -1055,7 +1055,7 @@
     {
       "key": "§65",
       "heading": "## §65 — TOM_TILT: THE TURN-OF-THE-MONTH WINDOW NEVER GOT TO TRADE (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6664,
+      "start_line": 6680,
       "body_sha256": "6837f6d35a313661f12d5160895f4be44c7b47d6e01e4c225c58bd2ca66689ca",
       "subheadings": [],
       "specs": [
@@ -1069,7 +1069,7 @@
     {
       "key": "§66",
       "heading": "## §66 — VOL_LEVER: ONE SPECTACULAR PERIOD, TWO TRADES, AND THE RULE THAT ALREADY KNEW (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6681,
+      "start_line": 6697,
       "body_sha256": "59d997bf959a847eb9d09cd965f0615e25e6d6111426db4c7e7383a0b7fc8259",
       "subheadings": [],
       "specs": [
@@ -1083,7 +1083,7 @@
     {
       "key": "§67",
       "heading": "## §67 — GEM: THE FALSIFICATION LANDED; THE DUAL-MOMENTUM FAMILY IS CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6702,
+      "start_line": 6718,
       "body_sha256": "1da4c9615b020fb182106a97c70fbe6a738c47ad3324bda746d4919aab688615",
       "subheadings": [],
       "specs": [
@@ -1096,7 +1096,7 @@
     {
       "key": "§68",
       "heading": "## §68 — TREND_HOLD UNLATCHED: THE PROMOTION RULE FIRED, 3 OF 4 (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6726,
+      "start_line": 6742,
       "body_sha256": "fcb0c3faa14e36f3927e9a57ad0fc19084be430edfca3fc62313f57472498073",
       "subheadings": [],
       "specs": [
@@ -1110,7 +1110,7 @@
     {
       "key": "§69",
       "heading": "## §69 — TOM_TILT UNLATCHED: THE WINDOW FINALLY TRADED, AND MOSTLY LOST (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6749,
+      "start_line": 6765,
       "body_sha256": "c82617eb4fa88d57ab1eaffae5176d24c472513cdeb3df8fd38794330db443ba",
       "subheadings": [],
       "specs": [
@@ -1124,7 +1124,7 @@
     {
       "key": "§70",
       "heading": "## §70 — VOL_LEVER UNLATCHED: STILL ONE PERIOD, STILL CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6761,
+      "start_line": 6777,
       "body_sha256": "38d8ea9283c8bc8466966857a0544c579ff3cd69d08c72f9ed9bab00f69f6133",
       "subheadings": [],
       "specs": [
@@ -1138,7 +1138,7 @@
     {
       "key": "§71",
       "heading": "## §71 — GEM UNLATCHED: 0 OF 3 — THE FAMILY IS PERMANENTLY CLOSED (DIAGNOSTIC, K=15, pre-registered 2026-08-12)",
-      "start_line": 6773,
+      "start_line": 6789,
       "body_sha256": "0cbc6800ed56ff4ff3e6dcd70f63634703c23de0ebcc2dce8370f9afb71edde2",
       "subheadings": [],
       "specs": [
@@ -1151,7 +1151,7 @@
     {
       "key": "§72",
       "heading": "## §72 — THE LICENSED EDGE SPEND: TREND_HOLD CONFIRMED AT K=16 (EDGE, pre-registered 2026-08-12)",
-      "start_line": 6784,
+      "start_line": 6800,
       "body_sha256": "3ee1f1eb955a9d915d7bd8575ddf06cc5eff3c39bc249ac19bd56efe99609d1a",
       "subheadings": [],
       "specs": [
@@ -1165,7 +1165,7 @@
     {
       "key": "§73",
       "heading": "## §73 — MACRO ENTRY GATE (UNRATE): 0 OF 4 — THE FAMILY IS CLOSED (DIAGNOSTIC, K=16, pre-registered 2026-08-12)",
-      "start_line": 6813,
+      "start_line": 6829,
       "body_sha256": "6b72818890c0cd95240ddce9018fc32a316f1a690df997e2d229918aaa5bb33d",
       "subheadings": [],
       "specs": [
@@ -1179,7 +1179,7 @@
     {
       "key": "§74",
       "heading": "## §74 CANDIDATE (not registered) — factor tilts from the \"Beating the S&P 500\" review",
-      "start_line": 6880,
+      "start_line": 6896,
       "body_sha256": "3ceee64c9d3c9e119aa151d7b90a808121104d63ae50a0f8692ef79d2cc61296",
       "subheadings": [],
       "specs": [],
