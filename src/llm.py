@@ -10,6 +10,7 @@ It can never invent a trade, enlarge one, or touch risk limits.
 If no API key is configured (or the call fails), signals pass through
 approved — the bot degrades gracefully to pure rules.
 """
+import hashlib
 import json
 import logging
 import os
@@ -119,6 +120,49 @@ def unavailable_policy(cfg: dict) -> str:
     return val
 
 
+def review_user_message(signal, memory_context: str) -> str:
+    """The exact user message the judge is sent. Named so it can be hashed.
+
+    Until 2026-08-22 this f-string was built inline in review_signal() and
+    bound to nothing — so the prompt that produced every verdict in the ledger
+    was unrecoverable, and src/llm_shadow.py carried a COPY of it under a
+    comment saying the two "MUST match". A prompt nobody can name is a prompt
+    nobody can audit; that is audit Gate 1d, and this is the whole fix.
+
+    Public (no underscore) on purpose: llm_shadow.py should delegate here
+    rather than keep its copy, and a private name would make that look wrong.
+    """
+    return (f"SIGNAL: {signal.action.upper()} {signal.symbol}\n"
+            f"STRATEGY REASON: {signal.reason}\n"
+            f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
+            f"{memory_context}\n\nReply with JSON only.")
+
+
+def prompt_record(system: str, user: str, memory_context: str) -> dict:
+    """What the ledger keeps about a prompt: hashes and sizes, never bodies.
+
+    Two hashes, not one. Within a cycle the assembled memory_context is the
+    SAME string for every symbol (book, lessons, knowledge, regime...); only
+    the signal preamble differs. So context_sha256 dedups hard across a cycle
+    while prompt_sha256 does not — and the sidecar stores one context body per
+    context hash rather than one per decision. That is what keeps ~11 KB of
+    prompt per decision from becoming ~132 MB/year of ledger that
+    Ledger.all_records() would have to parse per signal on the hot path.
+    """
+    return {
+        "system_sha256": hashlib.sha256(system.encode()).hexdigest(),
+        "prompt_sha256": hashlib.sha256((system + "\n\n" + user).encode()).hexdigest(),
+        "context_sha256": hashlib.sha256(memory_context.encode()).hexdigest(),
+        "prompt_chars": len(system) + len(user),
+        "context_chars": len(memory_context),
+        # The two bodies the sidecar needs. log_decision strips these out of
+        # the decision record and writes them to the prompt store; they must
+        # never reach the ledger stream itself.
+        "_user": user,
+        "_context": memory_context,
+    }
+
+
 def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     # Set on every degraded return below when policy is "block". main.py reads
     # it and refuses the ENTRY, ledgering it as a degradation rather than as a
@@ -126,9 +170,14 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     # as a veto would put decisions in the judgment ledger that no model made
     # and quietly poison every calibration measured off that ledger.
     block = unavailable_policy(cfg) == "block"
+    # `_prompt: None` lives on the fallback so EVERY degraded return inherits
+    # it by construction. A null marker, never an absent one: the repo has
+    # litigated "judged vs not judged" three times (absent_key, unknown
+    # verdict, degraded_reason) and each time the bug was a missing field that
+    # could mean either. One fallback path forgetting the key would reopen it.
     fallback = {"verdict": "approve", "scale": 1.0, "cited_lessons": [],
                 "bull_case": "", "bear_case": "", "confidence": None,
-                "reasoning": FALLBACK_REASONING}
+                "reasoning": FALLBACK_REASONING, "_prompt": None}
     if not cfg["llm"]["enabled"]:
         # NOT marked degraded, and that is deliberate — `degraded` means
         # SOMETHING FAILED, and main.py ledgers a "degradation" event for every
@@ -169,14 +218,10 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     # For honesty about scale: this has never fired. 0 degradations across 564
     # decisions. The split costs nothing and makes the eventual first one
     # diagnosable; it is not evidence that parsing is fragile.
+    user = review_user_message(signal, memory_context)
     try:
-        text = llm_client.complete(
-            cfg, _SYSTEM,
-            f"SIGNAL: {signal.action.upper()} {signal.symbol}\n"
-            f"STRATEGY REASON: {signal.reason}\n"
-            f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
-            f"{memory_context}\n\nReply with JSON only.",
-            max_tokens=cfg["llm"]["max_tokens"])
+        text = llm_client.complete(cfg, _SYSTEM, user,
+                                   max_tokens=cfg["llm"]["max_tokens"])
     except Exception as e:  # noqa: BLE001 — vendor or network failure
         log.warning("LLM review call failed (%s) — proceeding rule-based", e)
         return {**fallback, "degraded": str(e)[:200], "degraded_reason": "api",
@@ -214,6 +259,8 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
                                      if conf is not None else None)
         except (TypeError, ValueError):
             verdict["confidence"] = None
+        # The one path where a model actually judged: record what it was sent.
+        verdict["_prompt"] = prompt_record(_SYSTEM, user, memory_context)
         return verdict
     except Exception as e:  # noqa: BLE001 — a reply arrived, but not a verdict
         log.warning("LLM review reply unusable (%s) — proceeding rule-based", e)
