@@ -317,7 +317,23 @@ Consequences, binding on all future work:
    with it: with N prior comparisons, a marginal pass is more likely to be luck
    than edge. Prefer candidates that pass by a clear margin.
 
-Trial count through §11: ~11 registered comparisons (plus grid arms inside them).
+Trial count through §73: 225 arm runs — from `research/verdicts.jsonl`, checked
+by `tests/test_trial_count.py`, printed by `scripts/trial_report.py`. This line
+was last hand-typed as "through §11: ~11" and then left for sixty-two
+sections; it is now the one the guard reads, so it cannot drift again.
+
+**That figure is a floor, not N.** The register begins at §35. Seven EDGE
+spends predate it (s35's own prior: "EDGE claims stand at 0 for 7 entering
+this test"), and every §1–§34 grid arm lives only in the gitignored
+`memory/backtest_trials.jsonl`, which `run_gate.py` never wrote to and which
+stopped on 2026-07-27. The audit's ~480 estimate layered that untracked log on
+top; this count deliberately does not, because a number mixing a tracked
+source with an untracked one cannot be re-derived by anyone else.
+
+**Why it matters more than K.** Declared K is 16, and K counts only EDGE.
+Of the 225 arm runs, 38 are EDGE and **187 are DIAGNOSTIC or CAPACITY — runs
+that chose which EDGE claim to spend budget on while spending none.** That is
+the selection Bonferroni-on-K cannot see and Deflated Sharpe exists to price.
 
 ## §12 — position-slot cap `max_open_positions` (2026-07-23) — RULE PRE-REGISTERED
 
