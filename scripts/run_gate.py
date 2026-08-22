@@ -481,6 +481,9 @@ def main() -> int:
     p.add_argument("--resamples", type=int, default=sig.DEFAULT_RESAMPLES)
     p.add_argument("--registrations", default=gs.REGISTRATIONS)
     p.add_argument("--verdicts", default=VERDICTS)
+    p.add_argument("--trials", default=bt.DEFAULT_TRIALS_PATH,
+                   help="append-only trial log; every arm of every run "
+                        "is written here, refused or not")
     p.add_argument("--spec-dir", default=SPEC_DIR)
     p.add_argument("--dry-run", action="store_true",
                    help="check the freeze and the data, then stop")
@@ -549,6 +552,39 @@ def main() -> int:
         for extra in (fmt_exposure(name, summary), fmt_rails(name, summary)):
             if extra:
                 print(extra, flush=True)
+
+    # LOG EVERY ARM, HERE, BEFORE ANY REFUSAL BELOW CAN DISCARD THE RUN.
+    #
+    # This runner never called append_trial until 2026-08-22. It is the runner
+    # behind 95 of 102 registered specs, so the trial log stopped on
+    # 2026-07-27 while the project kept running gates — and the audit could
+    # not compute a Deflated Sharpe because nobody could say how many things
+    # had been tried. Declared K was 16; the arm count in verdicts.jsonl alone
+    # was 225.
+    #
+    # Placement is the whole point:
+    #   * HERE in main(), once, in the parent — not in run_arm, which executes
+    #     in forked workers and would interleave appends. A trial log that
+    #     depends on --workers would hand this runner's determinism guarantee
+    #     (tests/test_run_gate_reproduces.py) a counterexample.
+    #   * BEFORE the judge-consistency refusal below, which SystemExits and
+    #     writes no verdict. Those arms were computed and the trial WAS SPENT.
+    #     A log that records only runs surviving every refusal is precisely
+    #     the dishonest accounting this exists to end.
+    #   * AFTER the --dry-run return above, which computes nothing.
+    for name, rec in arms.items():
+        bt.append_trial(args.trials, {
+            "phase": "oos" if spec.get("split") else "single",
+            "arm": name,
+            "section": spec["id"],
+            "spec_sha256": reg["spec_sha256"],
+            "claim": spec["claim"],
+            "bonferroni_k": spec.get("bonferroni_k", 1),
+            "judge_model": bool(judge),
+            "snapshot_sha256": spec["snapshot"]["sha256"],
+            "workers": args.workers,
+            **rec[SUMMARY],
+        })
 
     # Index, not positional unpack. §55 added a sixth element to `run_arm`'s
     # return — the trade keys `compare_paired` needs — and updated three of the

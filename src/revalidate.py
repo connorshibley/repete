@@ -36,7 +36,7 @@ def live_params(cfg: dict, name: str) -> dict:
 
 
 def revalidate(cfg: dict, sym_bars: dict,
-               trials_path: str = "memory/backtest_trials.jsonl") -> dict:
+               trials_path: str = backtest.DEFAULT_TRIALS_PATH) -> dict:
     """strategy -> {gate_pass, reasons, oos} for every enabled strategy."""
     out = {}
     for name, scfg in (cfg.get("strategies") or {}).items():

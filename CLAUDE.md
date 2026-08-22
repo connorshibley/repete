@@ -274,7 +274,7 @@ config.yaml      All parameters. .env holds secrets (never commit).
    reconciled into the ledger at cycle start by `main.reconcile_closed_positions`).
 2. ~~**Backtest harness**~~ DONE: `python src/backtest.py` — offline replay through
    `strategy.generate_signal` + `risk` sizing with fee/slippage, walk-forward split,
-   vs buy-and-hold; every variant logged to `memory/backtest_trials.jsonl`.
+   vs buy-and-hold; every variant logged to `research/trials.jsonl`.
 3. ~~**Weekly review command**~~ DONE: `python src/review.py` — skeptical report
    (win rate, PF, vs SPY, lesson staleness) scored against the GUIDE.md §9 go-live gate.
 4. **SQLite ledger backend** behind the same `Ledger` interface (JSONL stays default).

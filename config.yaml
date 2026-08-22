@@ -195,7 +195,7 @@ strategies:            # the ensemble — deterministic signals only, LLM never 
                             # bound the book, not a queue for slots.
   tsmom:               # time-series momentum (Moskowitz/Ooi/Pedersen)
     enabled: true      # PASSED gate 2026-07-15: OOS +1.45%, PF 2.56, 51 trades
-    priority: 2        # (exposure-matched benchmark; see memory/backtest_trials.jsonl)
+    priority: 2        # (exposure-matched benchmark; see research/trials.jsonl)
     momentum_bars: 63  # in-sample grid winner — never re-picked after OOS
     skip_bars: 0
     max_open_positions: 0   # 0 = ceiling disabled, UNCAPPED, not "no positions"
@@ -1345,7 +1345,11 @@ backtest:               # offline harness (src/backtest.py) — never touches th
   slippage_bps: 5       # applied against you on every simulated fill
   fee_per_trade_usd: 0.0
   walk_forward_split: 0.7          # in-sample fraction; the rest is out-of-sample
-  trials_path: memory/backtest_trials.jsonl  # append-only log of EVERY variant tried
+  trials_path: research/trials.jsonl  # append-only log of EVERY variant tried.
+                          # MOVED from memory/ 2026-08-22: memory/ is gitignored,
+                          # so a count kept there cannot be checked in CI and
+                          # cannot be re-derived by anyone else. Same folder as
+                          # registrations.jsonl and verdicts.jsonl, same reason.
   judge_model:            # SIMULATED JUDGE (§29, 2026-07-26) — closes the live
     enabled: false        # half of divergence #8. backtest.py never imports llm
     salt: judge-v1        # (by design), so the judge has been ABSENT from every

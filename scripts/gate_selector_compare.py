@@ -34,6 +34,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import backtest as bt  # noqa: E402
+
 SECTION = "33_fold_stability"
 BASELINE = "baseline"
 
@@ -93,7 +95,7 @@ def select_fold_majority(latest, history_folds, cands, threshold=0.6):
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--trials", default="memory/backtest_trials.jsonl")
+    p.add_argument("--trials", default=bt.DEFAULT_TRIALS_PATH)
     args = p.parse_args()
 
     latest, folds, arms = load_matrix(args.trials)
