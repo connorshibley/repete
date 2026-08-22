@@ -169,6 +169,79 @@ class Result:
     def n_symbols_traded(self) -> int:
         return len(self.symbols_traded)
 
+    # ---- the four numbers a Deflated Sharpe needs, DERIVED from the curve ----
+    #
+    # Added 2026-08-22 because the audit could not compute one. Bailey &
+    # López de Prado's DSR deflates an observed Sharpe by the number of trials
+    # AND by the skew and kurtosis of the return series — and summary() had
+    # always popped `equity_curve`, the only thing those could be read from.
+    # So the 225 arm summaries already in research/verdicts.jsonl carry none
+    # of them, and never can: DSR is computable for every run from here on
+    # and NOT recoverable for §1–§72. That limit is stated, not papered over.
+    #
+    # Derived like symbols_traded, not stored: a field written at construction
+    # is one more thing that can silently disagree with the curve. None on an
+    # empty or one-point curve, never 0.0 — a zero Sharpe is a claim; a missing
+    # one is an absence, and this repo's standing rule is that the two must
+    # never be confused (benchmark_return_pct above says the same).
+
+    @property
+    def _bar_returns(self) -> list:
+        c = self.equity_curve
+        if len(c) < 2:
+            return []
+        out = []
+        for a, b in zip(c, c[1:]):
+            if a and a > 0:
+                out.append(b / a - 1.0)
+        return out
+
+    @property
+    def n_obs(self) -> int | None:
+        """Bars in the return series — the T that DSR's track-record term uses."""
+        r = self._bar_returns
+        return len(r) if r else None
+
+    @property
+    def sharpe(self) -> float | None:
+        """Per-BAR Sharpe, unannualised. Annualisation is the reader's, and
+        stating the raw number avoids baking a trading-days assumption into a
+        log that will be read across intraday and daily runs."""
+        r = self._bar_returns
+        if len(r) < 2:
+            return None
+        mu = sum(r) / len(r)
+        var = sum((x - mu) ** 2 for x in r) / (len(r) - 1)
+        if var <= 0:
+            return None
+        return round(mu / var ** 0.5, 6)
+
+    @property
+    def return_skew(self) -> float | None:
+        r = self._bar_returns
+        if len(r) < 3:
+            return None
+        mu = sum(r) / len(r)
+        m2 = sum((x - mu) ** 2 for x in r) / len(r)
+        if m2 <= 0:
+            return None
+        m3 = sum((x - mu) ** 3 for x in r) / len(r)
+        return round(m3 / m2 ** 1.5, 6)
+
+    @property
+    def return_kurtosis(self) -> float | None:
+        """Raw (non-excess) kurtosis — DSR's formula wants γ4 with 3 for a
+        normal, and the excess convention is the silent off-by-three."""
+        r = self._bar_returns
+        if len(r) < 4:
+            return None
+        mu = sum(r) / len(r)
+        m2 = sum((x - mu) ** 2 for x in r) / len(r)
+        if m2 <= 0:
+            return None
+        m4 = sum((x - mu) ** 4 for x in r) / len(r)
+        return round(m4 / m2 ** 2, 6)
+
     def summary(self) -> dict:
         d = asdict(self)
         d.pop("equity_curve")
@@ -176,6 +249,12 @@ class Result:
         # asdict() serialises FIELDS only, never properties — without this line
         # every gate report silently omits the reachability number.
         d["n_symbols_traded"] = self.n_symbols_traded
+        # Same for these four: the curve is popped one line up, so these are
+        # the only trace of it that reaches the trial log or the verdict row.
+        d["n_obs"] = self.n_obs
+        d["sharpe"] = self.sharpe
+        d["return_skew"] = self.return_skew
+        d["return_kurtosis"] = self.return_kurtosis
         return d
 
 

@@ -432,3 +432,104 @@ def trade_keys(result) -> list:
     """
     return [(str(t.entry_ts), str(t.symbol))
             for t in getattr(result, "trades", [])]
+
+
+# ---- Deflated Sharpe Ratio (Bailey & López de Prado, 2014) -----------------
+#
+# Added 2026-08-22. This is the multiple-testing control the audit said the
+# project lacked, and the reason it lacked it was not the formula — it was
+# that nobody could count N. Step 3a/3b of the remediation made N countable
+# (tests/trial_tally.py, research/trials.jsonl); this is what N is FOR.
+#
+# Bonferroni on a pre-declared K — what `compare` does above — asks "how many
+# EDGE claims did we say we'd make?" DSR asks the question that actually
+# matters: "given how many things were tried, what Sharpe would the BEST of
+# them have by luck alone, and does the observed one beat that?" The two
+# agree only when K is honest and every trial is an EDGE claim. Here, 187 of
+# 225 logged arm runs are DIAGNOSTIC — selection that spends no K — which is
+# exactly the gap DSR prices and Bonferroni-on-K cannot see.
+#
+# stdlib only, on purpose. This module imports math, random and dataclasses
+# and is mypy-gated in CI (ci.yml); NormalDist covers everything needed.
+
+EULER_GAMMA = 0.5772156649015329
+
+
+def expected_max_sharpe(n_trials: int, var_sharpe: float) -> float:
+    """E[max SR] over n_trials independent null strategies, Bailey & LdP eq. 5.
+
+    The approximation: sqrt(V) * ((1-γ) Φ⁻¹(1 - 1/N) + γ Φ⁻¹(1 - 1/(N e))).
+    This is the bar a strategy has to clear just to be distinguishable from
+    the luckiest of N coin flips.
+    """
+    from statistics import NormalDist
+    if n_trials < 2 or var_sharpe <= 0:
+        return 0.0
+    z = NormalDist().inv_cdf
+    n = float(n_trials)
+    return (var_sharpe ** 0.5) * (
+        (1.0 - EULER_GAMMA) * z(1.0 - 1.0 / n)
+        + EULER_GAMMA * z(1.0 - 1.0 / (n * math.e)))
+
+
+def probabilistic_sharpe(sr: float, sr_star: float, n_obs: int,
+                         skew: float, kurtosis: float) -> float:
+    """PSR: P(true SR > sr_star | observed sr), Bailey & LdP 2012 eq. 12.
+
+    `kurtosis` is RAW (3 for a normal), not excess. Passing excess kurtosis
+    here silently understates the denominator by 3 and inflates every answer.
+    """
+    from statistics import NormalDist
+    if n_obs < 2:
+        return 0.0
+    denom_sq = 1.0 - skew * sr + (kurtosis - 1.0) / 4.0 * sr * sr
+    if denom_sq <= 0:
+        return 0.0
+    z = (sr - sr_star) * ((n_obs - 1) ** 0.5) / denom_sq ** 0.5
+    return NormalDist().cdf(z)
+
+
+@dataclass(frozen=True)
+class DeflatedSharpe:
+    """One DSR reading, with every input it was computed from.
+
+    Carries the inputs rather than just the answer for the same reason
+    _IntervalVerdict above carries its interval: a number that cannot be
+    re-derived from what is printed beside it is a number nobody can check.
+    """
+    sharpe: float
+    n_trials: int
+    n_obs: int
+    skew: float
+    kurtosis: float
+    var_sharpe: float
+    sr_max_expected: float   # the luck bar
+    psr: float               # P(true SR > luck bar)
+
+    @property
+    def clears(self) -> bool:
+        """Does it beat the luckiest-of-N bar at 1 - ALPHA confidence?"""
+        return self.psr >= 1.0 - ALPHA
+
+    def line(self) -> str:
+        return (f"DSR: SR {self.sharpe:.4f} vs luck bar {self.sr_max_expected:.4f} "
+                f"over N={self.n_trials} trials, T={self.n_obs} obs "
+                f"(skew {self.skew:+.2f}, kurt {self.kurtosis:.2f}) -> "
+                f"PSR {self.psr:.3f} {'CLEARS' if self.clears else 'does not clear'}")
+
+
+def deflated_sharpe(sharpe: float, var_sharpe: float, n_trials: int,
+                    n_obs: int, skew: float, kurtosis: float) -> DeflatedSharpe:
+    """The full reading. `var_sharpe` is the variance of the Sharpes ACROSS
+    the N trials — which is why the trial log has to carry each run's Sharpe,
+    and why the 225 backfilled rows (no curve, no Sharpe) cannot feed this.
+
+    Every argument is required. No defaults, because a default here would be
+    a silent assumption about the search that produced the number — and
+    pricing that search is the entire point.
+    """
+    sr_max = expected_max_sharpe(n_trials, var_sharpe)
+    psr = probabilistic_sharpe(sharpe, sr_max, n_obs, skew, kurtosis)
+    return DeflatedSharpe(sharpe=sharpe, n_trials=n_trials, n_obs=n_obs,
+                          skew=skew, kurtosis=kurtosis, var_sharpe=var_sharpe,
+                          sr_max_expected=sr_max, psr=psr)
