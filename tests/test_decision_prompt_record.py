@@ -36,8 +36,18 @@ def _cfg(**over):
 
 def _judged_reply(monkeypatch, reply='{"verdict":"downsize","scale":0.5,'
                                      '"confidence":0.6,"reasoning":"extended"}'):
+    """Vendor reachable, returns `reply`. Stubs complete_detailed — the call
+    review_signal actually makes since 5c — NOT complete(). An earlier version
+    stubbed complete() and, once review_signal moved, silently fell through to
+    the real SDK and hit api.anthropic.com with a fake key (401). A suite that
+    is "offline by design" must stub the function that is called."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-" + "x" * 80)
-    monkeypatch.setattr(llm.llm_client, "complete", lambda *a, **k: reply)
+    meta = {"model": "claude-test-1", "requested_model": "claude-sonnet-5",
+            "fell_back": False, "message_id": "m", "stop_reason": "end_turn",
+            "input_tokens": 10, "output_tokens": 5,
+            "cache_read_input_tokens": None, "cache_creation_input_tokens": None}
+    monkeypatch.setattr(llm.llm_client, "complete_detailed",
+                        lambda *a, **k: (reply, meta))
 
 
 # ---- 1. hashes reproduce the bodies ---------------------------------------

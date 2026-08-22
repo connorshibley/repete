@@ -53,6 +53,41 @@ def _no_real_alerts(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_llm_calls(monkeypatch):
+    """No test may reach the LLM vendor. Raise, never no-op.
+
+    Found 2026-08-22: a test stubbed `llm_client.complete()`; review_signal
+    then moved to `complete_detailed()`; the stub was bypassed and four tests
+    hit api.anthropic.com with a fake key and read the 401 as "vendor down".
+    Green on a laptop with a network, and the suite's whole contract is
+    "offline by design — no credentials, ever, in CI".
+
+    This blocks the real SDK at the one seam every vendor call goes through:
+    `llm_client._create` imports `anthropic` per call. Tests that install a
+    FAKE via `monkeypatch.setitem(sys.modules, "anthropic", ...)` keep working
+    — the guard only refuses when the module that would be imported is the
+    genuine package. Tests that stub complete()/complete_detailed() never get
+    here at all.
+    """
+    import builtins
+    real_import = builtins.__import__
+
+    def _guarded(name, *a, **k):
+        if name == "anthropic":
+            mod = sys.modules.get("anthropic")
+            genuine = mod is None or getattr(mod, "__file__", None) is not None
+            if genuine:
+                raise AssertionError(
+                    "a test tried to import the REAL anthropic SDK, i.e. reach "
+                    "the vendor. Stub llm_client.complete_detailed, or install a "
+                    "fake via monkeypatch.setitem(sys.modules, 'anthropic', ...). "
+                    "See conftest._no_real_llm_calls.")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _guarded)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_offhost_backups(monkeypatch, tmp_path_factory):
     """No test may write into the owner's real iCloud Drive.
 

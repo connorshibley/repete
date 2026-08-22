@@ -150,9 +150,63 @@ def _text(msg) -> str:
                    if getattr(b, "type", "") == "text").strip()
 
 
-def complete(cfg: dict, system: str, user: str, max_tokens: int,
-             model: str | None = None) -> str:
-    """One completion, returned as text. Raises on failure — callers decide.
+def _meta(msg, requested: str, served_by_fallback: bool) -> dict:
+    """What the vendor's Message carries that complete() used to throw away.
+
+    `model` is the SERVED id — what the vendor actually ran — and it can
+    differ from `requested` in two ways: an alias like "claude-sonnet-5"
+    resolves to a dated snapshot, and the fallback retry below swaps models
+    outright. Before 2026-08-22 the ledger could not tell which model judged a
+    trade; the moment `fallback_model` is set, every calibration silently
+    mixes two models. Recording the served id is what makes that visible.
+
+    Cache fields are Optional in the SDK and read with getattr(.., None):
+    absent must never collapse to 0 — this repo's standing rule.
+    """
+    usage = getattr(msg, "usage", None)
+    return {
+        "model": getattr(msg, "model", None),
+        "requested_model": requested,
+        "fell_back": served_by_fallback,
+        "message_id": getattr(msg, "id", None),
+        "stop_reason": getattr(msg, "stop_reason", None),
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", None),
+    }
+
+
+def estimate_cost_usd(cfg: dict, meta: dict) -> float | None:
+    """USD for one call from `llm.pricing` in config.yaml. None when unpriced.
+
+    None, never 0.0. A model missing from the price table is "we do not know
+    what this cost", and 0.0 would read as "free" — the same absent-vs-zero
+    confusion the benchmark fields, fill quality and Step 3c's Sharpe all
+    refuse. Prices live in config with a verified-on date, not in code: a
+    stale table producing confident wrong numbers is worse than None.
+    """
+    table = ((cfg.get("llm") or {}).get("pricing") or {})
+    row = table.get(meta.get("model") or "") or table.get(meta.get("requested_model") or "")
+    if not row:
+        return None
+    try:
+        inp = meta.get("input_tokens"); out = meta.get("output_tokens")
+        if inp is None or out is None:
+            return None
+        cost = (inp * float(row["input_per_mtok"])
+                + out * float(row["output_per_mtok"])) / 1_000_000
+        cr = meta.get("cache_read_input_tokens") or 0
+        if cr and "cache_read_per_mtok" in row:
+            cost += cr * float(row["cache_read_per_mtok"]) / 1_000_000
+        return round(cost, 6)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def complete_detailed(cfg: dict, system: str, user: str, max_tokens: int,
+                      model: str | None = None) -> tuple[str, dict]:
+    """One completion: (text, meta). Raises on failure — callers decide.
 
     Every caller in llm.py already wraps its call in a try/except that degrades
     to rules or a template, and those handlers carry the reasoning about what a
@@ -163,7 +217,7 @@ def complete(cfg: dict, system: str, user: str, max_tokens: int,
     — useful when a model is overloaded or retired, useless when the key is the
     problem. It is unset by default: a quietly weaker judge is a trading
     behaviour change, and this module's job is to make that switch possible, not
-    to make it silently.
+    to make it silently. `meta["fell_back"]` is how the ledger sees it happen.
     """
     client = _create(cfg)
     primary = model or cfg["llm"]["model"]
@@ -171,7 +225,7 @@ def complete(cfg: dict, system: str, user: str, max_tokens: int,
         msg = client.messages.create(
             model=primary, max_tokens=max_tokens, system=system,
             messages=[{"role": "user", "content": user}])
-        return _text(msg)
+        return _text(msg), _meta(msg, primary, False)
     except Exception as e:  # noqa: BLE001 — re-raised below if there is no fallback
         fallback = (cfg.get("llm") or {}).get("fallback_model")
         if not fallback or fallback == primary:
@@ -181,4 +235,12 @@ def complete(cfg: dict, system: str, user: str, max_tokens: int,
         msg = client.messages.create(
             model=fallback, max_tokens=max_tokens, system=system,
             messages=[{"role": "user", "content": user}])
-        return _text(msg)
+        return _text(msg), _meta(msg, primary, True)
+
+
+def complete(cfg: dict, system: str, user: str, max_tokens: int,
+             model: str | None = None) -> str:
+    """Text only. A thin wrapper so the five existing callers in llm.py are
+    untouched; only review_signal moves to complete_detailed, because only
+    the judge's calls need to be reconstructible and priced."""
+    return complete_detailed(cfg, system, user, max_tokens, model)[0]

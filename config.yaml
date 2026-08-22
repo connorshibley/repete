@@ -1060,6 +1060,24 @@ llm:                   # optional judgment layer (Anthropic API)
                           # EXITS ALWAYS RUN either way — blocking a sell because
                           # the reviewer is down would trap a position and
                           # ENLARGE risk through the reviewer's absence.
+  pricing:                # USD per MILLION tokens, by SERVED model id (2026-08-22).
+                          # Read by llm_client.estimate_cost_usd for every judge
+                          # call; the result lands on the decision record as
+                          # cost_usd. In config, not code, because a stale price
+                          # table producing confident wrong numbers is worse
+                          # than None — and a model absent here yields None,
+                          # never 0.0, so "unpriced" can never read as "free".
+                          #
+                          # VERIFIED 2026-08-22 against the Claude API reference.
+                          # Sonnet 5 is on INTRO pricing through 2026-08-31
+                          # ($2/$10); the standard rate after is $3/$15.
+                          # Re-verify on 2026-09-01 and bump the input/output
+                          # figures, or the September cost report understates.
+                          # Cache-read rates omitted until verified; the
+                          # estimator ignores cache tokens when the key is absent.
+    claude-sonnet-5:   {input_per_mtok: 2.00,  output_per_mtok: 10.00}
+    claude-haiku-4-5:  {input_per_mtok: 1.00,  output_per_mtok: 5.00}
+    claude-fable-5:    {input_per_mtok: 10.00, output_per_mtok: 50.00}
   knowledge_path: knowledge/principles.md  # curated external principles fed to the
                           # review prompt, labeled unverified; comment out to disable
   knowledge_max_context_chars: 1500
