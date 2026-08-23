@@ -256,3 +256,38 @@ def test_the_webhook_url_is_never_logged_by_the_shaping_path(monkeypatch,
     with caplog.at_level("DEBUG"):
         alerting.send("t", "m")
     assert "repete-alerts-7f3a91c2" not in caplog.text
+
+
+def test_load_env_NEVER_reaches_the_operators_real_dotenv(tmp_path, monkeypatch):
+    """Regression for 2026-08-22: `load_env()` fell back to the repo-root
+    `.env` when the cwd had none, so the negative control above — run from a
+    temp cwd — loaded the OPERATOR'S real webhook URL and posted false
+    "Trading agent needs attention" alerts to the real ntfy topic on every suite run. The test stayed
+    green because it only watched its local receiver. Found in repete2 by
+    polling the topic: ~120 messages in 12h, across all three bots.
+
+    Only has teeth on a host that HAS a repo .env (the laptop); on CI there is
+    nothing to leak, and the skip says so rather than hiding it.
+    """
+    import pytest
+    if not os.path.isfile(os.path.join(REPO, ".env")):
+        pytest.skip("no repo .env on this host — the leak cannot be exercised here")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(alerting.WEBHOOK_ENV, raising=False)
+    import watchdog as watchdog_mod
+    loaded = watchdog_mod.load_env()
+    assert loaded is None, f"load_env reached outside the cwd: {loaded}"
+    assert not os.environ.get(alerting.WEBHOOK_ENV), (
+        "the operator's real ALERT_WEBHOOK_URL leaked into a process whose "
+        "cwd holds no .env")
+
+
+def test_load_env_STILL_loads_the_cwd_dotenv(tmp_path, monkeypatch):
+    """Positive direction, or the test above passes on a load_env that loads
+    nothing at all."""
+    (tmp_path / ".env").write_text("ALERT_WEBHOOK_URL=http://127.0.0.1:1/x\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(alerting.WEBHOOK_ENV, raising=False)
+    import watchdog as watchdog_mod
+    assert watchdog_mod.load_env() == str(tmp_path / ".env")
+    assert os.environ.get(alerting.WEBHOOK_ENV) == "http://127.0.0.1:1/x"
