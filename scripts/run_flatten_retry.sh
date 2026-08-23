@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Retry a kill-switch flatten that did not complete.
-# Invoked by launchd (com.trading-agent.flattenretry) every 15 minutes during
+# Invoked by launchd (com.repete.flattenretry) every 15 minutes during
 # the session. Does NOTHING unless the kill switch left a pending marker in the
 # HALT file, so the overwhelmingly common case costs one file check.
 #

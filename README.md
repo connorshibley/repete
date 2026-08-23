@@ -1,4 +1,4 @@
-# trading-agent
+# repete
 
 A swing-trading agent that decides once per day on daily bars, writes down its
 reasoning for every decision, and holds itself to pre-registered pass marks it

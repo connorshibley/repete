@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Nightly state backup — invoked by launchd (com.trading-agent.backup).
+# Nightly state backup — invoked by launchd (com.repete.backup).
 #
 # This job existed only in scripts/scheduler.py (the container path) until
 # 2026-07-27. The container has never run on this host, so despite the

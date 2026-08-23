@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.trading-agent.secretcheck</string>
+    <string>com.repete.restoredrill</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
-        <string>{{AGENT_ROOT}}/scripts/run_secret_check.sh</string>
+        <string>{{AGENT_ROOT}}/scripts/run_restore_drill.sh</string>
     </array>
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
     </array>
     <key>StandardErrorPath</key>
     <string>{{AGENT_ROOT}}/logs/launchd.err.log</string>

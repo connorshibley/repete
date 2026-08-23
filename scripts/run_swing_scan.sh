@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Intraday swing opportunity scan — invoked by launchd
-# (com.trading-agent.swingscan) every 30 min, 09:35-15:35 ET weekdays.
+# (com.repete.swingscan) every 30 min, 09:35-15:35 ET weekdays.
 # Fails CLOSED on holidays/half-days via Broker.market_open, so wall-clock
 # firings outside a session log one line and exit. A missed or skipped pass
 # is harmless by design: there are twelve more that day, and the daily 15:45

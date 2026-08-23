@@ -71,8 +71,8 @@ flyctl ssh console -C "python src/health.py"
 On any small Linux box with Docker installed:
 
 ```bash
-git clone https://github.com/connorshibley/trading-agent.git
-cd trading-agent
+git clone https://github.com/connorshibley/repete.git
+cd repete
 cp .env.example .env && $EDITOR .env        # fill in keys; stays out of git
 sh deploy/deploy.sh                          # build, start, verify
 ```
@@ -81,7 +81,7 @@ To survive reboots, install the systemd unit:
 
 ```bash
 sudo cp deploy/repete.service /etc/systemd/system/
-sudo sed -i "s|/opt/trading-agent|$(pwd)|" /etc/systemd/system/repete.service
+sudo sed -i "s|/opt/repete|$(pwd)|" /etc/systemd/system/repete.service
 sudo systemctl enable --now repete
 ```
 
@@ -99,8 +99,8 @@ tar -czf state.tar.gz memory/
 flyctl ssh sftp shell <<< "put state.tar.gz /app/state.tar.gz"
 flyctl ssh console -C "tar -xzf /app/state.tar.gz -C /app && rm /app/state.tar.gz"
 # VPS:
-scp state.tar.gz user@host:/opt/trading-agent/ && ssh user@host \
-  "cd /opt/trading-agent && tar -xzf state.tar.gz && rm state.tar.gz"
+scp state.tar.gz user@host:/opt/repete/ && ssh user@host \
+  "cd /opt/repete && tar -xzf state.tar.gz && rm state.tar.gz"
 ```
 
 Then confirm the counts survived:

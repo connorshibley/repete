@@ -47,7 +47,7 @@ log itself — total absence.
 ### 2. The watchdog (checks the heartbeat *and* that the cycle finished)
 
 `src/watchdog.py` runs on its own launchd job
-(`scripts/com.trading-agent.watchdog.plist`, weekdays **4:15 PM** local —
+(`scripts/com.repete.watchdog.plist`, weekdays **4:15 PM** local —
 30 minutes after the 3:45 PM cycle should have finished). It checks **four**
 things:
 
@@ -134,7 +134,7 @@ along with the rest of `memory/`.
 
 ## If you get an alert
 
-1. `launchctl list | grep trading-agent` — all **12** jobs should be listed
+1. `launchctl list | grep repete` — all **12** jobs should be listed
    with status `0`: `cycle`, `catchup`, `watchdog`, `newsbrain`, `dailypost`,
    `learn`, `backup`, `restoredrill`, `secretcheck`, `decaycheck`,
    `flattenretry`, `logrotate`. Anything missing means

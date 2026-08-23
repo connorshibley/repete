@@ -153,7 +153,7 @@ def render(cfg: dict, out_path: str | None = None,
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>trading-agent journal</title><style>{CSS}</style></head><body>
+<title>repete journal</title><style>{CSS}</style></head><body>
 <div class=wrap>
 <h1>trade journal <span class=small>[PAPER] — generated {now}</span></h1>
 <p class=small>Every trade this bot makes, explained: the opportunity, the

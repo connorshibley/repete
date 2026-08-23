@@ -34,7 +34,7 @@ Ask, in order:
    order book, full-text news)? → record the data dependency and stop.
 3. Which bot? `agiprolabs`-style crypto/DeFi/on-chain material belongs to
    **repete1**; FX carry and financing to **repete2**; equities to
-   **trading-agent**. Cross-filing an idea into the wrong bot wastes a review.
+   **repete**. Cross-filing an idea into the wrong bot wastes a review.
 
 ## Step 2 — Has it already been rejected?
 

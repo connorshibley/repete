@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Daily paper-trading cycle — invoked by launchd (com.trading-agent.cycle).
+# Daily paper-trading cycle — invoked by launchd (com.repete.cycle).
 # Runs after market close; weekends/holidays just log holds harmlessly.
 cd "$(dirname "$0")/.." || exit 1
 echo "=== cycle $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> logs/cron.log

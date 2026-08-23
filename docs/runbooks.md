@@ -344,7 +344,7 @@ heartbeat stale in `python src/health.py`.
 ```bash
 ls -la memory/heartbeat && cat memory/heartbeat
 tail -50 logs/agent.log                  # or: docker compose logs --tail 50 agent
-launchctl list | grep trading-agent      # laptop path
+launchctl list | grep repete      # laptop path
 docker compose ps                        # container path
 ```
 
@@ -356,7 +356,7 @@ docker compose ps                        # container path
   health column.
 - Crash mid-cycle → the deterministic client_order_id makes a rerun safe:
   `python src/main.py` (or `docker compose run --rm agent python src/main.py`).
-- No jobs listed (`launchctl list | grep trading-agent` empty) → the launchd
+- No jobs listed (`launchctl list | grep repete` empty) → the launchd
   jobs were never installed for this checkout. Install them with
   `sh scripts/install_launchd.sh --load` — it renders the plist templates with
   this checkout's real path (they ship a `{{AGENT_ROOT}}` placeholder so a moved
@@ -445,14 +445,14 @@ guard reads a local file and cannot see the other machine.
 **Prove it restores:** `python scripts/restore_drill.py`
 
 Since 2026-08-06 every archive is written **twice**: `backups/` locally (newest
-14) and `~/Library/Mobile Documents/com~apple~CloudDocs/trading-agent-backups`
+14) and `~/Library/Mobile Documents/com~apple~CloudDocs/repete-backups`
 (newest 30). The second is the one that survives this laptop.
 `REPETE_OFFHOST_DIR` overrides the destination; `""` disables the mirror.
 
 **If this disk is gone**, the archives are on any Mac signed into the same
 account, or at icloud.com:
 ```bash
-ls -1t ~/Library/Mobile\ Documents/com~apple~CloudDocs/trading-agent-backups/
+ls -1t ~/Library/Mobile\ Documents/com~apple~CloudDocs/repete-backups/
 ```
 
 **Actual restore after data loss:**

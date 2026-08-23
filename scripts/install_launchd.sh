@@ -1,7 +1,7 @@
 #!/bin/sh
 # Render the launchd plist templates for THIS checkout and install them.
 #
-# The committed scripts/com.trading-agent.*.plist carry a {{AGENT_ROOT}}
+# The committed scripts/com.repete.*.plist carry a {{AGENT_ROOT}}
 # placeholder instead of a hard-coded path — the repo can move (or be cloned
 # fresh) without shipping a stale absolute path that makes every scheduled job
 # silently no-op. This script substitutes the real location of THIS checkout,
@@ -30,7 +30,7 @@ mkdir -p "$DEST" "$AGENT_ROOT/logs"
 chmod +x "$AGENT_ROOT"/scripts/run_*.sh 2>/dev/null || true
 
 installed=0
-for tmpl in "$AGENT_ROOT"/scripts/com.trading-agent.*.plist; do
+for tmpl in "$AGENT_ROOT"/scripts/com.repete.*.plist; do
   name=$(basename "$tmpl")
   out="$DEST/$name"
   # awk gsub replacement is literal enough for filesystem paths (the '&'/'\'
@@ -48,7 +48,7 @@ echo "$installed plists rendered to $DEST"
 
 if [ "${1:-}" = "--load" ]; then
   uid=$(id -u)
-  for tmpl in "$AGENT_ROOT"/scripts/com.trading-agent.*.plist; do
+  for tmpl in "$AGENT_ROOT"/scripts/com.repete.*.plist; do
     name=$(basename "$tmpl")
     label=${name%.plist}
     launchctl bootout "gui/$uid/$label" 2>/dev/null || true
@@ -57,5 +57,5 @@ if [ "${1:-}" = "--load" ]; then
   done
 else
   echo "To load: sh scripts/install_launchd.sh --load"
-  echo "  (or: launchctl bootstrap gui/\$(id -u) $DEST/com.trading-agent.*.plist)"
+  echo "  (or: launchctl bootstrap gui/\$(id -u) $DEST/com.repete.*.plist)"
 fi

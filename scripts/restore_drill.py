@@ -97,7 +97,7 @@ def offhost_dir() -> str | None:
     icloud = os.path.expanduser(
         "~/Library/Mobile Documents/com~apple~CloudDocs")
     if os.path.isdir(icloud):
-        return os.path.join(icloud, "trading-agent-backups")
+        return os.path.join(icloud, "repete-backups")
     return None
 
 

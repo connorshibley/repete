@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.trading-agent.cycle</string>
+    <string>com.repete.cycle</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>

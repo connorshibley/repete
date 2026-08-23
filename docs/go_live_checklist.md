@@ -18,10 +18,10 @@ Status legend: [ ] open · [x] done · [~] partially
   from zero. Laptop launchd remains the fallback
   (`sh scripts/install_launchd.sh --load`).
 - [x] **Backups scheduled** — **launchd**, weekdays 17:00 local
-  (`scripts/com.trading-agent.backup.plist`). **Not** nightly: there is no
+  (`scripts/com.repete.backup.plist`). **Not** nightly: there is no
   Saturday or Sunday backup, deliberately, because the book does not move.
   **Restore drill passing** — launchd Saturdays 10:00
-  (`scripts/com.trading-agent.restoredrill.plist`) *and* on every CI run, which
+  (`scripts/com.repete.restoredrill.plist`) *and* on every CI run, which
   is the part that actually makes this box tickable. A backup that has never
   been restored is a hope, not a backup.
   *Corrected 2026-07-29 (W5-6): this said "nightly 17:00 ET in

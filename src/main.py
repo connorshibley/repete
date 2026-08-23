@@ -632,7 +632,7 @@ def _alarm_on_thin_margin(cfg: dict, ledger: Ledger, margin_min: float,
     ledger.log_event("cycle_margin_low", msg)
     try:
         import alerting
-        alerting.send("trading-agent: thin margin to the close", msg)
+        alerting.send("repete: thin margin to the close", msg)
     except Exception:  # noqa: BLE001 — monitoring never kills a cycle
         pass
     log.warning("%s", msg)
@@ -713,7 +713,7 @@ def check_deploy_drift(ledger: Ledger) -> dict:
         ledger.log_event("deploy_drift", msg)
         try:
             import alerting
-            alerting.send("trading-agent: deployment drift", msg)
+            alerting.send("repete: deployment drift", msg)
         except Exception:  # noqa: BLE001
             pass
         log.warning("%s", msg)
@@ -744,7 +744,7 @@ def check_degradation_slo(ledger: Ledger, cfg: dict):
                          f"guards are running fail-open too often")
         try:
             from watchdog import notify
-            notify("trading-agent: degradation SLO breach",
+            notify("repete: degradation SLO breach",
                    f"{n} fail-open events today (limit {limit}) — check "
                    f"data feeds and logs")
         except Exception:  # noqa: BLE001
@@ -785,7 +785,7 @@ def _bootstrap_cycle():
             pass
         try:
             from watchdog import notify
-            notify("trading-agent PREFLIGHT FAILED",
+            notify("repete PREFLIGHT FAILED",
                    fails[0][:120] + (" (+more)" if len(fails) > 1 else ""))
         except Exception:  # noqa: BLE001
             pass
@@ -871,7 +871,7 @@ def _bootstrap_cycle():
             pass
         try:
             from watchdog import notify
-            notify("trading-agent PREFLIGHT FAILED",
+            notify("repete PREFLIGHT FAILED",
                    acct_fails[0][:120] + (" (+more)" if len(acct_fails) > 1 else ""))
         except Exception:  # noqa: BLE001
             pass

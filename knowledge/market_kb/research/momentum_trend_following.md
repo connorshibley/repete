@@ -1,6 +1,6 @@
 # Momentum & Trend-Following Equity Strategies: Can They Beat the S&P 500 Long-Term?
 
-*Research brief for a trading-agent knowledge base. All quantitative claims are sourced inline to primary/authoritative documents (academic papers, AQR white papers, Meb Faber Research, fund fact sheets, SSRN working papers). Compiled August 2026.*
+*Research brief for a repete knowledge base. All quantitative claims are sourced inline to primary/authoritative documents (academic papers, AQR white papers, Meb Faber Research, fund fact sheets, SSRN working papers). Compiled August 2026.*
 
 ---
 

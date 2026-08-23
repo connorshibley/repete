@@ -94,7 +94,7 @@ def _no_real_offhost_backups(monkeypatch, tmp_path_factory):
     `scripts/backup.sh` mirrors every archive off-host, resolving iCloud by
     default. `tests/test_backup_restore.py` runs that script for real against an
     AGENT_ROOT fixture, so without this the suite would deposit a fixture
-    archive into `~/…/CloudDocs/trading-agent-backups` on every run and then
+    archive into `~/…/CloudDocs/repete-backups` on every run and then
     prune the owner's genuine archives to the newest 30 alongside them.
 
     Same shape as `_no_real_alerts`: the destination is redirected for the whole
