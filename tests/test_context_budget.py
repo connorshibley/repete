@@ -393,3 +393,57 @@ def test_the_knowledge_budget_counts_its_label(tmp_path):
         cfg["llm"]["knowledge_max_context_chars"] + memory_mod.KNOWLEDGE_LABEL_CHARS
     mem = _mem(tmp_path / "kb", _copy(cfg))
     assert len(mem.knowledge_block()) <= memory_mod.context_budgets(cfg)["knowledge"]
+
+
+def test_the_research_block_honours_the_budget_it_is_GIVEN(tmp_path):
+    """A mutation found this hole: `Memory.research_block` could ignore its
+    budget entirely and nothing went red.
+
+    `tests/test_research_brief.py` asserts `ResearchBrief.to_block` respects a
+    budget it is handed — but that tests the renderer, not the CALL SITE. The
+    question here is different and is the one that matters for the prompt: does
+    the assembler actually pass the configured number down? Replacing
+    `to_block(budget or 900)` with `to_block(10**9)` left every budget test
+    passing, which is the same shape as asserting a threshold is PRESENT
+    rather than READ.
+    """
+    cfg = _copy(_shipped_cfg())
+    cfg["learning"]["context_budgets"]["research"] = 120
+    mem = _mem(tmp_path / "r", cfg, n_trades=4, n_lessons=2, n_judgments=4)
+
+    block = mem.research_block("AAPL", "buy", {"AAPL": {"qty": 10}},
+                               memory_mod.context_budgets(cfg)["research"])
+    assert len(block) <= 120, (
+        f"the research block rendered {len(block)} chars against a 120 budget "
+        f"— the assembler is not passing the budget through")
+
+
+def test_a_configured_zero_budget_means_UNBOUNDED_here(tmp_path):
+    """PINNING A TRAP, not endorsing it.
+
+    `cfg_or` treats a configured 0 as unset and falls through to the default —
+    which for book/trades/calibration/regime/research is None, meaning
+    UNBOUNDED. So `book: 0`, written intending "give the book nothing", yields
+    an uncapped book: the largest block in the prompt, unbounded, which is the
+    precise inversion §61 existed to fix.
+
+    I nearly "fixed" this. I did not, because 0-means-uncapped is an
+    ESTABLISHED IDIOM in this repo — `max_open_positions: 0` means UNCAPPED by
+    deliberate design (§29) and is documented as such — and silently inverting
+    it for every context block would be a behaviour change nobody asked for,
+    on the path to every judge call.
+
+    So this test asserts what the code DOES and names the ambiguity. If the
+    idiom is meant to hold here too, this test is the documentation it never
+    had. If it is not, this test is the thing that goes red when someone
+    fixes it deliberately.
+    """
+    cfg = _copy(_shipped_cfg())
+    cfg["learning"]["context_budgets"]["book"] = 0
+    cfg["learning"]["context_budgets"]["research"] = 0
+    budgets = memory_mod.context_budgets(cfg)
+    assert budgets["book"] is None, (
+        "a configured 0 no longer reads as unbounded — if that change was "
+        "deliberate, good, but it alters every block's meaning and the "
+        "shipped config should be re-checked for a 0 that meant 'nothing'")
+    assert budgets["research"] is None
