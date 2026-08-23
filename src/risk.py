@@ -1541,6 +1541,142 @@ def pure_checks(action: str, symbol: str, qty: int, price: float,
                     rail="sector_concentration")
 
 
+# The rails pure_checks owns, in the order it evaluates them. THE ORDER IS THE
+# CONTRACT: rail_census's first True must equal the rail pure_checks raises,
+# and tests/test_block_census.py asserts this tuple covers every rail= site
+# inside pure_checks. Adding a rail there without adding it here fails CI —
+# which is what RiskRejection's docstring has promised since 2026-08-02 and
+# what nothing enforced until 2026-08-22.
+PURE_RAILS = ("zero_qty", "order_value_cap", "drawdown", "max_open_positions",
+              "strategy_slots", "position_cap", "regime_exposure",
+              "net_exposure", "desync_sell", "desync_cover",
+              "direction_conflict", "sector_concentration")
+
+# Rails that live OUTSIDE pure_checks and are deliberately NOT censused.
+# `halt` and `daily_cap` read files (the HALT file, the trade-count file) and a
+# read-only census must never stat the kill switch; `heat` and `correlation`
+# are in pre_trade_checks; `swing_guard` is called from elsewhere entirely.
+# Named rather than merely absent so a new rail added outside cannot silently
+# look covered — test_block_census.py asserts this partition is exhaustive.
+NON_PURE_RAILS = ("halt", "daily_cap", "heat", "correlation", "swing_guard")
+
+
+def rail_census(action: str, symbol: str, qty: int, price: float,
+                account: dict, positions: dict, cfg: dict,
+                regime_label: str | None = None,
+                strategy: str | None = None,
+                strategy_open: int | None = None,
+                peak_equity: float | None = None) -> dict:
+    """Which of pure_checks' rails WOULD refuse this order — all of them.
+
+    pure_checks raises on the FIRST failure, so every rail after it is never
+    evaluated and the ledger records one key. That answers "what stopped this
+    trade" and can never answer "what else would have" — the audit's Phase 4
+    question, and the reason §48's "the drawdown rail blocked 94.58% of
+    signals" is a statement about which rail fired first, not how many would.
+
+    Returns {rail: True | False | None}:
+        True  — would refuse
+        False — evaluated and cleared
+        None  — DOES NOT APPLY to this action, or is disabled by config.
+
+    None rather than False for inapplicable rails, deliberately: False reads as
+    "checked and cleared" and would overstate how much checking happened. A
+    drawdown rail is not "cleared" on a sell; it was never asked.
+
+    READ-ONLY AND SIDE-EFFECT-FREE, exactly as pure_checks is. It decides
+    NOTHING — pure_checks remains the sole authority and this must never be
+    substituted for it. A boolean that changed whether a rail raises would be
+    a way to disable a rail; see statepaths.py on why the HALT path is not
+    configurable.
+
+    Deliberately a PARALLEL implementation rather than a refactor of
+    pure_checks onto a shared registry. That refactor is 200 lines of
+    incident-derived logic pinned by five test files, and doing it before
+    test_rail_census_agrees_with_pure_checks exists and has survived a
+    mutation is how a rail inverts silently.
+    """
+    r = cfg["risk"]
+    entry = action in ENTRY_ACTIONS
+    out: dict = {k: None for k in PURE_RAILS}
+
+    out["zero_qty"] = qty <= 0
+
+    order_value = qty * price
+    cap_usd = r.get("max_order_value_usd")
+    out["order_value_cap"] = (order_value > cap_usd) if cap_usd else None
+
+    if entry:
+        dd_cap = r.get("max_drawdown_pct") or 0
+        if dd_cap and peak_equity is not None:
+            out["drawdown"] = drawdown_pct(account["equity"], peak_equity) >= dd_cap
+
+        max_open = r["max_open_positions"]
+        out["max_open_positions"] = (
+            bool(max_open) and len(positions) >= max_open
+            and symbol not in positions) if max_open else None
+
+        strat_cap = ((cfg.get("strategies") or {}).get(strategy) or {}
+                     ).get("max_open_positions") if strategy else None
+        if strat_cap and strategy_open is not None:
+            out["strategy_slots"] = (strategy_open >= strat_cap
+                                     and symbol not in positions)
+
+        existing = abs(positions.get(symbol, {}).get("market_value", 0.0))
+        out["position_cap"] = (existing + order_value
+                               > account["equity"] * r["max_position_pct"] / 100)
+
+        recfg = r.get("regime_exposure") or {}
+        if (recfg.get("enabled") and regime_label
+                and regime_label.startswith("down")):
+            gross = sum(abs(p.get("market_value", 0.0))
+                        for p in positions.values())
+            cap = account["equity"] * recfg.get("down_max_gross_pct", 50) / 100
+            out["regime_exposure"] = gross + order_value > cap
+
+        band = r.get("net_exposure_pct") or {}
+        if band and account["equity"]:
+            net = net_exposure_pct(positions, account["equity"])
+            delta_pct = order_value / account["equity"] * 100
+            projected = net + (delta_pct if action == "buy" else -delta_pct)
+            hi, lo = band.get("max"), band.get("min")
+            if action == "buy" and hi is not None:
+                out["net_exposure"] = projected > hi
+            elif action == "short" and lo is not None:
+                out["net_exposure"] = projected < lo
+
+        mv = positions.get(symbol, {}).get("market_value", 0.0)
+        out["direction_conflict"] = ((action == "short" and mv > 0)
+                                     or (action == "buy" and mv < 0))
+
+        scfg = r.get("sector_concentration") or {}
+        if scfg.get("enabled"):
+            cap = scfg.get("max_per_sector")
+            sector = sector_of(cfg, symbol)
+            if cap and sector is not None:
+                out["sector_concentration"] = (
+                    sector_open_count(cfg, symbol, positions) >= cap)
+
+    if action == "sell":
+        out["desync_sell"] = positions.get(symbol, {}).get("market_value", 0.0) <= 0
+    if action == "cover":
+        out["desync_cover"] = positions.get(symbol, {}).get("market_value", 0.0) >= 0
+
+    return out
+
+
+def first_refusing_rail(census: dict) -> str | None:
+    """The rail pure_checks would raise, read off a census. None if it clears.
+
+    Evaluation order is PURE_RAILS, not dict order, so this stays correct if
+    the census dict is ever rebuilt or reordered.
+    """
+    for rail in PURE_RAILS:
+        if census.get(rail) is True:
+            return rail
+    return None
+
+
 def pre_trade_checks(action: str, symbol: str, qty: int, price: float,
                      account: dict, positions: dict, cfg: dict,
                      entry_ts: str | None = None,
