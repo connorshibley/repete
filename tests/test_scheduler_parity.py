@@ -47,6 +47,14 @@ CONTAINER_ONLY = {
     "open-cycle": "second daily entry pass; laptop runs the 15:45 cycle only",
     "midday-scan": "alerts only, never trades; noise on a personal machine",
     "mark-book": "hourly dashboard re-mark; cosmetic, needs an always-on host",
+    "weekend-publish": (
+        "weekend liveness heartbeat, and it is only meaningful from a host "
+        "that is definitely up. The laptop's launchd jobs were unloaded at "
+        "the 2026-08-20 Bizon cutover and the lid closes; a heartbeat that "
+        "fires only when someone happens to be awake is worse than none, "
+        "because its silence would mean 'market closed' and 'publisher "
+        "broken' at the same time — which is the exact ambiguity the job "
+        "exists to remove."),
 }
 
 # The MIRROR of CONTAINER_ONLY, added 2026-07-29 (W4-5). It did not exist

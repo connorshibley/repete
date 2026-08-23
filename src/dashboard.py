@@ -561,6 +561,26 @@ def staleness_class(hours: float) -> str:
     return "green"
 
 
+def newest_record_at(records: list[dict]):
+    """The newest ledger timestamp, or None when there isn't one.
+
+    `data_age_hours` below answers the same question in hours and collapses
+    "no records" and "unparseable" to 0.0 — fine for the server-side badge it
+    was written for, where 0.0 and green are the same picture at render time.
+    NOT fine for `dashboard_data.json`, which another program reads: there,
+    0.0 means "brand new" and would make an unreadable ledger the freshest
+    thing on the page. This returns None so the feed can emit null.
+    """
+    stamps = [r.get("ts") for r in records if r.get("ts")]
+    if not stamps:
+        return None
+    try:
+        newest = datetime.fromisoformat(max(stamps))
+    except (TypeError, ValueError):
+        return None
+    return newest if newest.tzinfo else newest.replace(tzinfo=timezone.utc)
+
+
 def data_age_hours(records: list[dict], now) -> float:
     """Hours since the newest ledger record — the age of what the page SHOWS.
 
@@ -1600,6 +1620,25 @@ def render(cfg: dict | None = None, out_path: str | None = None,
         "months": month_tbl,
     }
     payload = {"generated_at": now.isoformat(), "regions": regions}
+    # TWO CLOCKS, deliberately. `generated_at` is when this page was RENDERED
+    # and is ~0 by construction; `data_at` is how old what it SHOWS actually
+    # is. The fleet console has only ever had the first, so on a weekend a
+    # healthy system and a publisher that died on Friday look identical —
+    # both "published 25h ago", both amber. These fields are what let a
+    # consumer tell those apart.
+    #
+    # null, never 0, when unknown. See newest_record_at.
+    _newest = newest_record_at(records)
+    payload["data_at"] = _newest.isoformat() if _newest else None
+    payload["data_age_hours"] = (
+        round(data_age_hours(records, now), 2) if _newest else None)
+    # Published so a consumer can stop hardcoding its own. Today the console
+    # calls 25h amber (<48h) while this page calls the same number red
+    # (>=24h); nothing cross-references, so the two disagree in silence.
+    payload["stale_amber_hours"] = STALE_AMBER_HOURS
+    payload["stale_red_hours"] = STALE_RED_HOURS
+    # HASH COVERS `regions` ONLY. LIVE_JS's swap() re-renders the DOM whenever
+    # the hash moves; folding these keys in would make every poll a full swap.
     payload["hash"] = hashlib.sha256(
         json.dumps(regions, sort_keys=True).encode()).hexdigest()[:16]
     data_path = os.path.join(os.path.dirname(out_path) or ".", DATA_PATH)
