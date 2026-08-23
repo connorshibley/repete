@@ -191,3 +191,38 @@ def test_a_verdict_cannot_size_up_through_an_extra_key(cycle_env, monkeypatch):
 
     assert _submitted(broker2) == halved, (
         "an extra quantity key moved the order size past the clamped scale")
+
+
+def test_both_entry_paths_get_the_research_dossier():
+    """The dossier lives in `memory.context_for_llm`, not at the call sites,
+    so both `main._process_signal` and `swing_scan._enter` receive it without
+    either file knowing about it.
+
+    That is deliberate. My own plan flagged swing_scan as the file that
+    diverges silently — it mirrors _process_signal step for step, and
+    divergence #21 is already one instance of the two drifting. Putting the
+    block in the assembler makes the drift structurally impossible rather
+    than merely watched-for.
+
+    This asserts the property that makes it so: both sites pass the arguments
+    the dossier needs. A call site that stopped passing `symbol` or
+    `positions` would silently render an empty block for that path only.
+    """
+    import ast
+
+    for module in ("main.py", "swing_scan.py"):
+        tree = ast.parse((SRC / module).read_text())
+        calls = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Attribute)
+                 and n.func.attr == "context_for_llm"]
+        judged = [c for c in calls if {k.arg for k in c.keywords} >= {"signal"}]
+        assert judged, f"{module} has no judge-path context_for_llm call"
+        for c in judged:
+            kw = {k.arg for k in c.keywords}
+            missing = {"symbol", "positions"} - kw
+            assert not missing, (
+                f"src/{module} calls context_for_llm without {sorted(missing)}"
+                f" — the research dossier renders empty on that path only, "
+                f"and only on that path, which is the hardest kind of "
+                f"difference to notice")

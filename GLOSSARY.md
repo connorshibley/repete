@@ -79,7 +79,7 @@ it does not, the verdict measures a bot that does not exist.
 reopened.** "Fixed in code" is not closed; this repo has been wrong about that
 distinction before. **Open by construction** means the gap cannot be closed by
 any assertion — e.g. the paper broker charges no borrow cost, so no test can
-detect a real one. **Eight of twenty-three are open, and not all by
+detect a real one. **Nine of twenty-four are open, and not all by
 construction** — #19 is a plain omission (a live filter switched off in every
 gate) and #23 is a live rail the simulator never modelled. "Open by
 construction" is the reason for six of them, not a synonym for "open".

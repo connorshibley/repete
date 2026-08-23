@@ -4,12 +4,12 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twenty-three such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-four such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-23: #13, #14, #15, #16, #18, #19, #21 and #23.** Six of the eight
+**Open as of 2026-08-23: #13, #14, #15, #16, #18, #19, #21, #23 and #24.** Seven of the nine
 are open *by construction* rather than by defect — a sampling fact about the live
 record, two judge inputs the simulator has no mechanism to represent, a cost the
 paper broker does not charge, a fill-session hazard that only materialises when
@@ -65,6 +65,7 @@ code" is not closed; the repo has been wrong about that before.
 | 21 | **The live swing scanner fills inside the entry zone intraday; the simulator fills at the next open** | **open** | open by construction — the 30-min scan tests a live quote, the cycle and every §62 arm test the last completed close |
 | 22 | The test suite paged the operator — `watchdog.load_env()` fell back to the repo-root `.env`, so the alert-delivery negative control posted real alerts | closed | `tests/test_alert_delivery.py::test_load_env_NEVER_reaches_the_operators_real_dotenv` |
 | 23 | **The live kill retires a strategy's entries; the simulator has never modelled it** | **open** | found 2026-08-23; `tests/test_live_kill_is_live_only.py` pins the gap in both directions but does not close it — see the entry |
+| 24 | **The live judge reads a per-symbol research dossier; the simulator models the judge as a distribution and cannot represent one** | **open** | open by construction — registered 2026-08-23 by the change that caused it; the calibration refuses until re-fit |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -1049,3 +1050,82 @@ made while writing a register entry.
 simulator does not call it, the live path does — so the register cannot drift
 from the code in silence. That test does not close this entry. It makes the
 entry falsifiable, which is a different thing.
+
+---
+
+## #24 — the live judge now reads a per-symbol dossier the simulator cannot represent
+
+**Found and registered 2026-08-23**, by the change that caused it — not
+afterwards. Open **by construction**, and the third of that kind after #14 and
+#15, for the same reason those two are.
+
+`src/research.py` gives the live judge a file on the name in front of it: the
+news that name has carried and how those trades resolved, how the judge called
+it before and whether it was right, earnings proximity, and what the book holds
+in it and its sector. It reaches the prompt through
+`memory.context_for_llm`'s `research` block, budgeted at 900 chars.
+
+`src/backtest.py` has no judge. It has `judge_model.py`, which replays the live
+judge as a **distribution** — a scale drawn from a histogram fitted over 250
+real decisions. #15 already states why that cannot be closed by better
+modelling:
+
+> "It has no prompt, no text, and no reasoning. It cannot represent a principle
+> at all, in either direction. This is not a gap that better modelling closes;
+> there is nothing in `judge_model` for a principle to attach to."
+
+A dossier is the same shape of thing. There is nothing in a histogram for
+"AAPL missed Q4 guidance and the judge was wrong about it last time" to attach
+to.
+
+### Direction of bias
+
+**Unmeasured, and genuinely two-sided** — unlike #19 or #23, where the sign was
+nameable. Better per-symbol evidence should make the judge veto more of the bad
+trades and shrink fewer of the good ones. Which of those dominates is exactly
+what the refit will measure, and asserting a direction before measuring it is
+the thing this register exists to prevent.
+
+### What this does NOT invalidate, and the one thing it does
+
+**No verdict is retroactively re-scored.** §41 set that precedent. Every gate
+scored before today measured a judge that did not read a dossier, and that was
+true when those gates ran.
+
+**What it does invalidate is the calibration, going forward.**
+`knowledge/judge_calibration.json` was fitted 2026-07-16 → 08-19 under the old
+regime. The same change that opened this divergence bumped
+`backtest.judge_model.context_version` 1 → 2, so `judge_model` now **refuses**
+that calibration and no gate can be scored with `--judge-model` until it is
+re-fit. The gap is declared as `calibration_refit_pending: true`.
+
+That refusal is deliberate and it is the difference between this entry and the
+ones that came before it: **the divergence announces itself instead of being
+discovered later.** #8 sat closed-on-paper and open in fact for three days;
+§35–§41 were all scored with the judge model switched off and nobody noticed.
+
+### Not a claim of value
+
+The EDGE tally is unchanged. `knowledge/backtest_candidates.md` owns that count
+and it is not restated here.
+
+### What would close this
+
+Nothing available today, and the entry should not pretend otherwise. Closing it
+means the simulator reasoning over the same evidence, which means a model call
+per bar — rejected on the record for being slow, non-reproducible, and
+**contaminated by hindsight the model absorbed in training**. That last is the
+same argument that keeps signals deterministic: a model trained past 2003 knows
+what 2003 did.
+
+What is *reachable* is bounding it: after the refit, compare the deepened
+judge's verdict distribution against the version-1 histogram and report how far
+it moved. That converts an unmeasured gap into a measured one without closing
+it, which is the same move `#23`'s "what would close this" proposes for the
+live kill.
+
+### Meanwhile
+
+`tests/test_judge_verdict_surface.py` pins that the dossier reaches **both**
+live entry paths, and that no field in it can redirect a trade —
+the judge may still only veto or shrink.
