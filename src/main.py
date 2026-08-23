@@ -1570,7 +1570,7 @@ def _run_cycle(completed_bars_only: bool = False):
                 kill = risk.live_kill_blocked(ledger.closed_trades(),
                                               sig.strategy, cfg)
                 if kill:
-                    raise risk.RiskRejection(kill)
+                    raise risk.RiskRejection(kill, rail="live_kill")
             risk.pre_trade_checks(sig.action, symbol, qty, price, account,
                                   positions, cfg, entry_ts=entry_ts,
                                   regime_label=regime_label,
@@ -1582,13 +1582,12 @@ def _run_cycle(completed_bars_only: bool = False):
             tid = ledger.log_decision(symbol, sig.action, sig.reason, sig.indicators,
                                       review, executed=False,
                                       detail=f"risk rejection: {e}",
-                                      # `rail` defaults to "unattributed" in
-                                      # RiskRejection.__init__, so the bare
-                                      # raise from `live_kill_blocked` above
-                                      # lands there rather than as a null.
-                                      # getattr matches backtest.py:874 and
+                                      # getattr matches backtest.py:1161 and
                                       # keeps a logging path from ever being
-                                      # the thing that raises.
+                                      # the thing that raises. The default is
+                                      # still "unattributed", but no raise site
+                                      # relies on it any more — see
+                                      # test_every_rejection_names_its_rail.
                                       rail=getattr(e, "rail", "unattributed"),
                                       rail_vector=_rail_census_safe(
                                           sig.action, symbol, qty, price,

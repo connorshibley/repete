@@ -180,7 +180,7 @@ def _enter(cand: dict, live: float, cfg, ledger, memory, broker, account,
     try:
         kill = risk.live_kill_blocked(ledger.closed_trades(), STRATEGY, cfg)
         if kill:
-            raise risk.RiskRejection(kill)
+            raise risk.RiskRejection(kill, rail="live_kill")
         # `bars_map=all_bars` — the FULL fetch, which run_scan sized to the
         # universe PLUS every held symbol, exactly as the cycle does. The
         # correlation cap compares the candidate against what the book holds;
