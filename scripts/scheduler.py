@@ -97,6 +97,24 @@ JOBS = [
     # a backup that has never been restored is a hope, not a backup.
     ("backup",       range(0, 5), 17,   0,  ["sh", "scripts/backup.sh"]),
     ("restore-drill", [5],        10,   0,  [PY, "scripts/restore_drill.py"]),
+    # Weekend liveness heartbeat (2026-08-23). Every publish-chaining job above
+    # is Mon-Fri, so the site's feed goes untouched from Friday 16:20 to Monday
+    # 09:35 — 65 hours in which a healthy system and a publisher that died on
+    # Friday afternoon are INDISTINGUISHABLE. The fleet console shows both as
+    # "published 25h ago" with an amber dot, and no amount of squinting
+    # separates them.
+    #
+    # This does not trade and does not touch the ledger. It RE-RENDERS and
+    # publishes: publish_dashboard.sh diffs every file before committing, so
+    # publishing without rendering first finds nothing changed and pushes
+    # nothing, which would make this job a silent no-op — the failure it is
+    # here to prevent, wearing the costume of the fix.
+    #
+    # The page it pushes still says Friday, honestly: `data_at` in the feed
+    # carries the age of the DATA while `generated_at` carries the age of the
+    # render. Restamping alone would just make a stale page claim to be fresh.
+    ("weekend-publish", [5, 6],   12,   0,
+     ["sh", "-c", f"{PY} src/dashboard.py && sh scripts/publish_dashboard.sh"]),
     # Log rotation (2026-08-06). EVERY day, unlike backup: what this guards is
     # a crash loop filling a disk, and that does not wait for a session. It
     # belongs here as well as on launchd because docker-compose bind-mounts
