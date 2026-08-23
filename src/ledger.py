@@ -64,12 +64,34 @@ class Ledger:
         #   pre-2026-08-22-> key absent entirely
         # A reader must never treat the third as the second.
         prompt_fields = {"prompt_sha256": None, "context_sha256": None,
-                         "system_sha256": None, "prompt_chars": None}
+                         "system_sha256": None, "prompt_chars": None,
+                         # Which model ACTUALLY served the call, and its cost.
+                         # `vendor_model` sits beside `model_version` (stamped
+                         # in _append) and they are NOT the same thing:
+                         # model_version is the rulebook fingerprint from
+                         # modelver.py — config + risk + strategy source —
+                         # and vendor_model is the LLM the vendor ran. Two
+                         # similar names side by side is a misreading waiting
+                         # to happen, hence this comment.
+                         "vendor_model": None, "vendor_fell_back": None,
+                         "input_tokens": None, "output_tokens": None,
+                         "cost_usd": None}
         if llm_review is not None and "_prompt" in llm_review:
             llm_review = dict(llm_review)
             pr = llm_review.pop("_prompt")
             if pr:
-                prompt_fields = {k: pr[k] for k in prompt_fields}
+                v = pr.get("vendor") or {}
+                prompt_fields = {
+                    "prompt_sha256": pr["prompt_sha256"],
+                    "context_sha256": pr["context_sha256"],
+                    "system_sha256": pr["system_sha256"],
+                    "prompt_chars": pr["prompt_chars"],
+                    "vendor_model": v.get("model"),
+                    "vendor_fell_back": v.get("fell_back"),
+                    "input_tokens": v.get("input_tokens"),
+                    "output_tokens": v.get("output_tokens"),
+                    "cost_usd": v.get("cost_usd"),
+                }
                 self._store_prompt(trade_id, pr)
         self._append({
             "type": "decision",

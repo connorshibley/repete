@@ -220,8 +220,8 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
     # diagnosable; it is not evidence that parsing is fragile.
     user = review_user_message(signal, memory_context)
     try:
-        text = llm_client.complete(cfg, _SYSTEM, user,
-                                   max_tokens=cfg["llm"]["max_tokens"])
+        text, meta = llm_client.complete_detailed(
+            cfg, _SYSTEM, user, max_tokens=cfg["llm"]["max_tokens"])
     except Exception as e:  # noqa: BLE001 — vendor or network failure
         log.warning("LLM review call failed (%s) — proceeding rule-based", e)
         return {**fallback, "degraded": str(e)[:200], "degraded_reason": "api",
@@ -259,8 +259,12 @@ def review_signal(signal, memory_context: str, cfg: dict) -> dict:
                                      if conf is not None else None)
         except (TypeError, ValueError):
             verdict["confidence"] = None
-        # The one path where a model actually judged: record what it was sent.
-        verdict["_prompt"] = prompt_record(_SYSTEM, user, memory_context)
+        # The one path where a model actually judged: record what it was
+        # sent, which model actually served it, and what that cost. All ride
+        # on the same reserved key so ledger.log_decision strips them together.
+        pr = prompt_record(_SYSTEM, user, memory_context)
+        pr["vendor"] = {**meta, "cost_usd": llm_client.estimate_cost_usd(cfg, meta)}
+        verdict["_prompt"] = pr
         return verdict
     except Exception as e:  # noqa: BLE001 — a reply arrived, but not a verdict
         log.warning("LLM review reply unusable (%s) — proceeding rule-based", e)
