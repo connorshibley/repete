@@ -15,7 +15,6 @@ WHY THIS FILE EXISTS, TWICE OVER.
    it is the test that would license ever collapsing them onto one registry.
 """
 import copy
-import itertools
 import re
 from pathlib import Path
 
