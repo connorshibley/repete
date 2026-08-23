@@ -13,7 +13,7 @@ was an artifact.
 ## The protocol, in order
 
 0. **Read the record first** — `bot-research-recall`. `recall.py search` over
-   64 sections and 55 frozen hypotheses, then `recall.py section §N` on
+   67 sections and 55 frozen hypotheses, then `recall.py section §N` on
    anything close. Registering a question the record has already answered
    spends K on a result the repo already owns.
 
@@ -155,6 +155,6 @@ registration.
   - **Do not develop in `~/bots/repete`** — that checkout IS the live
     deployment; 9+ launchd jobs read `src/main.py` from that working directory
     every run, so work there is live by definition. Use
-    `~/bots/repete-tv-dev`.
+    `~/bots/trading-agent-tv-dev`.
 - Parking a candidate is still usually righter than registering it. See
   `bot-candidate-intake`.

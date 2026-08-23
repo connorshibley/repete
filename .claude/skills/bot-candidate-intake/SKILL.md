@@ -1,6 +1,6 @@
 ---
 name: bot-candidate-intake
-description: Use whenever an external trading idea arrives for any of the three bots — a downloaded skill, a paper, a blog post, an MCP server, a "proven backtested strategy", a YouTube method, or the owner asking "can we use this?". Produces a source review and a PARKED candidate. It never registers an EDGE claim, which matters because the EDGE budget is frozen and the project is hands-off.
+description: Use whenever an external trading idea arrives for any of the three bots — a downloaded skill, a paper, a blog post, an MCP server, a "proven backtested strategy", a YouTube method, or the owner asking "can we use this?". Produces a source review and a PARKED candidate. It never registers an EDGE claim, which matters because the EDGE budget is frozen. (Hands-off was REVERSED 2026-08-10; the budget discipline was not.)
 ---
 
 # Candidate intake: how an outside idea enters this project
@@ -93,7 +93,7 @@ Append to `knowledge/backtest_candidates.md` as **PARKED**, with:
 1. **§52 freeze** — `register_gate.py` mechanically refuses `claim: EDGE` on
    `data/snapshots/`, and `--override-freeze` is not for getting a result you
    want.
-2. **Hands-off since 2026-08-02** — the owner decided to stop building and wait
+2. **Hands-off was REVERSED 2026-08-10** (it held 2026-08-02 to 08-10) — the owner decided to stop building and wait
    for the decay monitor to reach n=20 closed trades (~early Sept). It was at 7.
 
 A parked candidate loses nothing by waiting. A registered one spends K

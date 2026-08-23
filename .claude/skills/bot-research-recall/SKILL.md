@@ -5,7 +5,7 @@ description: Use before proposing, registering or arguing for ANY change to the 
 
 # Recall: read the record before adding to it
 
-This project has 64 sections of research record, 55 frozen pre-registrations
+This project has 67 sections of research record, 55 frozen pre-registrations
 and 59 verdict rows. Until Phase 13 the only way to read any of it was `grep`
 over a 6,193-line markdown file, and nothing in the repo had ever read the two
 JSONL files at all.
@@ -81,7 +81,7 @@ section. That is a complete answer — see `bot-candidate-intake`.
 If it is genuinely new, `bot-pre-registration` governs what happens next. Note
 that **both EDGE venues are closed**: §52 freezes `data/snapshots/` and §57's
 own reading rule freezes `data/pit/`, both enforced in
-`register_gate.freeze_violation`. K stays 15.
+`register_gate.freeze_violation`. K stays 16 (owned by `bonferroni_k` in `research/specs/*.yaml`; corrected 2026-08-23, it read 15).
 
 ## New sections carry a trailer
 
