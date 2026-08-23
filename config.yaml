@@ -1459,6 +1459,29 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     vol_high: 0.25
 
 ops:
+  require_offhost_mirror: true   # OFF-HOST BACKUP MIRROR (2026-08-23). The Bizon
+                                 # has ONE 6.9T NVMe, so `backups/` there is on
+                                 # the same disk as memory/ — it survives
+                                 # `rm -rf memory` and nothing else. Until this
+                                 # date the mirror branch of scripts/backup.sh
+                                 # only knew how to copy to an iCloud path,
+                                 # which exists on a Mac and not on Linux, so
+                                 # every weekday run skipped it with a warning
+                                 # nobody read.
+                                 #
+                                 # TRUE makes src/health.py DEGRADE when a
+                                 # weekday mirror was due and did not verify.
+                                 # health defaults this to FALSE when absent,
+                                 # because a laptop and CI have no receipt and
+                                 # should not sit permanently degraded — so the
+                                 # shipped value is the thing that matters, and
+                                 # test_shipped_config.py pins it. Flipping this
+                                 # to false is how you would silently give up
+                                 # the only copy that survives the disk.
+  offhost_mirror_receipt: memory/offhost_mirror.json
+                                 # Written by scripts/backup.sh ONLY after the
+                                 # remote returned a hash matching the bytes
+                                 # uploaded. Its existence IS the verification.
   incident_owner: "Connor Shibley"
                                  # WHO GETS PAGED. Added 2026-08-21: the audit
                                  # found docs/incident_response.md is the
