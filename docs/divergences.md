@@ -875,3 +875,31 @@ The scan re-runs the drift guard at order time; the coid is shared with the
 cycle so the two paths cannot double-enter; and while `swing_sectors` ships
 `enabled: false` the scanner places nothing at all — the divergence is
 currently between the simulator and a dry run.
+
+## #22 — the test suite paged the operator
+
+Not a sim/live divergence; the same shape — a control that could not see its
+own failure — in the channel that reports the real ones.
+
+`watchdog.load_env()` fell back to the repo-root `.env` when the cwd held
+none. `tests/test_alert_delivery.py`'s negative control runs the real
+entrypoint from a temp cwd with no `.env`, so it loaded the operator's real
+`ALERT_WEBHOOK_URL` and posted false "Trading agent needs attention" alerts
+(HALT present — true only of the temp dir) to the live ntfy topic on every
+suite run. The test stayed green because it watched only its local receiver.
+
+Found 2026-08-22 in repete2 by polling the topic to confirm a genuine test
+alert: ~120 messages in 12 hours across all three bots, the real one buried.
+This repo is where the code was ported from.
+
+### Direction of bias
+
+Alert fatigue. A genuine page would be invisible among false ones.
+
+### CLOSED 2026-08-22
+
+Fallback removed — `load_env` loads the cwd `.env` only and returns what it
+loaded. Every launcher already cds to the repo root, so production never used
+the fallback. `test_load_env_NEVER_reaches_the_operators_real_dotenv` fails on
+the old code on any host with a repo `.env` and skips, saying so, where there
+is none. Verified by running the full suite and polling the topic: 0 messages.

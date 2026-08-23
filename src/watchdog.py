@@ -349,7 +349,7 @@ def main():
         log.warning("ledger ops_alert write failed: %s", e)
 
 
-def load_env() -> None:
+def load_env() -> str | None:
     """Read .env. Called from __main__ only, for the same reason as
     configure_logging().
 
@@ -375,19 +375,22 @@ def load_env() -> None:
     call that never runs.
     """
     from dotenv import load_dotenv
-    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # cwd first — every run_*.sh cds to the repo root, so in production the two
-    # candidates are the same file. The fallback keeps a hand-run from an odd
-    # directory working, and the cwd branch is what makes this testable against
-    # a temporary .env instead of the operator's real one.
-    for candidate in (os.path.join(os.getcwd(), ".env"),
-                      os.path.join(repo, ".env")):
-        if os.path.isfile(candidate):
-            load_dotenv(candidate)
-            return
+    # cwd ONLY. 2026-08-22: the repo-root fallback was removed. It let a
+    # process started from any other directory pick up the operator's real
+    # `.env` — and the negative control in tests/test_alert_delivery.py (run
+    # from a temp cwd with no .env) did exactly that: every suite run posted
+    # false "Trading agent needs attention" alerts to the real ntfy topic while the test stayed green,
+    # because it only watched its local receiver. Every launcher already cds
+    # to the repo root, so production never used the fallback.
+    candidate = os.path.join(os.getcwd(), ".env")
+    if os.path.isfile(candidate):
+        load_dotenv(candidate)
+        return candidate
+    return None
 
 
 if __name__ == "__main__":
     configure_logging()
-    load_env()
+    _loaded = load_env()
+    log.info("watchdog: .env %s", _loaded if _loaded else "not found in cwd — no webhook configured")
     main()
