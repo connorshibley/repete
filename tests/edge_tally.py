@@ -97,7 +97,12 @@ _W = "|".join(_NUM_WORD)
 # premise — and a digit-only regex walked straight past it while catching the
 # `1 pass in 15` forty lines below.
 K_STATED_RE = re.compile(
-    r"\bK is (?P<a>\d+)\b"
+    # `stays`/`remains`/`is now` added 2026-08-23: the guard matched "K is 15"
+    # and "K = 15" but NOT "K stays 15", which is what bot-research-recall
+    # actually wrote — so it sat at 15 against a register of 16, past a guard
+    # built for exactly that drift. A matcher blind to one verb is a guard with
+    # a hole shaped like whoever phrased it differently.
+    r"\bK (?:is|stays|remains|is now)(?: at)? (?P<a>\d+)\b"
     r"|\bK\s*=\s*(?P<b>\d+)\b"
     r"|(?:\d+ )?pass(?:es)? in (?P<c>\d+)\b"
     r"|\bin (?P<d>\d+) claims\b"
