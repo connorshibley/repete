@@ -4,7 +4,7 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twenty-one such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-two such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
@@ -59,6 +59,7 @@ code" is not closed; the repo has been wrong about that before.
 | 19 | **The earnings blackout is unmodelled in EVERY gate** | **open** | found 2026-08-09 (§57); no registered spec has ever passed `earnings=` |
 | 20 | The re-entry cooldown was keyed by symbol in live, by (strategy, symbol) in the simulator | closed | `tests/test_cooldown_key_matches_sim.py` |
 | 21 | **The live swing scanner fills inside the entry zone intraday; the simulator fills at the next open** | **open** | open by construction — the 30-min scan tests a live quote, the cycle and every §62 arm test the last completed close |
+| 22 | The test suite paged the operator — `watchdog.load_env()` fell back to the repo-root `.env`, so the alert-delivery negative control posted real alerts | closed | `tests/test_alert_delivery.py::test_load_env_NEVER_reaches_the_operators_real_dotenv` |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
