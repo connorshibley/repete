@@ -56,7 +56,7 @@ The video's architecture puts the LLM in charge. The research says that's backwa
 ## Step 1 — Install the basics (~20 min)
 
 1. **Install Python 3.11+**: from [python.org](https://www.python.org/downloads/) (check "Add to PATH" on Windows) or `brew install python` on Mac.
-2. **Get the project onto your machine**: `git clone https://github.com/connorshibley/trading-agent.git ~/trading-agent` (this said "unzip `trading-agent.zip`" until 2026-07-29 — it was a zip once and has been a public git repo since).
+2. **Get the project onto your machine**: `git clone https://github.com/connorshibley/repete.git ~/repete` (this said "unzip `trading-agent.zip`" until 2026-07-29 — it was a zip once and has been a public git repo since; the repo was named `trading-agent` until 2026-08-23, and GitHub redirects the old URL).
 3. **Open a terminal in that folder** and create a virtual environment:
    ```bash
    python3 -m venv venv
@@ -111,7 +111,7 @@ One cycle per bar. For the default daily timeframe, run once per weekday before 
 
 **Mac/Linux** — `crontab -e`, then:
 ```
-45 15 * * 1-5  cd /path/to/trading-agent && ./venv/bin/python src/main.py
+45 15 * * 1-5  cd /path/to/repete && ./venv/bin/python src/main.py
 ```
 **Windows** — Task Scheduler → Create Basic Task → Daily → Start a program: `C:\path\to\venv\Scripts\python.exe` with argument `src\main.py`, "Start in" = project folder.
 

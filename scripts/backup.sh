@@ -105,7 +105,7 @@ ls -1t "$DEST"/agent-backup-*.tar.gz 2>/dev/null | tail -n +15 | while read -r o
 done
 
 # ---- off-host mirror -------------------------------------------------------
-ICLOUD="$HOME/Library/Mobile Documents/com~apple~CloudDocs/trading-agent-backups"
+ICLOUD="$HOME/Library/Mobile Documents/com~apple~CloudDocs/repete-backups"
 if [ "${REPETE_OFFHOST_DIR+set}" = set ]; then
   OFFHOST="$REPETE_OFFHOST_DIR"          # explicit, including "" for disabled
 elif [ -d "$HOME/Library/Mobile Documents/com~apple~CloudDocs" ]; then

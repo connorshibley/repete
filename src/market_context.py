@@ -498,7 +498,7 @@ def load(cfg: dict) -> dict | None:
 
 
 if __name__ == "__main__":
-    # Hourly refresh entry point (com.trading-agent.newsbrain, 9:25-15:25 ET).
+    # Hourly refresh entry point (com.repete.newsbrain, 9:25-15:25 ET).
     import yaml
     from dotenv import load_dotenv
     logging.basicConfig(level=logging.INFO)

@@ -195,7 +195,7 @@ def test_weekly_learn_matches_the_launchd_plist():
     job = {j[0]: j for j in sched.JOBS}["weekly-learn"]
 
     with open(os.path.join(here, "..", "scripts",
-                           "com.trading-agent.learn.plist"), "rb") as f:
+                           "com.repete.learn.plist"), "rb") as f:
         cal = plistlib.load(f)["StartCalendarInterval"]
     cal = cal[0] if isinstance(cal, list) else cal
     # launchd Weekday: 0/7=Sun, 1=Mon..5=Fri  ->  scheduler: 0=Mon..6=Sun

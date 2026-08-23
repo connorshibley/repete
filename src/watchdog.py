@@ -1,7 +1,7 @@
 """Dead-man watchdog — the bot must fail LOUDLY when it runs unattended.
 
 Scheduled ~30 min after the daily cycle (see scripts/
-com.trading-agent.watchdog.plist). Checks FIVE things and alerts via an
+com.repete.watchdog.plist). Checks FIVE things and alerts via an
 operator notification + log + ledger event when any of them fails:
 
   1. HEARTBEAT — did the PROCESS run? memory/heartbeat (written on every

@@ -80,7 +80,7 @@ jobs:
       #
       # It is a LOCAL-MACHINE hygiene tool: it answers "is a live secret sitting
       # in plaintext on this laptop?", which is a question about this laptop.
-      # Its home is the weekly launchd job (com.trading-agent.secretcheck).
+      # Its home is the weekly launchd job (com.repete.secretcheck).
       #
       # A CI secret scan is a genuinely different tool — one that scans the REPO
       # for committed credentials (gitleaks/trufflehog shape). The step below is

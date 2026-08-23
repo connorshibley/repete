@@ -168,7 +168,7 @@ src/dashboard.py Self-contained dashboard.html — dark terminal theme, hero tot
                  publish after the cycle/posts) paths push; publish is a clean no-op
                  without a .site/.git checkout + push creds.
                  The news brain (market_context) refreshes hourly 9:25-15:25 ET on
-                 claude-haiku-4-5 (news.model) via com.trading-agent.newsbrain.
+                 claude-haiku-4-5 (news.model) via com.repete.newsbrain.
 publisher/       Phase B subscription publication (2026-07-22, PRODUCT.md): FastAPI
                  service reading agent state via ReadOnlyLedger, backed by a
                  genuinely read-only store (store.read_only_reader — read_all only,
@@ -304,7 +304,7 @@ config.yaml      All parameters. .env holds secrets (never commit).
     knowledge/backtest_candidates.md §1.
 12. **Dashboard + daily posts** DONE 2026-07-17: `src/dashboard.py` renders
     dashboard.html each cycle; `src/daily_posts.py` posts a 9:35 plan and
-    4:20 review (launchd com.trading-agent.dailypost), read-only scans,
+    4:20 review (launchd com.repete.dailypost), read-only scans,
     [PAPER] enforced.
 13. **common-trade ports** DONE 2026-07-19 (research in
     knowledge/port_research_2026-07-19.md; gates in backtest_candidates.md

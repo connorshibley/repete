@@ -107,7 +107,7 @@ def test_a_discord_lookalike_host_is_not_treated_as_discord():
 
 
 def test_every_shape_carries_the_source_so_three_bots_stay_distinguishable():
-    """One channel serves trading-agent, repete1 and repete2. An alert that
+    """One channel serves repete, repete1 and repete2. An alert that
     does not say which bot raised it sends you to the wrong machine."""
     for url in ("https://ntfy.sh/atopicname12",
                 "https://discord.com/api/webhooks/1/2",

@@ -95,7 +95,7 @@ plus `scripts/spread_analysis.py`. That is §22's subject. Vendored to
 `repete1/.claude/skills/` with a `PROVENANCE.md` recording the licence and the
 caveat that **§22 is blocked on hardware, not on knowledge** (§28).
 
-Nothing from this collection belongs in trading-agent, and installing it globally
+Nothing from this collection belongs in repete, and installing it globally
 would fire crypto instructions during equity work.
 
 ### `anthropics/skills` — adopted, and none of it is about trading

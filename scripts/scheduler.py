@@ -43,7 +43,7 @@ MARK_HOURS = range(10, 16)
 RETRY_HOURS = range(9, 16)
 RETRY_MINUTES = (0, 15, 30, 45)
 # swing-scan: every 30 min at :05/:35 across the session, matching
-# com.trading-agent.swingscan.plist entry for entry. The 9:05 firing is
+# com.repete.swingscan.plist entry for entry. The 9:05 firing is
 # PRE-OPEN on purpose: Broker.market_open() fails closed, so it costs one
 # clock read and proves the closed-market guard every trading day.
 SCAN_HOURS = range(9, 16)
@@ -85,7 +85,7 @@ JOBS = [
     ("watchdog",     range(0, 5), 16,   15, [PY, "src/watchdog.py"]),
     ("review-post",  range(0, 5), 16,   20,
      ["sh", "-c", f"{PY} src/daily_posts.py review && {_PUBLISH}"]),
-    # Friday 17:30 ET, matching com.trading-agent.learn.plist. These two
+    # Friday 17:30 ET, matching com.repete.learn.plist. These two
     # surfaces disagreed (launchd Friday 17:30 + review.py; container Sunday
     # 18:00, no review), so the weekly report existed only on the laptop.
     # weekdays are 0=Mon..6=Sun, so 4 = Friday.
@@ -105,7 +105,7 @@ JOBS = [
     # stdout — and rotate_logs.sh simply skips files that are not there.
     ("logrotate",    range(0, 7), 17,   5,  ["sh", "scripts/rotate_logs.sh"]),
     # §47 random-entry decay monitor. Sunday 11:30 ET, matching
-    # com.trading-agent.decaycheck.plist — after the week's trading is closed
+    # com.repete.decaycheck.plist — after the week's trading is closed
     # out and before the next week opens. ALERT-ONLY: it cannot halt trading
     # (tests/test_decaycheck.py walks the AST to keep it that way), so the
     # worst a spurious fire costs is one notification.

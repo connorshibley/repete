@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Weekly secret-exposure check — invoked by launchd
-# (com.trading-agent.secretcheck), Saturdays alongside the restore drill.
+# (com.repete.secretcheck), Saturdays alongside the restore drill.
 #
 # docs/secrets_rotation.md:56 says "do not answer from memory, run the check".
 # Until 2026-07-29 (W4-5) the check ran in NO job at all — no cron, no plist,

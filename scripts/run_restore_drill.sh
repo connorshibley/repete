@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Weekly restore drill — invoked by launchd (com.trading-agent.restoredrill).
+# Weekly restore drill — invoked by launchd (com.repete.restoredrill).
 #
 # A backup that has never been restored is a hope, not a backup. This unpacks
 # the newest archive into a throwaway directory and verifies every stream

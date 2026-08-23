@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Weekly random-entry decay check: has the live edge fallen to noise?
-# Invoked by launchd (com.trading-agent.decaycheck), Sundays — after the week's
+# Invoked by launchd (com.repete.decaycheck), Sundays — after the week's
 # trading is done and before the next week starts.
 #
 # ALERT-ONLY. This never halts trading; it emails/pushes and exits. Exit 1 means

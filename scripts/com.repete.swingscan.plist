@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.trading-agent.swingscan</string>
+    <string>com.repete.swingscan</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>

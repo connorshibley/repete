@@ -13,7 +13,7 @@ reads as coverage, which is worse than an admitted gap.
 ## How to reproduce the whole thing
 
 ```bash
-REPO=/path/to/trading-agent            # work in a worktree; the root is live
+REPO=/path/to/repete            # work in a worktree; the root is live
 PY=$REPO/.venv/bin/python
 
 for P in full thin empty hostile; do

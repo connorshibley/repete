@@ -89,9 +89,9 @@ def _launchd_jobs():
     """Job names covered by the committed plist templates."""
     names = set()
     for f in os.listdir(SCRIPTS):
-        if not (f.startswith("com.trading-agent.") and f.endswith(".plist")):
+        if not (f.startswith("com.repete.") and f.endswith(".plist")):
             continue
-        stem = f[len("com.trading-agent."):-len(".plist")]
+        stem = f[len("com.repete."):-len(".plist")]
         names |= PLIST_COVERS.get(stem, {stem})
     return names
 
@@ -157,14 +157,14 @@ def test_container_only_declarations_are_real_jobs():
 
 @pytest.mark.parametrize("name", ["backup", "restoredrill", "secretcheck"])
 def test_new_plists_are_valid_and_point_at_a_real_runner(name):
-    path = os.path.join(SCRIPTS, f"com.trading-agent.{name}.plist")
+    path = os.path.join(SCRIPTS, f"com.repete.{name}.plist")
     raw = open(path, "rb").read()
     assert b"{{AGENT_ROOT}}" in raw, (
         "plist must keep the placeholder — a hard-coded path silently no-ops "
         "when the checkout moves, which is how the track record was nearly "
         "lost once already")
     data = plistlib.loads(raw.replace(b"{{AGENT_ROOT}}", b"/tmp/agent"))
-    assert data["Label"] == f"com.trading-agent.{name}"
+    assert data["Label"] == f"com.repete.{name}"
     runner = [a for a in data["ProgramArguments"] if a.endswith(".sh")][0]
     local = os.path.join(SCRIPTS, os.path.basename(runner))
     assert os.path.exists(local), f"{runner} does not exist"

@@ -1,6 +1,6 @@
 # Quantitative Factor Investing as a Path to Beating the S&P 500: A Rigorous Review
 
-*Compiled for trading-agent knowledge base use. All quantitative claims are sourced to primary/authoritative documents (Ken French Data Library, AQR Capital Management, peer-reviewed/NBER/SSRN papers, iShares fund fact sheets, Morningstar). Report date context: August 2026.*
+*Compiled for repete knowledge base use. All quantitative claims are sourced to primary/authoritative documents (Ken French Data Library, AQR Capital Management, peer-reviewed/NBER/SSRN papers, iShares fund fact sheets, Morningstar). Report date context: August 2026.*
 
 ---
 

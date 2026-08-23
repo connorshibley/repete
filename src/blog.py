@@ -140,7 +140,7 @@ def render(cfg: dict, out_path: str | None = None) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>trading-agent blog</title><style>{CSS}</style></head><body>
+<title>repete blog</title><style>{CSS}</style></head><body>
 <div class=wrap>
 <h1>bot blog <span class=small>[PAPER] — generated {now}</span></h1>
 <p class=small>Every post this bot publishes, archived by day with the

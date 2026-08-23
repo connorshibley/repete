@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Daily log rotation — invoked by launchd (com.trading-agent.logrotate).
+# Daily log rotation — invoked by launchd (com.repete.logrotate).
 #
 # Every day, not just weekdays: a runaway has no market dependency. The whole
 # point of this job is the crash loop that fills a disk on a Saturday.

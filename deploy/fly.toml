@@ -7,7 +7,7 @@
 #
 # Secrets are NEVER in this file — they go through `flyctl secrets set`.
 
-app = "repete-trading-agent"          # rename if the name is taken
+app = "repete"                        # rename if the name is taken
 primary_region = "ewr"                # near US markets; latency is not critical
                                       # (daily bars), but keep it US-East anyway
 

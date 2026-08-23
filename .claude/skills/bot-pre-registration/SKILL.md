@@ -1,6 +1,6 @@
 ---
 name: bot-pre-registration
-description: Use when registering, writing, scoring or reasoning about a gate claim in any of the three trading bots (trading-agent, repete1, repete2) — writing a spec in research/specs/, running register_gate.py or run_gate.py, choosing a claim type, spending the Bonferroni budget, or being asked whether a result "counts". Also use when tempted to compare two backtest variants informally, which is the thing this protocol exists to prevent.
+description: Use when registering, writing, scoring or reasoning about a gate claim in any of the three trading bots (repete, repete1, repete2) — writing a spec in research/specs/, running register_gate.py or run_gate.py, choosing a claim type, spending the Bonferroni budget, or being asked whether a result "counts". Also use when tempted to compare two backtest variants informally, which is the thing this protocol exists to prevent.
 ---
 
 # Pre-registration: how a claim becomes evidence here
@@ -152,9 +152,9 @@ registration.
   - **Live strategies stay frozen** so the decay sample reaches n=20 closed
     trades clean (13 as of 2026-08-14, ~early Sept). Do not touch strategy
     enablement or live config.
-  - **Do not develop in `~/bots/trading-agent`** — that checkout IS the live
+  - **Do not develop in `~/bots/repete`** — that checkout IS the live
     deployment; 9+ launchd jobs read `src/main.py` from that working directory
     every run, so work there is live by definition. Use
-    `~/bots/trading-agent-tv-dev`.
+    `~/bots/repete-tv-dev`.
 - Parking a candidate is still usually righter than registering it. See
   `bot-candidate-intake`.

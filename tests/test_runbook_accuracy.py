@@ -84,7 +84,7 @@ def test_heartbeat_doc_job_count_matches_the_shipped_plists():
     to know whether that was correct."""
     scripts = os.path.join(ROOT, "scripts")
     plists = [f for f in os.listdir(scripts)
-              if f.startswith("com.trading-agent.") and f.endswith(".plist")]
+              if f.startswith("com.repete.") and f.endswith(".plist")]
     body = open(os.path.join(ROOT, "HEARTBEAT.md")).read()
     words = {3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
              8: "eight", 9: "nine", 10: "ten"}
