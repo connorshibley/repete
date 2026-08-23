@@ -4,19 +4,23 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twenty-two such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-three such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-11: #13, #14, #15, #16, #18, #19 and #21.** Six of the seven
+**Open as of 2026-08-23: #13, #14, #15, #16, #18, #19, #21 and #23.** Six of the eight
 are open *by construction* rather than by defect — a sampling fact about the live
 record, two judge inputs the simulator has no mechanism to represent, a cost the
 paper broker does not charge, a fill-session hazard that only materialises when
 the cycle runs long, and a scanner that tests a live quote where the simulator
-tests a completed close. **#19 is not: it is a plain omission**, found
-2026-08-09, in which a live entry filter has been silently switched off in every
-gate ever run because no spec supplies the data it needs. **#17 and #20 are
+tests a completed close. **#19 and #23 are not.** #19 is a plain
+omission, found 2026-08-09, in which a live entry filter has been silently
+switched off in every gate ever run because no spec supplies the data it needs.
+**#23 is a third kind again** — a live rail the simulator never modelled, whose
+absence was *intended* (it is the live-side backstop §10 leaned on in writing)
+and therefore never looked for. It is binding right now: one of the three
+enabled strategies is retired live and fully active in every simulation. **#17 and #20 are
 DEFECTS, each found and closed the same day.** #17 is the largest correction
 here: the simulator let every strategy enter every symbol in the snapshot. #20
 is the subtler shape — live and the simulator keyed the re-entry cooldown
@@ -60,6 +64,7 @@ code" is not closed; the repo has been wrong about that before.
 | 20 | The re-entry cooldown was keyed by symbol in live, by (strategy, symbol) in the simulator | closed | `tests/test_cooldown_key_matches_sim.py` |
 | 21 | **The live swing scanner fills inside the entry zone intraday; the simulator fills at the next open** | **open** | open by construction — the 30-min scan tests a live quote, the cycle and every §62 arm test the last completed close |
 | 22 | The test suite paged the operator — `watchdog.load_env()` fell back to the repo-root `.env`, so the alert-delivery negative control posted real alerts | closed | `tests/test_alert_delivery.py::test_load_env_NEVER_reaches_the_operators_real_dotenv` |
+| 23 | **The live kill retires a strategy's entries; the simulator has never modelled it** | **open** | found 2026-08-23; `tests/test_live_kill_is_live_only.py` pins the gap in both directions but does not close it — see the entry |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -904,3 +909,143 @@ loaded. Every launcher already cds to the repo root, so production never used
 the fallback. `test_load_env_NEVER_reaches_the_operators_real_dotenv` fails on
 the old code on any host with a repo `.env` and skips, saying so, where there
 is none. Verified by running the full suite and polling the topic: 0 messages.
+
+---
+
+## #23 — the live kill retires a strategy's entries; the simulator has never modelled it
+
+**Found 2026-08-23**, while naming the `live_kill` rail (#143). Not a defect and
+not open-by-construction — a third kind, and the entry is written to keep those
+apart.
+
+`risk.live_kill_blocked` (`src/risk.py:1224`) refuses ENTRIES for a strategy
+whose live record shows profit factor below `pf_below` over at least
+`min_trades` closed trades. It ships armed: `enabled: true, min_trades: 15,
+pf_below: 0.8` (`config.yaml:804`). Two callers, both live —
+`src/main.py:1570` and `src/swing_scan.py:181`.
+
+`src/backtest.py` never calls it. Zero hits for `live_kill`,
+`strategy_live_stats` or `closed_trades`.
+
+### The mechanism
+
+Its own docstring calls it **"the live-side mirror of the backtest enablement
+gate"** (`src/risk.py:1226`), and `CLAUDE.md` repeats the phrase. That framing
+is what hid the gap, because the two are not one mechanism wearing two hats:
+
+- `backtest.enablement_gate` (`src/backtest.py:1623`) is an **offline,
+  once-per-decision** verdict on a completed OOS run.
+- `live_kill` is a **continuous, in-run** rail.
+
+The enablement gate has no in-run analogue on either side, and the live kill has
+no offline analogue. Calling either one the mirror of the other implies a
+symmetry that was never built.
+
+### It is not hypothetical, and it is binding today
+
+Measured 2026-08-23 through the repo's own functions inside the live container:
+
+| strategy | live closed trades | live PF | `live_kill_blocked` |
+|---|---|---|---|
+| tsmom | 15 | 0.145 | **FIRING** |
+| meanrev | 2 | inf | None |
+| ma_crossover | 1 | 0.0 | None |
+
+Three strategies are enabled. **One of them is retired on the live bot right now
+and fully active in every simulation.**
+
+### Read the production ledger, not this repo's
+
+The working copy's `memory/ledger.jsonl` is a frozen pre-cutover copy. It greps
+**zero** for `live kill` and computes tsmom at n=11 — armed but not binding. The
+Bizon's greps **fifteen** and computes n=15. State migrated at the 2026-08-20
+cutover and the local copy stopped advancing.
+
+Recorded because it is a live trap, not a footnote: the first investigation of
+this divergence grepped the nearest ledger, found nothing, and could not tell
+whether the claim was aspirational. Any statement about the live record here
+means the deployment host.
+
+### Direction of bias
+
+**Toward flattering the simulator, and nameable rather than unknown.** The kill
+only ever REMOVES entries. So the simulator enters trades live would refuse, for
+a strategy whose live record is bad, wherever a strategy's run-to-date PF would
+trip the floor — and is a no-op everywhere else. **Magnitude unmeasured.**
+
+### Why it stayed invisible
+
+The asymmetry was intended, which is exactly why nobody looked for it.
+`knowledge/backtest_candidates.md:250` (§10) leans on the kill in writing while
+flagging tsmom failing its own gate:
+
+> `HONEST FLAG: tsmom on the CURRENT universe FAILS the gate on this recent
+> window (PF 1.02 …) … No action beyond the expansion …; live_kill remains the
+> realized-trades fast path.`
+
+So the record declined to act on a PF 1.02 backtest flag *because* the live kill
+would catch it. The live kill then caught it. That is the protocol working — and
+it is also the finding: **the live rail made a decision the simulator's numbers
+did not.** The two sides no longer agree about which strategies trade, and until
+now nothing said so.
+
+### What this does and does not invalidate
+
+**No verdict is reopened.** No registered spec references `live_kill`; no rule in
+`gatespec.RULES`/`SELF_RULES` depends on it; §10's reasoning is not invalidated
+by the simulator lacking a rail it never claimed to have. §41 set the precedent
+that a simulator finding does not retroactively re-score sections.
+
+**What it does mean** is that every gate from §1 onward scored an ensemble in
+which tsmom trades to the end of the window, while the live ensemble stopped
+entering it on 2026-08-20.
+
+### Not a claim of value
+
+The EDGE tally is unchanged by this. `knowledge/backtest_candidates.md` owns
+that count and it is not restated here.
+
+### What would close this
+
+**Not** wiring `live_kill_blocked` into `simulate_ensemble`. The slot exists —
+`src/backtest.py:1097`, inside the existing `try:`, so attribution would work
+automatically — and taking it would be the wrong move today. tsmom is one of
+three enabled strategies in every ensemble baseline arm, so the baseline of
+essentially every one of the 106 registrations would move. The byte-identity
+invariant is asserted in prose (`src/backtest.py:1475`, `:1015`, `:607`, `:961`)
+but `tests/test_run_gate_reproduces.py` pins runner determinism only, not
+cross-version stability — so **nothing would go red** and 114 verdicts would
+silently become non-comparable. Ordering is not neutral either: live checks the
+kill BEFORE `pre_trade_checks`, and `pure_checks` raises on first failure, so
+placing it after `:1097` would undercount `live_kill` against live.
+
+The cheap measurement instead: instrument `by_strategy` (`src/backtest.py:942`)
+with gross win and gross loss at the exit site (`:993-999`, where `owner` and
+`t.pnl` are already in scope) and **report** how many entries a shadow live-kill
+would have refused, without wiring it to the entry decision. `SimTrade`
+(`src/backtest.py:47`) carries no strategy field, which is why `Result.trades`
+cannot be partitioned after the fact — the aggregation happens at the exit site
+or not at all. That yields the magnitude with zero effect on frozen verdicts,
+and it is what would license deciding the open question below.
+
+### The open question this does not answer
+
+Should the enablement gate apply the same PF floor to SIMULATED closed trades
+that the live bot applies to real ones?
+
+**For:** a gate that scores a bot without a rail the live bot has is scoring a
+bot that does not exist — this register's own opening sentence.
+
+**Against:** the kill is a rule about LIVE evidence. Simulated closed trades are
+not live evidence, and applying a live-record rule inside a backtest may just be
+the enablement gate under another name.
+
+Undecided, deliberately. It needs its own pre-registration, not a judgement call
+made while writing a register entry.
+
+### Meanwhile
+
+`tests/test_live_kill_is_live_only.py` pins the gap in both directions — the
+simulator does not call it, the live path does — so the register cannot drift
+from the code in silence. That test does not close this entry. It makes the
+entry falsifiable, which is a different thing.
