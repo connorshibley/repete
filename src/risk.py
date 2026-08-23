@@ -1552,13 +1552,29 @@ PURE_RAILS = ("zero_qty", "order_value_cap", "drawdown", "max_open_positions",
               "net_exposure", "desync_sell", "desync_cover",
               "direction_conflict", "sector_concentration")
 
-# Rails that live OUTSIDE pure_checks and are deliberately NOT censused.
-# `halt` and `daily_cap` read files (the HALT file, the trade-count file) and a
-# read-only census must never stat the kill switch; `heat` and `correlation`
-# are in pre_trade_checks; `swing_guard` is called from elsewhere entirely.
+# Rails that live OUTSIDE pure_checks and are deliberately NOT censused, each
+# for a reason that is about inputs, never about importance:
+#
+#   halt, daily_cap     read FILES (the HALT file, the trade-count file). A
+#                       read-only census must never stat the kill switch.
+#   heat, correlation   in pre_trade_checks, which does that same file I/O.
+#   swing_guard         called from elsewhere entirely.
+#   live_kill           needs the CLOSED-TRADE HISTORY. Censusing it would
+#                       make a pure function read the ledger.
+#   entry_drift         needs a LIVE QUOTE — a network call, and the one rail
+#                       here that is fail-OPEN (a quote outage is not a bad
+#                       price; see the README's amber path).
+#   downsize_zero_qty   happens AFTER the judge shrinks an order, so it cannot
+#                       exist at census time — the census runs on the signal's
+#                       qty, not the judged one.
+#
 # Named rather than merely absent so a new rail added outside cannot silently
-# look covered — test_block_census.py asserts this partition is exhaustive.
-NON_PURE_RAILS = ("halt", "daily_cap", "heat", "correlation", "swing_guard")
+# look covered — test_block_census.py asserts this partition is exhaustive
+# across ALL of src/, not just this file. That widening (2026-08-23) is what
+# found `entry_drift` and `downsize_zero_qty`: both had been live-path rails
+# for months, registered nowhere, and invisible to every partition check.
+NON_PURE_RAILS = ("halt", "daily_cap", "heat", "correlation", "swing_guard",
+                  "live_kill", "entry_drift", "downsize_zero_qty")
 
 
 def rail_census(action: str, symbol: str, qty: int, price: float,

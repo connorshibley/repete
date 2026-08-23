@@ -14,6 +14,7 @@ WHY THIS FILE EXISTS, TWICE OVER.
    the two agree. That is `test_the_census_agrees_with_the_rails` below, and
    it is the test that would license ever collapsing them onto one registry.
 """
+import ast
 import copy
 import re
 from pathlib import Path
@@ -57,6 +58,67 @@ def test_the_partition_of_all_rails_is_exhaustive():
     assert everywhere <= known, (
         f"rails in risk.py that are neither censused nor excluded by name: "
         f"{sorted(everywhere - known)}")
+
+
+def test_every_rejection_names_its_rail():
+    """THE OTHER HALF OF THE DOCSTRING'S PROMISE — "enumerates the raise
+    sites". Until 2026-08-23 the enumeration above read `risk.py` only, and
+    both live-kill raise sites are in `main.py` and `swing_scan.py`. So the
+    kill switch that retired tsmom on 2026-08-20 logged fifteen live
+    rejections as `unattributed`, and no test could say so: the reason was
+    in `detail` as prose, which nothing aggregates and nothing pins.
+
+    THOSE FIFTEEN ARE IN THE BIZON'S LEDGER, NOT THIS REPO'S. State migrated
+    to the deployment host at the 2026-08-20 cutover and the working copy's
+    `memory/ledger.jsonl` froze there — it greps ZERO for "live kill" and
+    computes tsmom at n=11. Production computes n=15, PF 0.145, kill firing.
+    Said explicitly because a reader who greps the nearest ledger concludes
+    the sentence above was invented; one already did.
+
+    `RiskRejection` defaults `rail` to "unattributed" ON PURPOSE, so a
+    forgotten tag never crashes a trading cycle. This is the test that makes
+    the default unreachable in practice rather than load-bearing."""
+    bare = []
+    for path in sorted(Path(risk.__file__).parent.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = (fn.attr if isinstance(fn, ast.Attribute)
+                    else fn.id if isinstance(fn, ast.Name) else None)
+            if name != "RiskRejection":
+                continue
+            # rail is the 2nd positional or a keyword; either is explicit.
+            if "rail" not in {k.arg for k in node.keywords} and len(node.args) < 2:
+                bare.append(f"{path.name}:{node.lineno}")
+    assert not bare, (
+        "RiskRejection raised without naming a rail — it will log as "
+        f"'unattributed' and be invisible to every census: {bare}")
+
+
+def test_rails_raised_outside_risk_py_are_registered_too():
+    """The partition test above reads risk.py. A rail raised from main.py or
+    swing_scan.py is just as real and just as invisible if unregistered."""
+    known = set(risk.PURE_RAILS) | set(risk.NON_PURE_RAILS)
+    for path in sorted(Path(risk.__file__).parent.rglob("*.py")):
+        found = set(re.findall(r'rail="([a-z_]+)"', path.read_text()))
+        unknown = found - known - {"unattributed"}
+        assert not unknown, (
+            f"{path.name} raises rails that are neither censused nor excluded "
+            f"by name: {sorted(unknown)}")
+
+
+def test_the_live_kill_is_named_not_unattributed():
+    """Behavioural, not a source scan: the pre-registered kill is the rail
+    that has actually fired in production, and it must arrive tagged."""
+    e = RiskRejection("live kill: tsmom PF 0.15 ...", rail="live_kill")
+    assert e.rail == "live_kill"
+    assert "live_kill" in risk.NON_PURE_RAILS, (
+        "the kill runs outside pure_checks, so it must be excluded from the "
+        "census BY NAME — silent absence is how a rail looks covered")
+    # It is not censusable: the census takes no closed-trade history, and
+    # inventing one would make a read-only function read the ledger.
+    assert "live_kill" not in risk.PURE_RAILS
 
 
 def test_the_excluded_rails_are_excluded_for_a_reason():
