@@ -200,3 +200,35 @@ def test_an_unmapped_symbol_is_absent_not_a_sector_named_none():
 
     _, detail = research._book_exposure("SPY", {}, cfg)
     assert detail["sector"] is None
+
+
+def test_the_news_finding_reads_the_field_news_memory_ACTUALLY_writes(monkeypatch):
+    """The first cut guessed `note`/`headline`. Neither exists — news_memory
+    writes `text` (news_memory.py:121). Against a real ledger the block
+    rendered "11 flagged; 2026-07-31 | 2026-07-31 | ..." — five dates and no
+    information, while every unit test passed, because they all fed the shape
+    the reader hoped for rather than the one the WRITER produces.
+
+    This asserts against the writer's shape.
+    """
+    import news_memory
+    rows = [{"ts": "2026-07-31T12:00:00+00:00", "date": "2026-07-31",
+             "symbol": "AAPL", "text": "Q4 guidance miss triggered a sell-off",
+             "nominated": True}]
+    monkeypatch.setattr(news_memory, "history", lambda *a, **k: rows)
+
+    summary, detail = research._news_on_symbol("AAPL", CFG, NOW)
+    assert "Q4 guidance miss" in summary, (
+        "the news finding dropped the only informative field it had")
+    assert "2026-07-31" in summary
+    assert detail["n"] == 1
+
+
+def test_a_news_row_with_no_text_does_not_render_as_a_bare_date(monkeypatch):
+    """The failure mode above, asserted directly: a row carrying nothing
+    useful must not masquerade as an entry with content."""
+    import news_memory
+    monkeypatch.setattr(news_memory, "history",
+                        lambda *a, **k: [{"date": "2026-07-31", "text": ""}])
+    summary, _ = research._news_on_symbol("AAPL", CFG, NOW)
+    assert summary.strip().endswith("2026-07-31"), summary

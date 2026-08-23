@@ -155,11 +155,18 @@ def _news_on_symbol(symbol, cfg, now):
     recent = hist[-MAX_NEWS_ITEMS:]
     bits = []
     for h in recent:
-        when = str(h.get("ts", ""))[:10]
-        note = str(h.get("note") or h.get("headline") or "").strip()
+        # `text` is the field news_memory actually writes (news_memory.py:121,
+        # from the distiller's per-symbol flag or nomination). The first cut of
+        # this guessed `note`/`headline`, which do not exist — so the block
+        # rendered "11 flagged; 2026-07-31 | 2026-07-31 | ..." : five dates and
+        # no information, against a real ledger. Caught by rendering it, not by
+        # reading the code.
+        when = str(h.get("date") or h.get("ts", ""))[:10]
+        text = str(h.get("text") or "").strip()
         pnl = h.get("pnl_pct")
         tail = f" -> {pnl:+.1f}%" if isinstance(pnl, (int, float)) else ""
-        bits.append(f"{when} {note[:70]}{tail}")
+        nom = "*" if h.get("nominated") else ""
+        bits.append(f"{when}{nom} {text[:70]}{tail}".strip())
     return f"{len(hist)} flagged; " + " | ".join(bits), {"n": len(hist)}
 
 

@@ -1371,6 +1371,45 @@ backtest:               # offline harness (src/backtest.py) — never touches th
   judge_model:            # SIMULATED JUDGE (§29, 2026-07-26) — closes the live
     enabled: false        # half of divergence #8. backtest.py never imports llm
     salt: judge-v1        # (by design), so the judge has been ABSENT from every
+    context_version: 2    # WHICH JUDGE THIS DISTRIBUTION DESCRIBES (2026-08-23).
+                          # 1 -> 2 on 2026-08-23: the judge now reads a
+                          # PER-SYMBOL RESEARCH DOSSIER (src/research.py) it
+                          # has never had. knowledge/judge_calibration.json was
+                          # fitted under version 1, so judge_model now REFUSES
+                          # it and every gate run with --judge-model stops
+                          # rather than sizing against a judge that no longer
+                          # exists. That refusal is the feature.
+    calibration_refit_pending: true
+                          # DECLARED, not inferred. The bump above outran the
+                          # fit, and re-earning one needs new live decisions —
+                          # the current fit took 34 days to reach n=250 against
+                          # min_sample 50, and the judge has been unreachable
+                          # since 2026-08-20. So this state lasts weeks.
+                          #
+                          # Set back to false by the same change that runs
+                          # `scripts/calibrate_judge.py --write`. While it is
+                          # true, judge_model refuses and no gate can be scored
+                          # with --judge-model. That is correct and it is not a
+                          # workaround: the alternative is a gate that reports
+                          # numbers about a bot that does not exist.
+                          # Bump whenever what the judge READS changes — a new
+                          # context block, a changed budget, a different prompt.
+                          # knowledge/judge_calibration.json records the version
+                          # it was fitted under and judge_model REFUSES on a
+                          # mismatch.
+                          #
+                          # Causal, not temporal: "is this old?" is the wrong
+                          # question. A fit from six months ago is fine if the
+                          # judge has not changed, and yesterday's is worthless
+                          # if it has. There were already guards against
+                          # silently running the judge OFF (_STATS, run_gate
+                          # refusing a judge-on verdict with zero activity) and
+                          # NONE against running it on with a stale fit.
+                          #
+                          # Re-fitting needs new live decisions: the current
+                          # calibration took 34 days to reach n=250 against a
+                          # min_sample of 50. So a bump is a real cost and
+                          # should be a deliberate act.
                           # backtest this project has run, while live it cuts
                           # 53.5% of buys at mean scale 0.752. The simulator has
                           # therefore been sizing entries ~33% larger than the
@@ -1420,7 +1459,17 @@ learning:                # the learning loop: hypothesis book + judge calibratio
   evaluator_batch_size: 5         # closed trades evaluated per learn.py run
   max_llm_calls_per_cycle: 2      # hard cap on learning LLM calls inside a trading cycle
   top_k_lessons: 8                # lessons injected into the review prompt
-  max_context_chars: 12000        # hard cap on the whole memory block.
+  max_context_chars: 13000        # hard cap on the whole memory block.
+                                  # 12000 -> 13000 on 2026-08-23 for the
+                                  # `research` block. The named budgets summed
+                                  # to 10,966 before it; adding 900 left 134
+                                  # chars of headroom, and §61's own finding
+                                  # was that principles.md sat at 1000 against
+                                  # a 1000 budget — "zero headroom, which is a
+                                  # different and QUIETER problem than being
+                                  # over". A cap the next block cannot fit
+                                  # under is a cap that will evict something
+                                  # without being changed.
                                   # 4000 -> 12000 on 2026-08-11 (§61). At 4000
                                   # the assembled context measured 5,613 chars
                                   # against the live memory files and the bare
@@ -1446,6 +1495,24 @@ learning:                # the learning loop: hypothesis book + judge calibratio
     scoreboard: 1000              # uses 922
     calibration: 200              # uses 105
     regime: 200                   # uses 49
+    research: 900                 # PER-SYMBOL DOSSIER (2026-08-23,
+                                  # src/research.py): what news this name has
+                                  # carried and how those trades resolved, how
+                                  # the judge has called it before and whether
+                                  # it was right, earnings proximity, what the
+                                  # book holds here and in its sector.
+                                  #
+                                  # Everything else in this block is GLOBAL —
+                                  # the scoreboard is the last 20 calls across
+                                  # every symbol, which on a 38-name universe
+                                  # is rarely more than one row about the name
+                                  # actually being judged.
+                                  #
+                                  # 4 findings x ~90 chars measured, plus a
+                                  # header that names any tool that failed.
+                                  # It renders inside the budget by dropping
+                                  # WHOLE findings and saying how many, never
+                                  # by cutting mid-line.
                                   # + knowledge 1500 (+66 label) and news_memory
                                   # 600, which keep their own keys beside the
                                   # features they belong to. Sum ~10,966 against

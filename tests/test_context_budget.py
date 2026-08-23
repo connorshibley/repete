@@ -149,7 +149,12 @@ def test_preflight_warns_when_the_budgets_oversubscribe():
     cfg["learning"]["max_context_chars"] = 4000     # the state that shipped
     warns = preflight.warnings(cfg)
     assert any("oversubscribe" in w for w in warns), warns
-    assert any("6966" in w for w in warns), (
+    # 6966 -> 7866 on 2026-08-23: the `research` block added 900 budgeted
+    # chars, and this test forces the total back to the 4,000 that shipped
+    # before §61. The figure is asserted rather than recomputed on purpose —
+    # a test that derives the expected overage from the same function it is
+    # checking would pass no matter what that function returned.
+    assert any("7866" in w for w in warns), (
         f"the warning must state the size of the overage, not merely that one "
         f"exists: {warns}")
 
@@ -346,9 +351,14 @@ def test_removing_the_new_keys_restores_the_old_eviction(tmp_path):
     # = 5666 against a 4000 total. A LOWER bound — the book, the trades,
     # calibration and the regime label were unbudgeted and contribute nothing
     # to it, which is why the runtime event exists beside the static check.
+    # Still 1666, and that is the point of leaving it: with `context_budgets`
+    # popped, `research` falls back to None like book/trades/calibration/
+    # regime, so it contributes nothing to the STATIC overage. If this number
+    # ever moves, a new block acquired a derived default and the pre-§61
+    # rollback stopped being a true rollback.
     assert rec["budget_overage"] == 1666
     assert set(rec["unbounded_blocks"]) == {"book", "trades", "calibration",
-                                            "regime"}
+                                            "regime", "research"}
 
 
 def test_the_shipped_config_keeps_the_regime_label(tmp_path):
