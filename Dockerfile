@@ -21,7 +21,17 @@ WORKDIR /app
 # write-access on just the dashboard repo, not a broader credential) and
 # git shells out to a real `ssh` binary for that — the base image has
 # neither, so this alone would still fail with "ssh: not found".
-RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
+#
+# rclone + gnupg (2026-08-23): scripts/backup.sh mirrors each archive OFF-HOST,
+# and both halves of that run INSIDE this container — installing rclone on the
+# Bizon host would not have helped. The Bizon has a single 6.9T NVMe, so a
+# local `backups/` directory sits on the same disk as the thing it protects;
+# until now the off-host branch was skipped with a warning on every weekday
+# run, because it only knew how to copy to an iCloud path that exists on a Mac.
+# gnupg encrypts before upload: the archive carries memory/ (the whole ledger)
+# and config.yaml (every strategy parameter), which is not credential material
+# but is not third-party-bucket material either.
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client rclone gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first — they change far less often than the source.

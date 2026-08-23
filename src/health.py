@@ -51,6 +51,18 @@ MAX_HEARTBEAT_AGE_HOURS = 26
 # the cycle is due: still stale at 16:15 is still a genuine miss.
 CYCLE_HOUR_ET, CYCLE_MINUTE_ET = 15, 45
 
+# The off-host mirror runs inside the WEEKDAY backup job (scheduler.py: the
+# "backup" entry, range(0, 5) at 17:00 ET). Its staleness is judged the same
+# way the heartbeat's is — against whether a run was actually DUE — and not
+# against a flat number of hours. Friday 17:00 to Monday 17:00 is 72h of
+# entirely correct silence, so any fixed threshold either cries wolf every
+# Sunday or is too loose to catch a single missed weekday. Divergence #22 is
+# what an alarm that fires on a working system costs.
+BACKUP_HOUR_ET, BACKUP_MINUTE_ET = 17, 0
+# The job takes seconds; the grace is for a slow upload or a late scheduler,
+# not for a missed run.
+BACKUP_GRACE_HOURS = 2
+
 
 def _et_date(ts: str) -> str:
     """The EASTERN calendar date of an ISO timestamp, or "" if unreadable.
@@ -112,6 +124,53 @@ def heartbeat_age_hours(path: str = HEARTBEAT_FILE,
         ts = ts.replace(tzinfo=timezone.utc)
     now = now or datetime.now(timezone.utc)
     return (now - ts).total_seconds() / 3600
+
+
+def last_backup_due(now: datetime,
+                    grace_hours: float = BACKUP_GRACE_HOURS) -> datetime | None:
+    """The most recent weekday 17:00 ET at which a mirror should already have
+    happened, allowing `grace_hours` for the run itself. None if no such
+    instant exists inside the last week.
+
+    Deliberately parallel to `cycle_was_due`: the question is never "how old is
+    this file" but "was a run due since it was written".
+    """
+    from datetime import timedelta
+
+    from zoneinfo import ZoneInfo
+    et_zone = ZoneInfo("America/New_York")
+    cursor = now.astimezone(et_zone) - timedelta(hours=grace_hours)
+    for _ in range(8):
+        if cursor.weekday() < 5:
+            due = cursor.replace(hour=BACKUP_HOUR_ET, minute=BACKUP_MINUTE_ET,
+                                 second=0, microsecond=0)
+            if due <= cursor:
+                return due.astimezone(timezone.utc)
+        cursor = (cursor - timedelta(days=1)).replace(hour=23, minute=59,
+                                                      second=59, microsecond=0)
+    return None
+
+
+def mirror_receipt_ts(path: str, now: datetime | None = None) -> datetime | None:
+    """When the off-host mirror last VERIFIED. None if it never has.
+
+    None is not zero and not "old": `scripts/backup.sh` writes this file only
+    after the remote returned a hash matching the bytes uploaded, so its
+    absence means no verified mirror exists, which is a different and worse
+    state than a stale one. Callers must not collapse them.
+    """
+    try:
+        with open(path) as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not rec.get("verified"):
+        return None
+    try:
+        ts = datetime.fromisoformat(str(rec.get("ts", "")).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
 
 
 def _open_buys_count(records: list[dict]) -> int:
@@ -191,6 +250,11 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         # report halted: false.
         "halted": os.path.exists(statepaths.halt_path(cfg)),
         "heartbeat_age_hours": None,
+        # None means NO verified mirror has ever happened — distinct from an
+        # old one, and reported as the worse of the two.
+        "offhost_mirror_age_hours": None,
+        "offhost_mirror_overdue": False,
+        "offhost_mirror_required": False,
         "storage_backend": "jsonl",
         "last_cycle": None,
         # Default False, not None: if the ledger cannot be read we must not
@@ -212,6 +276,33 @@ def status(cfg: dict | None = None, now: datetime | None = None,
 
     age = heartbeat_age_hours(statepaths.heartbeat_path(cfg), now=now)
     out["heartbeat_age_hours"] = round(age, 2) if age is not None else None
+
+    ops = cfg.get("ops", {}) or {}
+    receipt_path = ops.get("offhost_mirror_receipt", "memory/offhost_mirror.json")
+    mirror_ts = mirror_receipt_ts(receipt_path)
+    if mirror_ts is not None:
+        out["offhost_mirror_age_hours"] = round(
+            (now - mirror_ts).total_seconds() / 3600, 2)
+
+    # DEFAULT FALSE when the key is absent, and that is deliberate. A missing
+    # receipt is the normal state on a laptop, in CI, and in any fresh
+    # checkout; degrading there would make DEGRADED the resting state
+    # everywhere except one host, which is how a health check stops being read.
+    #
+    # The shipped config.yaml sets this TRUE, and
+    # tests/test_shipped_config.py::test_the_shipped_config_requires_an_offhost_mirror
+    # asserts it — so "absent" cannot become a quiet way to switch the alarm
+    # off in production. Same shape as the judge's `on_unavailable: block`,
+    # where a config flip survived every test until the shipped value itself
+    # was pinned.
+    out["offhost_mirror_required"] = bool(ops.get("require_offhost_mirror", False))
+    due = last_backup_due(now)
+    # Overdue iff required, a run was due, and the last verified mirror
+    # predates it. Never a flat hour count — see BACKUP_GRACE_HOURS.
+    out["offhost_mirror_overdue"] = bool(
+        out["offhost_mirror_required"]
+        and due is not None
+        and (mirror_ts is None or mirror_ts < due))
 
     try:
         import store as store_mod
@@ -276,6 +367,15 @@ def status(cfg: dict | None = None, now: datetime | None = None,
             "cycle ran today but never completed"
             + (" — see the cycle_crashed record"
                if out["cycle_crashed_today"] else ""))
+    if out["offhost_mirror_overdue"]:
+        if out["offhost_mirror_age_hours"] is None:
+            out["problems"].append(
+                "no verified off-host mirror — every backup is on the same "
+                "disk as the thing it protects")
+        else:
+            out["problems"].append(
+                f"off-host mirror is {out['offhost_mirror_age_hours']:.0f}h old "
+                f"— a weekday mirror was due and did not verify")
     if out["slo_breach_today"]:
         out["problems"].append("degradation SLO breached today")
 
@@ -326,6 +426,18 @@ def main() -> int:
         # channel reached nobody was during an incident, through a
         # notification you were not going to receive. "log-only" here means a
         # failure goes to a file and no further.
+        # "never" reads as the problem it is; "None h" reads as a formatting
+        # bug and gets ignored.
+        _m = s["offhost_mirror_age_hours"]
+        if _m is not None:
+            mirror_txt = f"{_m}h"
+        elif s["offhost_mirror_required"]:
+            mirror_txt = "never"
+        else:
+            mirror_txt = "n/a"
+        if s["offhost_mirror_overdue"]:
+            mirror_txt += " OVERDUE"
+
         try:
             import alerting
             alerts_txt = f" | alerts={alerting.channel()}"
@@ -334,6 +446,7 @@ def main() -> int:
         print(f"{'HEALTHY' if s['healthy'] else 'DEGRADED'} | mode={s['mode']}"
               f" | storage={s['storage_backend']}"
               f" | heartbeat={s['heartbeat_age_hours']}h"
+              f" | mirror={mirror_txt}"
               f" | open={s['open_positions']}"
               f"{dd_txt}"
               f"{alerts_txt}"

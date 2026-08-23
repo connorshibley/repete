@@ -216,3 +216,27 @@ def test_the_shipped_judge_does_not_fail_open(shipped):
     assert shipped["llm"]["on_unavailable"] == "block", (
         "the shipped config must refuse an entry the judge could not judge; "
         "'approve' silently executes unreviewed trades at full size")
+
+
+def test_the_shipped_config_requires_an_offhost_mirror(shipped):
+    """The Bizon has ONE disk. `backups/` there is on the same NVMe as
+    `memory/`, so without an off-host mirror the backup survives a bad `rm` and
+    nothing else — not the disk, not the machine, not the site.
+
+    `health.py` defaults this to FALSE when the key is absent, deliberately: a
+    laptop and CI have no receipt and must not sit permanently DEGRADED. That
+    default is exactly why the SHIPPED value has to be pinned here. The judge's
+    `on_unavailable` taught this the expensive way — reverting it to
+    `approve` left all 2,548 tests green, because every test built its own
+    config and none asserted the one that actually ships.
+    """
+    ops = shipped.get("ops", {}) or {}
+    assert ops.get("require_offhost_mirror") is True, (
+        "config.yaml no longer requires an off-host mirror. If that is "
+        "deliberate, say so in the commit and delete this test — but the "
+        "Bizon's local backups/ is on the same disk as memory/, so this flag "
+        "is the only thing that notices when the durable copy stops arriving.")
+    assert ops.get("offhost_mirror_receipt"), (
+        "the receipt path is unset, so health.py would read its default while "
+        "backup.sh writes wherever it was told — a mirror could verify and "
+        "still report as never having happened")
