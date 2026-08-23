@@ -1277,6 +1277,28 @@ def _finalize_cycle(cfg: dict, ledger: Ledger, memory, broker, account: dict,
         log.warning("page render failed: %s", e)
 
 
+def _rail_census_safe(action, symbol, qty, price, account, positions, cfg,
+                      regime_label, strategy):
+    """risk.rail_census(), but a failure here can never lose a rejection.
+
+    Runs ONLY on the rejection path, where a RiskRejection has already been
+    caught — so an approved entry pays nothing for it. On rejection it
+    re-evaluates ~12 cheap predicates over at most 38 positions.
+
+    The try/except is the same rule the prompt sidecar follows: the audit
+    trail is not a trading path. A census that raised would turn a correctly
+    blocked trade into a crashed cycle, which is strictly worse than not
+    knowing which other rails would have fired.
+    """
+    try:
+        return risk.rail_census(action, symbol, qty, price, account,
+                                positions, cfg, regime_label=regime_label,
+                                strategy=strategy)
+    except Exception as e:  # noqa: BLE001 — diagnosis must not break trading
+        log.warning("rail census failed (%s) — rejection still recorded", e)
+        return None
+
+
 def _run_cycle(completed_bars_only: bool = False):
     started = _bootstrap_cycle()
     if started is None:
@@ -1568,6 +1590,10 @@ def _run_cycle(completed_bars_only: bool = False):
                                       # keeps a logging path from ever being
                                       # the thing that raises.
                                       rail=getattr(e, "rail", "unattributed"),
+                                      rail_vector=_rail_census_safe(
+                                          sig.action, symbol, qty, price,
+                                          account, positions, cfg,
+                                          regime_label, sig.strategy),
                                       regime=regime_label, strategy=sig.strategy)
             stop, tp = _would_be_brackets(sig, bars, price)
             memory.judgments.log_judgment(

@@ -50,7 +50,8 @@ class Ledger:
                      regime: str | None = None, strategy: str | None = None,
                      entry_ts: str | None = None,
                      trade_plan: dict | None = None,
-                     rail: str | None = None) -> str:
+                     rail: str | None = None,
+                     rail_vector: dict | None = None) -> str:
         trade_id = str(uuid.uuid4())[:8]
         # Pull the prompt record OUT of llm_review before it is written.
         # llm_review is read by review.py, dashboard.py, learn.py,
@@ -118,6 +119,20 @@ class Ledger:
             # against message text that is free to be reworded.
             # None on every non-rejection record, which is most of them.
             "rail": rail,
+            # WHICH RAILS WOULD ALSO HAVE REFUSED — added 2026-08-22, audit
+            # Phase 4 ("what did each guardrail return?"). `rail` above is the
+            # BINDING rail, singular, because pure_checks raises on the first
+            # failure and never evaluates the rest. That answers "what stopped
+            # this trade" and can never answer "what else would have".
+            #
+            # ALONGSIDE, never replacing: 1,344 records carry only `rail`, and
+            # dashboard.py and docs/runbooks.md read it. Same discipline as
+            # alpha_pct and the prompt hashes.
+            #
+            # {rail: True|False|None} — None means the rail does not apply to
+            # this action, never "checked and cleared". None for the whole
+            # field on a non-rejection, or if the census itself failed.
+            "rail_vector": rail_vector,
             "order": order,
             "entry_price": entry_price,
             "qty": qty,
