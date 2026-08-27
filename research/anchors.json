@@ -1207,14 +1207,14 @@
       "key": "§76",
       "heading": "## §76 — THE DECAY MONITOR REACHED ITS THRESHOLD: INDISTINGUISHABLE FROM RANDOM, ON A STRATEGY ALREADY RETIRED (DIAGNOSTIC, K stays 16, 2026-08-23)",
       "start_line": 7077,
-      "body_sha256": "acdd29929f6bf431d1300077816009b3f8c799db6b206611bf965955817e25ea",
+      "body_sha256": "7906c5771e1039bb513dcb5a2c1d5d78bad4328cd7a14dd353974358b1c21495",
       "subheadings": [
         "### Why this section exists at all",
         "### The numbers",
         "### THE COMPOSITION, WHICH LEADS RATHER THAN TRAILS",
         "### What this does and does not license",
         "### The sample cannot grow right now",
-        "### An observation, recorded not diagnosed"
+        "### Why it did not alert — RESOLVED, and it is not a gap"
       ],
       "specs": [],
       "spec_source": "id+header+trailer"
