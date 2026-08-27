@@ -7073,3 +7073,100 @@ falsifiable prior can be right.
 Trial count through §75: 241 arm runs.
 
 <!-- recall: section=§75 specs=s75a,s75b,s75c,s75d -->
+
+## §76 — THE DECAY MONITOR REACHED ITS THRESHOLD: INDISTINGUISHABLE FROM RANDOM, ON A STRATEGY ALREADY RETIRED (DIAGNOSTIC, K stays 16, 2026-08-23)
+
+Registers nothing, spends no Bonferroni budget, enables nothing. **K stays
+16.** Both EDGE venues remain frozen. It records a measurement that was
+pre-registered long before it ran, and that nothing had written down.
+
+### Why this section exists at all
+
+`src/decaycheck.py` is **alert-only by construction**: it cannot halt trading
+and it cannot write, and `tests/test_decaycheck.py` walks the AST to keep it
+that way. It runs Sundays 11:30 ET. On 2026-08-23 it crossed its threshold,
+returned a negative verdict, and — because `alert` was false — left no trace
+anywhere. No ledger event, no alert, no file. Read by hand, on a Sunday
+afternoon, four hours after it ran.
+
+The 2026-08-02 hands-off decision paused this project *pending this exact
+measurement*, expecting it in early September. It arrived on 2026-08-23 and
+would have gone unread.
+
+### The numbers
+
+```
+verdict         : INDISTINGUISHABLE_FROM_RANDOM
+n_trades        : 24        (min_trades 20 — threshold met)
+actual_mean_pct : -0.32%
+null_mean_pct   : +0.80%    (2000 random-entry samples, seed 20260801)
+percentile      : 17.4
+slippage_bps    : 5.0
+```
+
+Over 24 closed round-trips the live entries averaged **−0.32%** per trade.
+Random entries over the same names and dates averaged **+0.80%**. The bot sits
+at the **17.4th percentile** of its own null.
+
+### THE COMPOSITION, WHICH LEADS RATHER THAN TRAILS
+
+| strategy | closed trades | live status |
+|---|---|---|
+| `tsmom` | **19 of 24** | RETIRED 2026-08-20 by `live_kill`, PF 0.145 |
+| `meanrev` | 4 | enabled |
+| `ma_crossover` | 1 | enabled |
+
+**This is overwhelmingly a verdict on a strategy that no longer trades.**
+`live_kill` retired tsmom's entries three days before this monitor crossed its
+threshold, on a completely independent criterion — realized profit factor
+against a floor frozen on 2026-07-21.
+
+So the honest headline is not "the bot is indistinguishable from random". It
+is that **two independent instruments reached the same conclusion about the
+same strategy, and the faster one had already acted.** §10 leaned on
+`live_kill` in writing as the realized-trades fast path; this is the slower
+path arriving at the same place and confirming it.
+
+Writing this up as a verdict on the running bot would have been the more
+dramatic sentence and the less true one.
+
+### What this does and does not license
+
+**It does not say the bot is worse than random.** INDISTINGUISHABLE means no
+edge is detectable. At n=24, the 17.4th percentile is not a rejection, and
+§34 already established there is no validated way to pick a winner on this
+data — a procedure that cannot reliably select cannot reliably condemn either.
+
+**It says almost nothing about what is running now.** The two enabled
+strategies have **five closed trades between them**. That is the real state of
+the live record and it should be stated plainly rather than dressed up: after
+five weeks of paper trading, the currently-enabled configuration has no
+measurable record at all.
+
+**No verdict is re-scored.** §41's precedent holds: a monitor finding does not
+retroactively re-score sections.
+
+### The sample cannot grow right now
+
+Entries have been blocked since **2026-08-21**: 53 signals refused by
+`unavailable_block` after the Anthropic account exhausted its credits, with
+`on_unavailable: block` doing exactly what it was configured to do. The book
+has drained 22 → 16 as exits continued to run correctly, and the degradation
+SLO is breached daily. Until credits return, this measurement is frozen at
+n=24 and the enabled strategies stay at n=5.
+
+### An observation, recorded not diagnosed
+
+**A negative verdict did not alert.** `alert: false` on
+INDISTINGUISHABLE_FROM_RANDOM. Either the alert condition is deliberately
+narrower than the verdict set — plausible, since a monitor that pages on
+"cannot distinguish" would page constantly at low n — or it is a gap. Chasing
+it is its own task and it is not chased here. What is certain is that this
+result reached nobody, which is the same shape as the capture hook that logged
+171 healthy-looking no-ops and the mutation harness that printed CAUGHT for a
+test file that did not exist.
+
+Trial count through §75: 241 arm runs. §76 runs no arms; the count is
+unchanged.
+
+<!-- recall: section=§76 specs= -->

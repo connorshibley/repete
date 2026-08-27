@@ -30,8 +30,13 @@ import regime as regime_mod
 KNOWLEDGE_LABEL_CHARS = 66
 
 # Every block of the judge prompt, in assembly order.
-CONTEXT_BLOCKS = ("book", "trades", "lessons", "knowledge", "market_context",
-                  "news_memory", "scoreboard", "calibration", "regime")
+# ORDER IS MEANINGFUL. `context_for_llm` slices the TAIL when the cap bites,
+# and `preflight` reads CONTEXT_BLOCKS[-4:] to name the blocks that go first.
+# `research` is inserted after `trades`, not appended, so that the four
+# at-risk blocks §61 identified stay the same four.
+CONTEXT_BLOCKS = ("book", "trades", "research", "lessons", "knowledge",
+                  "market_context", "news_memory", "scoreboard",
+                  "calibration", "regime")
 
 
 def context_budgets(cfg: dict) -> dict[str, int | None]:
@@ -69,6 +74,13 @@ def context_budgets(cfg: dict) -> dict[str, int | None]:
         "scoreboard": cfg_or("scoreboard", total // 4),
         "calibration": cfg_or("calibration", None),
         "regime": cfg_or("regime", None),
+        # The per-symbol dossier (src/research.py). Budgeted from the day it
+        # was added rather than after it silently evicted something — §61 was
+        # the lesson: `TODAY'S MARKET CONTEXT` was being cut mid-word at
+        # "Iran deal h" and NEWS MEMORY, the scoreboard, calibration and the
+        # regime label were dropped entirely, because a `ctx[:4000]` returned
+        # happily and nothing marked the prompt.
+        "research": cfg_or("research", None),
     }
 
 
@@ -97,6 +109,12 @@ class Memory:
         self.llm_cfg = cfg.get("llm", {})
         self.knowledge_path = self.llm_cfg.get("knowledge_path")
         self.news_cfg = cfg.get("news", {})
+        # The WHOLE config. `self.cfg` above is only cfg["memory"]; the
+        # research block resolves sectors (strategies.base.sector_map) and
+        # earnings dates, which live at the top level. Kept rather than
+        # re-read so the block cannot disagree with the config this Memory
+        # was constructed from.
+        self.full_cfg = cfg
 
     # ---- write ----
 
@@ -399,13 +417,17 @@ class Memory:
         news = self.market_context_block(symbol)
         recall = self.news_memory_block(symbol)
         book = self.book_block(positions, account)
+        dossier = self.research_block(
+            symbol, getattr(signal, "action", None), positions,
+            budgets.get("research"))
         regime_desc = regime_mod.describe(regime)
         if budgets["regime"]:
             regime_desc = regime_desc[:budgets["regime"]]
         ctx = ((f"{book}\n\n" if book else "")
                + f"{header}\n"
                f"{trade_block}\n\n"
-               f"VALIDATED LESSONS (hypotheses with evidence counts n=supports/contradicts):\n"
+               + (f"{dossier}\n\n" if dossier else "")
+               + f"VALIDATED LESSONS (hypotheses with evidence counts n=supports/contradicts):\n"
                f"{lesson_block}\n\n"
                + (f"{knowledge}\n\n" if knowledge else "")
                + (f"{news}\n\n" if news else "")
@@ -417,6 +439,32 @@ class Memory:
         if len(ctx) > cap:
             self._record_eviction(ctx, cap)
         return ctx[:cap]
+
+    def research_block(self, symbol, action, positions, budget) -> str:
+        """Per-symbol dossier (src/research.py), or "" if off/unavailable.
+
+        Never raises. This sits on the path to every judge call, and the same
+        rule `news_memory_block` states applies with more force here: a
+        research layer that can abort a cycle is a research layer that costs
+        trading days to gain context.
+
+        Enabled by `research.enabled`, default TRUE. It makes no model call
+        and no network call — every tool is retrieval over state this repo
+        already keeps — so there is no cost argument for shipping it off.
+        """
+        if not symbol:
+            return ""
+        rcfg = (self.full_cfg.get("research") or {})
+        if rcfg.get("enabled") is False:
+            return ""
+        try:
+            import research
+            brief = research.build(symbol, action or "", self.full_cfg,
+                                   positions=positions,
+                                   judgments=self.judgments.replay())
+            return brief.to_block(budget or 900)
+        except Exception:  # noqa: BLE001 — see docstring
+            return ""
 
     def news_memory_block(self, symbol: str | None = None) -> str:
         """Accumulated news history for this symbol (W7), distinct from

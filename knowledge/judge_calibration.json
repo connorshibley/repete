@@ -1,5 +1,6 @@
 {
   "downsize_rate": 0.857741,
+  "fitted_context_version": 1,
   "mean_scale": 0.595188,
   "min_sample": 50,
   "n_degraded_excluded": 51,

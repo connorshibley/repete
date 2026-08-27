@@ -129,6 +129,24 @@ def calibrate(rows: list[dict]) -> dict:
     }
 
 
+def _context_version(path: str = "config.yaml"):
+    """`backtest.judge_model.context_version` from config, or None.
+
+    None when the config cannot be read — and None is written through as None
+    rather than defaulting to 1. A calibration that cannot say which judge it
+    saw must not claim to have seen the current one; judge_model treats a
+    missing version as a mismatch, which is the safe direction.
+    """
+    try:
+        import yaml
+        with open(path) as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception:  # noqa: BLE001 — a calibration tool must not need a config
+        return None
+    return (((cfg.get("backtest") or {}).get("judge_model")) or {}).get(
+        "context_version")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -151,6 +169,12 @@ def main() -> int:
     # and if the count is ever large relative to n_judged_buys, that is a
     # degradation problem showing up in the one place someone will look.
     cal["n_degraded_excluded"] = n_degraded
+    # WHICH JUDGE THIS DESCRIBES. Read from config rather than hardcoded, so a
+    # re-fit after a context bump stamps the NEW regime automatically.
+    # Without this the guard in judge_model._check_version would have no
+    # escape hatch: every re-fit would produce a file that fails the check
+    # forever, and the obvious workaround would be to delete the check.
+    cal["fitted_context_version"] = _context_version()
 
     for k, v in cal.items():
         print(f"  {k}: {v}")

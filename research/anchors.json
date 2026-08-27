@@ -1202,6 +1202,22 @@
         "s75d"
       ],
       "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§76",
+      "heading": "## §76 — THE DECAY MONITOR REACHED ITS THRESHOLD: INDISTINGUISHABLE FROM RANDOM, ON A STRATEGY ALREADY RETIRED (DIAGNOSTIC, K stays 16, 2026-08-23)",
+      "start_line": 7077,
+      "body_sha256": "acdd29929f6bf431d1300077816009b3f8c799db6b206611bf965955817e25ea",
+      "subheadings": [
+        "### Why this section exists at all",
+        "### The numbers",
+        "### THE COMPOSITION, WHICH LEADS RATHER THAN TRAILS",
+        "### What this does and does not license",
+        "### The sample cannot grow right now",
+        "### An observation, recorded not diagnosed"
+      ],
+      "specs": [],
+      "spec_source": "id+header+trailer"
     }
   ]
 }

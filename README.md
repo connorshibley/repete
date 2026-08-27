@@ -34,8 +34,8 @@ Reformatting is deliberately *not* tampering: the hash tracks meaning, so a
 freeze that cried wolf would be one people learned to bypass.
 
 **A divergence register.** `docs/divergences.md` lists every place the simulator
-and the live bot were found to differ — **23 as of 2026-08-23**, fifteen closed
-by a **named test** and eight open, because "fixed in code" has been
+and the live bot were found to differ — **24 as of 2026-08-23**, fifteen closed
+by a **named test** and nine open, because "fixed in code" has been
 wrong here before. Three of them were found within four days by reading code for
 an adjacent task, which is the honest reason the file does not claim to be
 complete.
@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**2,687 tests as of 2026-08-23**, offline by design — no credentials, ever, in CI.
+**2,728 tests as of 2026-08-23**, offline by design — no credentials, ever, in CI.
 
 **Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
 regenerates the test count, the divergence total and the open/closed split, and
@@ -215,7 +215,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 2687, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2728, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

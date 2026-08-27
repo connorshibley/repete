@@ -68,9 +68,30 @@ class CalibrationError(RuntimeError):
     """
 
 
-def load_calibration(path: str | None = None, force: bool = False) -> dict:
+def load_calibration(path: str | None = None, force: bool = False,
+                    expect_version: int | None = None) -> dict:
+    """The distribution the simulated judge draws from.
+
+    `expect_version` is a CAUSAL staleness check, not a temporal one. Asking
+    "is this calibration old?" is the wrong question — a calibration fitted
+    six months ago is perfectly valid if the judge has not changed, and one
+    fitted yesterday is worthless if it has. What matters is whether it was
+    fitted to the judge that exists NOW.
+
+    So `backtest.judge_model.context_version` names the judge's input regime,
+    and the calibration records the version it was fitted under. A mismatch
+    refuses, because the alternative is a gate that runs with `--judge-model`
+    against a distribution belonging to a judge that no longer exists and
+    reports a number nobody can tell is wrong.
+
+    This is the guard that was missing: there were already checks against
+    silently running the judge OFF (`_STATS`, and run_gate refusing a
+    judge-on verdict with zero activity), and none at all against running it
+    on with a stale fit.
+    """
     global _cache
     if _cache is not None and not force and path is None:
+        _check_version(_cache, expect_version)
         return _cache
     p = path or _CAL_PATH
     if not os.path.exists(p):
@@ -86,9 +107,37 @@ def load_calibration(path: str | None = None, force: bool = False) -> dict:
             f"judge calibration has n={n}, below its own min_sample={floor}")
     if not cal.get("scale_histogram"):
         raise CalibrationError("judge calibration has an empty scale histogram")
+    _check_version(cal, expect_version)
     if path is None:
         _cache = cal
     return cal
+
+
+def _check_version(cal: dict, expect: int | None) -> None:
+    """Refuse a calibration fitted to a different judge.
+
+    `expect is None` means the caller did not ask — used by tooling that only
+    wants to read the file (calibrate_judge, tests). The live simulator path
+    always asks.
+
+    A MISSING `fitted_context_version` is a mismatch, not a pass. A file that
+    predates versioning cannot vouch for which judge it saw, and treating
+    "unknown" as "fine" is the exact collapse this repo keeps finding —
+    absent must not read as agreeing.
+    """
+    if expect is None:
+        return
+    got = cal.get("fitted_context_version")
+    if got == expect:
+        return
+    raise CalibrationError(
+        f"judge calibration was fitted under context_version={got!r} but the "
+        f"config declares {expect!r}. The judge reads different inputs than "
+        f"the one this distribution was measured from, so every haircut it "
+        f"applies describes a bot that does not exist. Re-fit with "
+        f"`python scripts/calibrate_judge.py --write` once enough decisions "
+        f"have accumulated under the current regime — or, if the bump was a "
+        f"mistake, put context_version back.")
 
 
 def _cdf(cal: dict) -> list[tuple[float, float]]:
@@ -129,7 +178,7 @@ def scale_for(symbol: str, ts: str, cfg: dict) -> float:
     jcfg = ((cfg.get("backtest") or {}).get("judge_model")) or {}
     if not jcfg.get("enabled"):
         return 1.0
-    cal = load_calibration()
+    cal = load_calibration(expect_version=jcfg.get("context_version"))
     u = _uniform(symbol, ts, str(jcfg.get("salt", "judge-v1")))
     for cum, scale in _cdf(cal):
         if u < cum:
