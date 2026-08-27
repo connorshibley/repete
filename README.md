@@ -44,7 +44,7 @@ complete.
 to confirm the test protecting it goes red, then restored byte-exact. A guard
 nothing can falsify is not a guard.
 
-**2,728 tests as of 2026-08-23**, offline by design — no credentials, ever, in CI.
+**2,740 tests as of 2026-08-23**, offline by design — no credentials, ever, in CI.
 
 **Every count on this page is checked, not typed.** `tests/test_doc_counts.py`
 regenerates the test count, the divergence total and the open/closed split, and
@@ -138,6 +138,24 @@ dropped: every claim is written up in `knowledge/backtest_candidates.md` with
 the verdict, the frozen prior, and what the result did and did not license.
 That file carries the running count and is the only place it is kept.
 
+**The EDGE claim is retired (§77, 2026-08-23).** `register_gate` now refuses
+`claim: EDGE` on every venue, not only the two that were spent. §52 and §57
+were exhaustion arguments about particular datasets, and both were escapable by
+pointing a spec at a new directory — so the licence to claim an edge depended
+on what had been *bought* rather than on what had been *shown*. Sixteen
+registrations produced two passes, §51 measured enough survivorship inflation
+to explain the first, §75 left one period of four standing on the second, §34
+found the selection procedure itself no better than random, and §76's live
+decay monitor returned `INDISTINGUISHABLE_FROM_RANDOM`. Continuing to spend
+against that record would be the selection this apparatus exists to prevent,
+aimed at itself.
+
+DIAGNOSTIC, METHOD and CAPACITY claims stay open — they describe how the
+machinery behaves, which is what is being built now. `--override-freeze` lifts
+the retirement exactly as it lifts the two freezes, because a wall gets climbed
+and a speed bump with an audit trail gets recorded; resuming should cost a
+pre-registration that argues why, written before its data is seen.
+
 **The shipped configuration fails its own gate.** §43 pointed
 `backtest.enablement_gate` — the function that rejected every candidate — at the
 strategies actually running, across four periods spanning 26 years, on the first
@@ -215,7 +233,7 @@ Setup is in [GUIDE.md](GUIDE.md). Briefly:
 ```bash
 python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements.lock
 cp .env.example .env                  # add your Alpaca PAPER keys
-.venv/bin/python -m pytest tests/ -q  # 2728, offline, no keys needed
+.venv/bin/python -m pytest tests/ -q  # 2740, offline, no keys needed
 .venv/bin/python -m src.deploycheck   # is the running code the reviewed code?
 .venv/bin/python src/main.py          # one cycle
 ```

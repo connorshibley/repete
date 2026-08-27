@@ -7192,3 +7192,78 @@ Trial count through §75: 241 arm runs. §76 runs no arms; the count is
 unchanged.
 
 <!-- recall: section=§76 specs= -->
+
+## §77 — THE EDGE CLAIM IS RETIRED; THE APPARATUS IS THE ASSET (DECISION, K closed at 16, 2026-08-23)
+
+Registers nothing and scores nothing. It **closes a claim type**, which no
+prior section has done, and it is an owner's decision rather than a
+measurement — recorded here because the decisions are what a future reader
+needs to reconstruct why the record stops where it does.
+
+### What was decided
+
+The programme stops making EDGE claims. `register_gate.freeze_violation` now
+refuses `claim: EDGE` **on every venue**, not only the two that were spent.
+
+### Why the venue freezes were not enough
+
+§52 froze `data/snapshots/` and §57 froze `data/pit/`. Both were **exhaustion**
+arguments — *this dataset has given what it can* — and both were escapable in
+the same way: point a spec at a directory neither prefix matched and the check
+returned `None`.
+
+So the licence to claim an edge depended on **what had been bought rather than
+on what had been shown.** The open decision before this one was whether to buy
+a survivorship-free licence (~$630/yr); doing so would have reopened EDGE
+without anyone deciding to reopen it. A freeze that a purchase can lift is a
+statement about inventory, not about the programme.
+
+### The evidence the decision rests on
+
+| section | finding |
+|---|---|
+| K=16 | **16 EDGE registrations, 2 passes** — a rate consistent with chance |
+| §51 | **+200.28pp** survivorship inflation on the first pass — large enough to explain it outright |
+| §75 | the second pass re-measured with the judge on: **1 period of 4 survives**, not 3 |
+| §34 | the **selection procedure itself** scores no better than random — a method that cannot reliably pick cannot reliably confirm |
+| §76 | the live decay monitor returns **INDISTINGUISHABLE_FROM_RANDOM** at n=24 |
+
+None of that is new. What is new is declining to keep spending against it.
+
+### What this is NOT
+
+**Not a claim that an edge is impossible**, here or anywhere. It is a claim
+that *this programme* has not found one in sixteen attempts, that its own
+selection procedure cannot be trusted to find one, and that continuing to
+register EDGE claims against that record would be the selection this apparatus
+exists to prevent — turned on itself.
+
+**Not a shutdown.** The bot keeps running. DIAGNOSTIC, METHOD and CAPACITY
+claims stay open, and those are the claim types that describe how the machinery
+behaves — which is now the thing being built. The live record is what makes the
+apparatus demonstrable rather than theoretical: divergences #13–#24, the live
+kill, the decay monitor and §76 all exist because a real bot was running and
+being measured.
+
+**Not irreversible.** `--override-freeze` lifts this exactly as it lifts §52
+and §57. That is deliberate, and the reasoning is the repo's own: a wall gets
+climbed, a speed bump with an audit trail gets recorded. Resuming edge claims
+should cost a pre-registration that argues *why*, written before its data is
+seen — not a new folder name.
+
+### What the apparatus is, stated plainly
+
+Sixteen pre-registrations with hash-frozen specs that refuse to score a moved
+pass mark and **name the field that moved**. A divergence register where closed
+means *a named test fails if it reopens*. Mutation proof on every guard. A
+survivorship audit that measured its own bias at +200pp and froze its own
+budget in code rather than quoting the number. A research record that audits
+clean across the prose, the registrations and the verdicts.
+
+That machinery found and killed this project's own results. **That is the
+demonstration, and it is worth more than a strategy that lost $1,092.74 over
+fourteen closed trades.**
+
+Trial count through §75: 241 arm runs. §77 runs no arms; K is closed at 16.
+
+<!-- recall: section=§77 specs= -->

@@ -44,7 +44,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def _spec(**over):
     spec = {
-        "id": "t1", "claim": "EDGE", "title": "a test claim",
+        # METHOD, not EDGE, since §77 (2026-08-23) retired EDGE on every
+        # venue. This file is about RE-REGISTRATION semantics — editing a spec
+        # before any data is seen is authoring, not tampering — and the claim
+        # type was always incidental to that. A fixture that can no longer
+        # register is testing §77 by accident instead of the thing it names.
+        "id": "t1", "claim": "METHOD", "title": "a test claim",
         "snapshot": {"path": "bars.json.gz", "sha256": "a" * 64},
         "cash": 100000.0, "bonferroni_k": 8,
         # W2-1: register_gate.py refuses a spec without this, so the fixture
