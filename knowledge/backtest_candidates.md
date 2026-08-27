@@ -7155,16 +7155,38 @@ has drained 22 → 16 as exits continued to run correctly, and the degradation
 SLO is breached daily. Until credits return, this measurement is frozen at
 n=24 and the enabled strategies stay at n=5.
 
-### An observation, recorded not diagnosed
+### Why it did not alert — RESOLVED, and it is not a gap
 
-**A negative verdict did not alert.** `alert: false` on
-INDISTINGUISHABLE_FROM_RANDOM. Either the alert condition is deliberately
-narrower than the verdict set — plausible, since a monitor that pages on
-"cannot distinguish" would page constantly at low n — or it is a gap. Chasing
-it is its own task and it is not chased here. What is certain is that this
-result reached nobody, which is the same shape as the capture hook that logged
-171 healthy-looking no-ops and the mutation harness that printed CAUGHT for a
-test file that did not exist.
+**Corrected 2026-08-24, the day after this section was written.** The original
+text left it open: *"either the alert condition is deliberately narrower than
+the verdict set … or it is a gap."* It is the former, and both halves of the
+answer were already written down before this section claimed otherwise.
+
+`src/decaycheck.py:20-21` states the contract in the module docstring:
+
+```
+0  no alert  (BEATS_RANDOM, INDISTINGUISHABLE, or INSUFFICIENT_DATA)
+1  alert     (WORSE_THAN_RANDOM)
+```
+
+and the 2026-08-02 hands-off decision recorded the escalation trigger as
+`WORSE_THAN_RANDOM` at n≥20. The monitor behaved exactly as specified. A
+monitor that paged on "cannot distinguish" would page constantly at low n,
+which is how an alarm gets muted and then ignored — the cost divergence #22
+records.
+
+Leaving that question open was itself the error this project keeps naming:
+the answer was in the code and in the decision record, and the section
+speculated instead of reading them.
+
+**What remains true is narrower and still worth fixing.** `decaycheck` is
+alert-only by construction — it cannot write to the ledger, and
+`tests/test_decaycheck.py` walks the AST to keep it that way — so a
+NON-ALERTING verdict leaves no trace anywhere at all. This one ran Sunday
+11:30 ET and was found four hours later only because someone went looking. A
+verdict below the alert threshold is still a measurement, and this project has
+no channel that carries one. That is a REPORTING gap, not an alerting bug, and
+it is why this section exists.
 
 Trial count through §75: 241 arm runs. §76 runs no arms; the count is
 unchanged.
