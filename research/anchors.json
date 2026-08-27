@@ -1218,6 +1218,21 @@
       ],
       "specs": [],
       "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§77",
+      "heading": "## §77 — THE EDGE CLAIM IS RETIRED; THE APPARATUS IS THE ASSET (DECISION, K closed at 16, 2026-08-23)",
+      "start_line": 7196,
+      "body_sha256": "cd92fb561212447d5ee1bb5df60ad82c9c5ba98f44d93164a8225dbc6d15735b",
+      "subheadings": [
+        "### What was decided",
+        "### Why the venue freezes were not enough",
+        "### The evidence the decision rests on",
+        "### What this is NOT",
+        "### What the apparatus is, stated plainly"
+      ],
+      "specs": [],
+      "spec_source": "id+header+trailer"
     }
   ]
 }

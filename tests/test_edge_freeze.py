@@ -83,12 +83,26 @@ def test_non_EDGE_claims_are_NOT_frozen(claim):
     assert rgate.freeze_violation(_spec(claim)) is None
 
 
-def test_a_snapshot_OUTSIDE_the_frozen_directory_is_allowed():
-    """The freeze is about the survivor-selected snapshots, not about EDGE
-    claims in general. A vendor snapshot that passes the probe lives elsewhere
-    and must register normally."""
-    assert rgate.freeze_violation(
-        _spec("EDGE", "data/vendor_pit/sp500_pit_2000-2026.json.gz")) is None
+def test_a_snapshot_outside_the_frozen_directories_is_now_RETIRED_not_allowed():
+    """SUPERSEDED BY §77 (2026-08-23), and kept rather than deleted.
+
+    This test used to assert `is None` — that the freeze was about the
+    survivor-selected snapshots and "not about EDGE claims in general", so a
+    vendor snapshot passing the probe would register normally. That was the
+    correct reading of §52 and §57, both of which were EXHAUSTION arguments
+    about a specific dataset.
+
+    §77 retired the claim type itself. The licence to claim an edge no longer
+    depends on which folder the data sits in, which is the whole point: it
+    previously depended on what had been BOUGHT rather than what had been
+    SHOWN.
+
+    The assertion is inverted with its history attached rather than removed,
+    because a deleted test takes the reason with it."""
+    v = rgate.freeze_violation(
+        _spec("EDGE", "data/vendor_pit/sp500_pit_2000-2026.json.gz"))
+    assert v is not None and "RETIRED" in v
+    assert "FROZEN" not in v, "this must refuse as retirement, not as a venue freeze"
 
 
 def test_the_check_does_not_need_the_file_to_exist():
@@ -148,12 +162,27 @@ def test_the_pit_freeze_stops_EDGE_and_nothing_else(claim):
     assert rgate.freeze_violation(_spec(claim, PIT)) is None
 
 
-def test_a_pit_LOOKALIKE_directory_is_not_frozen():
-    """Prefix matching, not substring. `data/pit_v2/` is a different directory
-    and a future certified source must not be frozen by accident — the polarity
-    that matters is that a NEW venue is open until a section closes it."""
-    assert rgate.freeze_violation(
-        _spec("EDGE", "data/pit_v2/bars.json.gz")) is None
+def test_a_pit_LOOKALIKE_directory_is_not_frozen_by_s57():
+    """The ORIGINAL INTENT SURVIVES §77, and is what this still tests.
+
+    `data/pit_v2/` is a different directory from `data/pit/`, and the check is
+    prefix matching rather than substring — a lookalike must not inherit §57's
+    refusal by accident. That is still true and still worth pinning.
+
+    What changed is the outcome, not the mechanism: it now refuses under §77's
+    retirement instead of registering. So the assertion moves from "allowed" to
+    "refused for the RIGHT REASON", which is a sharper test than the original —
+    it would catch a sloppy `in` replacing `startswith`, which `is None` never
+    could once everything refuses."""
+    v = rgate.freeze_violation(_spec("EDGE", "data/pit_v2/bars.json.gz"))
+    assert v is not None
+    assert "RETIRED" in v
+    # Not `"§57" not in v` — §77's message CITES §57 in its evidence
+    # paragraph, which is correct. What must be absent is §57's own refusal
+    # HEADLINE, which is what a substring match would produce.
+    assert "FROZEN (§57)" not in v, (
+        "a data/pit LOOKALIKE inherited §57's freeze — prefix matching has "
+        "become substring matching")
 
 
 # ------------------------------------------ end-to-end through the CLI

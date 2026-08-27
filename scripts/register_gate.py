@@ -150,6 +150,46 @@ FROZEN_SNAPSHOT_DIRS = {
 }
 
 
+def _retired_reason(claim: str, path: str) -> str:
+    """§77's refusal: EDGE is retired as a claim type, on every venue.
+
+    The two venue freezes above were EXHAUSTION — each said "this data has
+    given what it can". Both were escapable the same way: point a spec at a
+    directory neither prefix matches. Buying a new survivorship-free dataset
+    would have reopened EDGE without anyone deciding to reopen it, which made
+    the freeze a statement about inventory rather than about the project.
+
+    This is not that. It is a decision that the programme stops making edge
+    claims at all.
+    """
+    return (f"{claim} claims are RETIRED (§77, 2026-08-23).\n\n"
+            f"  snapshot: {path}\n\n"
+            f"This is not a freeze on one venue. §52 froze data/snapshots/ and "
+            f"§57 froze\ndata/pit/, and both were about a dataset being spent. "
+            f"Either was escapable by\npointing a spec somewhere new, so the "
+            f"licence to claim an edge depended on\nwhat had been bought "
+            f"rather than on what had been shown.\n\n"
+            f"16 EDGE registrations produced 2 passes. §51 measured +200.28pp "
+            f"of\nsurvivorship inflation on the first, large enough to explain "
+            f"it outright.\n§75 re-measured the second with the judge on and "
+            f"ONE period of four\nsurvived. §34 found the selection procedure "
+            f"itself scores no better than\nrandom, and §76's decay monitor "
+            f"returned INDISTINGUISHABLE_FROM_RANDOM on\nthe live record.\n\n"
+            f"The apparatus that established all of that is the asset. The "
+            f"edge claim is\nnot, and continuing to spend budget against it "
+            f"would be the selection this\nproject exists to prevent, aimed "
+            f"at itself.\n\n"
+            f"Still allowed : DIAGNOSTIC, METHOD, CAPACITY — the claim types "
+            f"that describe\n                how the machinery behaves, which "
+            f"is what is being built now\n"
+            f"Lifts it      : a pre-registration arguing WHY the programme "
+            f"should resume\n                making edge claims, argued before "
+            f"its data is seen\n"
+            f"To proceed anyway:\n"
+            f"  register_gate.py <id> --override-freeze \"<why this claim is "
+            f"sound regardless>\"")
+
+
 def freeze_violation(spec: dict) -> str | None:
     """Why this spec may not be registered, or None if it may.
 
@@ -164,7 +204,14 @@ def freeze_violation(spec: dict) -> str | None:
     for prefix, reason in FROZEN_SNAPSHOT_DIRS.items():
         if normalised.startswith(prefix + "/"):
             return reason(spec["claim"], path)
-    return None
+    # §77: EDGE is retired on EVERY venue, not only the two that were spent.
+    #
+    # This return used to be `None` — an EDGE claim pointed at any directory
+    # neither prefix matched registered cleanly. So the licence to claim an
+    # edge depended on what data had been BOUGHT rather than on what had been
+    # SHOWN, and a new dataset would have reopened it without anyone deciding
+    # to. Retiring the claim is a decision; the freezes were an inventory.
+    return _retired_reason(spec["claim"], path)
 
 
 def spec_path(spec_id: str) -> str:
