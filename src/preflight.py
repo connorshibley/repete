@@ -276,14 +276,29 @@ def run(cfg: dict) -> list[str]:
                          f"{', '.join(sorted(llm_client.PROVIDERS))}")
         spec = llm_client.provider_spec(cfg)
         env_name = spec["key_env"]
-        key = os.environ.get(env_name)
-        if not key:
+        if not llm_client.needs_key(cfg):
+            # A self-hosted provider authenticates with nothing, so there is no
+            # key to demand. Refusing the cycle over an absent key would be the
+            # inversion this file exists to prevent: failing SAFE means
+            # refusing to trade when something is WRONG, and a keyless provider
+            # with a reachable endpoint is not wrong.
+            #
+            # What replaces the key check is the endpoint check — a keyless
+            # provider with no base_url has nowhere to send the prompt, and
+            # guessing a default would send it somewhere nobody chose.
+            if not (cfg.get("llm") or {}).get("base_url"):
+                fails.append(
+                    f"llm.provider is {llm_client.provider_name(cfg)!r}, which "
+                    f"uses no API key, but llm.base_url is unset — the judge "
+                    f"has no endpoint. Set llm.base_url or llm.enabled: false")
+        elif not os.environ.get(env_name):
             fails.append(f"llm.enabled: true but {env_name} is not set — "
                          f"every trade would be approved unjudged at full size; "
                          f"set the key or set llm.enabled: false")
         else:
             # Present is not the same as usable. A mangled key fails at the
             # first API call, by which point the cycle has already traded.
+            key = os.environ.get(env_name)
             shape = llm_client.key_shape_fail(key, spec)
             if shape:
                 fails.append(f"{env_name} {shape}. The judge would fail on "

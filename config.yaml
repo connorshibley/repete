@@ -1012,8 +1012,28 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
 
 llm:                   # optional judgment layer (Anthropic API)
   enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
-  provider: anthropic  # the only implemented vendor. Preflight refuses any other
-                       # name outright rather than letting a typo reach the cycle.
+  provider: anthropic  # `anthropic` or `local`. Preflight refuses any other name
+                       # outright rather than letting a typo reach the cycle.
+                       #
+                       # `local` (2026-08-23) talks to an OpenAI-compatible
+                       # server the operator hosts — the Bizon runs
+                       # qwen3.8-27b on vLLM — and uses NO API key. It needs
+                       # llm.base_url set, and preflight refuses if it is not:
+                       # a keyless provider with no endpoint has nowhere to
+                       # send the prompt, and guessing a default would send it
+                       # somewhere nobody chose.
+                       #
+                       # STILL ANTHROPIC HERE, deliberately. Switching changes
+                       # the judge's verdict DISTRIBUTION, which
+                       # knowledge/judge_calibration.json is fitted to
+                       # (downsize_rate 0.858, mean_scale 0.595 over 250 buys).
+                       # Flipping it should come with a context_version bump
+                       # and calibration_refit_pending, and ideally after
+                       # src/llm_shadow.py has measured whether the local model
+                       # agrees. This change makes the switch POSSIBLE, not
+                       # automatic.
+  base_url: null       # e.g. http://vllm-qwen38:8000/v1 — required when
+                       # provider is keyless, ignored otherwise.
   fallback_model: null # retry ONCE on this model when the primary one errors.
                        # Unset on purpose: a quietly weaker judge is a trading
                        # behaviour change, and it does nothing about a bad key —
