@@ -6,6 +6,12 @@
 #   docker compose run --rm agent python src/health.py   # status
 services:
   agent:
+    # BOTH networks, explicitly. A service with no `networks:` key joins
+    # `default` ONLY — declaring ollama-net at the bottom of this file does not
+    # attach anything to it. That asymmetry is easy to miss and fails silently:
+    # the container starts, `vllm-qwen38` does not resolve, and the judge
+    # degrades on every call.
+    networks: [default, ollama-net]
     build:
       context: .
       args:
@@ -73,3 +79,18 @@ services:
       - ./publisher_data:/app/publisher_data
       - ./requirements-publisher.txt:/app/requirements-publisher.txt:ro
       - ./publisher:/app/publisher:ro
+
+# The vLLM containers (qwen3.8-27b, and a small router model) and LiteLLM all
+# sit on `ollama-net`, created outside this file by whoever brought that stack
+# up. Joining it lets the agent reach http://vllm-qwen38:8000/v1 directly —
+# no published port, no API key, nothing leaving the host.
+#
+# EXTERNAL on purpose: this compose file must not own, create or destroy a
+# network another stack depends on. `docker compose down` here would otherwise
+# take the model server's network with it.
+#
+# Inert while llm.provider is `anthropic`. Joining a network is not using it.
+networks:
+  default:
+  ollama-net:
+    external: true

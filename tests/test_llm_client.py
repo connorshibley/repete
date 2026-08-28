@@ -82,10 +82,27 @@ def test_preflight_and_the_call_path_share_one_key_rule():
 
 
 def test_every_declared_provider_has_the_facts_the_checker_needs():
-    """A provider added without a key_env or a prefix would make preflight
-    silently skip the check for it."""
+    """A KEYED provider added without a key_env or a prefix would make
+    preflight silently skip the check for it.
+
+    Widened 2026-08-23 for the keyless `local` provider. The original loop
+    asserted every provider carries key facts, which was right while every
+    provider had a key. A self-hosted server authenticates with nothing, and
+    the danger it introduces is the mirror image: not a key check skipped by
+    accident, but a key check demanded where none can exist — preflight
+    refusing the cycle over an absent key, which is failing UNSAFE while
+    looking like caution.
+
+    So the rule splits by what the provider IS: keyed providers must carry the
+    facts, keyless ones must declare `key_env: None` explicitly rather than
+    omitting it. An omitted key_env would read as "forgot to fill this in".
+    """
     for name, spec in llm_client.PROVIDERS.items():
-        assert spec["key_env"], name
+        assert "key_env" in spec, f"{name} does not say whether it needs a key"
+        if spec["key_env"] is None:
+            assert spec["key_prefix"] is None, name
+            assert spec["key_len"] is None, name
+            continue
         assert spec["key_prefix"], name
         lo, hi = spec["key_len"]
         assert 0 < lo < hi, name
@@ -150,8 +167,11 @@ def test_the_happy_path_never_touches_the_fallback(monkeypatch):
 
 
 def test_an_unimplemented_provider_refuses_to_call_anything(monkeypatch):
+    """`openai` used to be the example of an unimplemented provider. It still
+    is — the keyless provider added 2026-08-23 is `local`, a server the
+    operator hosts, not a second vendor."""
     _fake_anthropic(monkeypatch)
-    with pytest.raises(RuntimeError, match="only 'anthropic' is implemented"):
+    with pytest.raises(RuntimeError, match="are implemented"):
         llm_client.complete(_cfg(provider="openai"), "sys", "user",
                             max_tokens=10)
 

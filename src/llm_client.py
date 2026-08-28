@@ -52,6 +52,20 @@ PROVIDERS = {
         "key_prefix": "sk-ant-",
         "key_len": (40, 200),
     },
+    # An OpenAI-compatible server the operator runs themselves — vLLM, Ollama,
+    # LiteLLM. `key_env: None` is the load-bearing field: it means this
+    # provider is KEYLESS, not that its key is unknown. The Bizon serves
+    # qwen3.8-27b from a vLLM container on its own docker network, so there is
+    # no vendor account, no secret to place in .env, and nothing to rotate.
+    #
+    # The docstring above this module said a second provider "needs a second
+    # dependency and a second API key that this deployment does not have".
+    # Both premises stopped being true once the deployment BECAME the box.
+    "local": {
+        "key_env": None,
+        "key_prefix": None,
+        "key_len": None,
+    },
 }
 
 
@@ -120,10 +134,128 @@ def timeout_seconds(cfg: dict) -> float:
     return val
 
 
+def needs_key(cfg: dict) -> bool:
+    """Does the configured provider authenticate with an API key at all?
+
+    False for a self-hosted OpenAI-compatible server. Kept as a named
+    predicate rather than an `if provider == "local"` scattered through
+    preflight and `configured()`, because the question being asked is about
+    the PROVIDER's nature, not its name — a second keyless provider should not
+    require finding every place the name was special-cased.
+    """
+    return provider_spec(cfg).get("key_env") is not None
+
+
 def configured(cfg: dict) -> bool:
-    """Judge switched on AND a key present. Says nothing about the key working."""
-    return bool((cfg.get("llm") or {}).get("enabled")
-                and os.environ.get(key_env_var(cfg)))
+    """Judge switched on, and reachable.
+
+    For a keyed provider that means a key is present; it still says nothing
+    about the key working. For a keyless one, enabled IS configured — demanding
+    an absent key would report the judge as unavailable while a perfectly good
+    model sits on the same host, and `on_unavailable: block` would then refuse
+    every entry for a reason that is not true.
+    """
+    if not (cfg.get("llm") or {}).get("enabled"):
+        return False
+    if not needs_key(cfg):
+        return True
+    return bool(os.environ.get(key_env_var(cfg)))
+
+
+class _Block:
+    """One text block, shaped like the vendor SDK's."""
+
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _Usage:
+    def __init__(self, inp, out):
+        self.input_tokens = inp
+        self.output_tokens = out
+        # Absent, not zero: a server that reports no cache accounting has not
+        # told us it read nothing from cache. `_meta` reads these with
+        # getattr(.., None) and this repo's standing rule is that absent must
+        # never collapse to 0.
+        self.cache_read_input_tokens = None
+        self.cache_creation_input_tokens = None
+
+
+class _Message:
+    """The subset of the vendor Message that `_text` and `_meta` actually read.
+
+    Deliberately shaped to that subset rather than to the OpenAI response, so
+    `complete_detailed` — including its fallback retry — needs no branch at
+    all. A conditional in the hot path would be a second place for the two
+    providers to drift; an adapter is one place.
+    """
+
+    def __init__(self, payload):
+        choice = (payload.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        self.content = [_Block(msg.get("content") or "")]
+        self.model = payload.get("model")
+        self.id = payload.get("id")
+        self.stop_reason = choice.get("finish_reason")
+        u = payload.get("usage") or {}
+        self.usage = _Usage(u.get("prompt_tokens"), u.get("completion_tokens"))
+
+
+class _OpenAICompatMessages:
+    def __init__(self, base_url, timeout):
+        self._base = base_url.rstrip("/")
+        self._timeout = timeout
+
+    def create(self, *, model, max_tokens, system, messages):
+        """Same signature the Anthropic SDK is called with, above.
+
+        `system` is a top-level argument there and a role here — that mapping
+        is the whole adapter, and doing it in one place is why the caller does
+        not need to know which provider it is talking to.
+        """
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        body = _json.dumps({
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "system", "content": system}] + list(messages),
+        }).encode()
+        req = urllib.request.Request(
+            f"{self._base}/chat/completions", data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as r:
+                return _Message(_json.loads(r.read()))
+        except urllib.error.HTTPError as e:
+            # Carry the server's body: vLLM explains a bad model name or an
+            # over-long prompt in it, and an HTTPError alone says only "400".
+            detail = ""
+            try:
+                detail = e.read().decode()[:300]
+            except Exception:  # noqa: BLE001 — best effort on an error path
+                pass
+            raise RuntimeError(f"local model server {e.code}: {detail}") from e
+
+
+class _OpenAICompatClient:
+    """Minimal stand-in for the vendor client, for a server we host ourselves."""
+
+    def __init__(self, base_url, timeout):
+        self.messages = _OpenAICompatMessages(base_url, timeout)
+
+
+def base_url(cfg: dict) -> str:
+    """Where the self-hosted server lives. Required for a keyless provider."""
+    url = (cfg.get("llm") or {}).get("base_url")
+    if not url:
+        raise RuntimeError(
+            "llm.provider is keyless but llm.base_url is unset — a local "
+            "provider has no default endpoint to fall back to, and guessing "
+            "one would send the judge's prompt somewhere nobody chose")
+    return url
 
 
 def _create(cfg: dict):
@@ -133,10 +265,13 @@ def _create(cfg: dict):
     executed per call rather than cached at module scope.
     """
     name = provider_name(cfg)
-    if name != "anthropic":
+    if name not in PROVIDERS:
         raise RuntimeError(
-            f"llm.provider is {name!r} but only 'anthropic' is implemented; "
-            f"add it to llm_client.PROVIDERS and _create() before configuring it")
+            f"llm.provider is {name!r} but only {sorted(PROVIDERS)} are "
+            f"implemented; add it to llm_client.PROVIDERS and _create() "
+            f"before configuring it")
+    if not needs_key(cfg):
+        return _OpenAICompatClient(base_url(cfg), timeout_seconds(cfg))
     import anthropic
     # Timeout is set on the CLIENT, not per request, so it covers the fallback
     # retry in `complete()` too. A timeout applied to only the first of two
@@ -186,6 +321,18 @@ def estimate_cost_usd(cfg: dict, meta: dict) -> float | None:
     refuse. Prices live in config with a verified-on date, not in code: a
     stale table producing confident wrong numbers is worse than None.
     """
+    # THE ONE CASE WHERE 0.0 IS A MEASUREMENT, not the absent-vs-zero collapse
+    # this function's docstring forbids. A self-hosted model incurs no vendor
+    # charge — that is a known fact, not a missing price. Returning None here
+    # would report "we do not know what this cost" about the one call whose
+    # cost we know exactly, and a spend total that silently omitted every local
+    # call would understate nothing and misattribute everything.
+    #
+    # It is deliberately NOT a claim that inference is free. Electricity and
+    # two A100s are real; they are simply not a per-call vendor line item, and
+    # this function prices vendor calls.
+    if not needs_key(cfg):
+        return 0.0
     table = ((cfg.get("llm") or {}).get("pricing") or {})
     row = table.get(meta.get("model") or "") or table.get(meta.get("requested_model") or "")
     if not row:
