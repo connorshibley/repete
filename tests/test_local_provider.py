@@ -196,15 +196,37 @@ def test_the_configured_timeout_reaches_the_request(monkeypatch):
 
 # ---- the shipped config is unchanged --------------------------------------
 
-def test_the_shipped_config_still_uses_anthropic():
-    """This change makes the switch POSSIBLE, not automatic. Flipping the
-    provider changes the judge's verdict distribution, which
-    knowledge/judge_calibration.json is fitted to — that needs a
-    context_version bump and a refit, not a config edit nobody reviewed."""
+def test_switching_provider_invalidates_the_judge_calibration():
+    """Was `assert provider == "anthropic"` until 2026-08-28 — a pin on NOT
+    having switched yet. Its docstring named what a legitimate switch owes:
+    "a context_version bump and a refit, not a config edit nobody reviewed."
+    The switch happened, so the pin is now a coupling check instead of a
+    deletion: whatever the provider is, the calibration must not silently
+    claim to describe it.
+
+    knowledge/judge_calibration.json is fitted to ONE judge's verdict
+    distribution (downsize_rate 0.858, mean_scale 0.595 over 250 buys, none of
+    them judged by the local model). judge_model.load_calibration refuses on a
+    version mismatch — this asserts the mismatch is actually there, because a
+    guard that everyone remembers to trip is a guard that someone will forget.
+    """
+    import json as _json
+
     import yaml
     root = Path(__file__).resolve().parents[1]
     cfg = yaml.safe_load(open(root / "config.yaml"))
-    assert cfg["llm"]["provider"] == "anthropic"
+    jm = cfg["backtest"]["judge_model"]
+    with open(root / "knowledge" / "judge_calibration.json") as f:
+        fitted = _json.load(f).get("fitted_context_version")
+
+    if llm_client.needs_key(cfg):
+        return  # a keyed vendor judge is what the fit describes; nothing owed
+
+    assert jm["context_version"] != fitted, (
+        f"the judge runs on a self-hosted model but the calibration still "
+        f"claims version {fitted!r} — every --judge-model gate would size "
+        f"against a judge that never made these decisions")
+    assert jm["calibration_refit_pending"] is True
 
 
 # ---- 5. preflight, driven for real ----------------------------------------

@@ -7267,3 +7267,83 @@ fourteen closed trades.**
 Trial count through §75: 241 arm runs. §77 runs no arms; K is closed at 16.
 
 <!-- recall: section=§77 specs= -->
+
+---
+
+## §78 — the judge moved off Anthropic, and the slow part was not the model
+
+**2026-08-28. Runs no arms. K stays closed at 16. Claims nothing about edge.**
+
+### What was actually broken
+
+Since 2026-08-21 the bot had entered nothing. 53 signals, every one refused by
+`unavailable_block`, because the Anthropic account ran out of credits and
+`on_unavailable: block` did exactly what it is set to do. Exits kept running, so
+the book drained 22 → 15 without a single decision to reduce it. Degradation SLO
+breached every day.
+
+The apparatus behaved correctly throughout. Nothing was mismeasured, nothing
+lied. It simply could not trade.
+
+### The finding worth keeping
+
+The obvious fix — point `llm.provider` at the two A100s already sitting idle on
+the same host — **would not have worked, and would have looked like it had.**
+
+vLLM serves qwen3 with `--reasoning-parser=qwen3`. Left at the server default,
+the model generates a long reasoning trace before its JSON. Measured on the real
+judge prompt (`llm._SYSTEM` + a live-shaped `review_user_message`), n=3 each:
+
+| | latency | completion tokens | verdict |
+|---|---|---|---|
+| server default | 47.1s | 2,261 | `downsize` |
+| `enable_thinking: false` | **4.8s** | 224 | `downsize` |
+
+`llm.timeout_seconds` is 30. So every default-mode call raised, every raise
+became a degradation, and entries stayed blocked — **the same symptom, a new
+cause, and a config that now looked correct.** An earlier probe had already
+measured 43–80s through the real client and read as "the local model is just
+slow"; it was not slow, it was answering a question nobody asked.
+
+The discarded tokens were also unauditable. `reasoning_content` came back empty,
+`llm.py` slices `{`..`}` out of `content` and drops the surrounding prose, and
+the ledger stores only the visible `reasoning` field. Ten-fold latency, bought
+reasoning that no record retains and no audit can inspect.
+
+### What was NOT established
+
+**Nothing about quality.** Four probe calls returned valid schema and
+`downsize` 4/4 at scale 0.3–0.5, against a fitted Claude distribution of
+`mean_scale 0.595` / `downsize_rate 0.858` over 250 buys. That is enough to say
+the disposition differs and the calibration is stale. It is **not** a
+distribution, not an agreement rate, and not evidence that either judge is
+better.
+
+The measurement that would settle it — `src/llm_shadow.py` on live signals —
+needs Anthropic to answer, which is the thing that ran out. The baseline is
+unreachable from here. Registered as **divergence #25** rather than left to be
+discovered.
+
+### The guard that nearly did not fire
+
+`backtest.judge_model.context_version` 2 → 3, so the calibration is refused and
+no gate can be scored with `--judge-model`.
+
+Its documented trigger was *"bump whenever what the judge READS changes"*. Read
+literally, replacing the model requires **no** bump — the inputs are identical.
+The guard would have kept describing a judge that no longer existed, and it
+would have looked healthy doing it. Same shape as the 171 `noop` capture rows
+and the mutation harness printing CAUGHT for a test file that did not exist: an
+instrument that cannot express its own failure is not evidence. The trigger now
+names *who* reads, decoding settings included, and a test fails if a keyless
+provider ever ships against a calibration claiming to match it.
+
+### The honest summary
+
+A bot that could not trade can now trade, on a judge nobody has measured, with
+the calibration correctly refusing and the divergence declared. That is an
+availability fix. It is not a result.
+
+Trial count through §78: 241 arm runs. §78 runs no arms; K is closed at 16.
+
+<!-- recall: section=§78 specs= -->

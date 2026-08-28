@@ -146,6 +146,41 @@ def needs_key(cfg: dict) -> bool:
     return provider_spec(cfg).get("key_env") is not None
 
 
+def thinking_kwargs(cfg: dict) -> dict:
+    """Extra request body that turns the local model's hidden reasoning off.
+
+    Measured on the Bizon 2026-08-28, identical real judge prompt, n=3 each:
+
+        enable_thinking unset -> 47.1s, 2261 completion tokens
+        enable_thinking false ->  4.8s,  224 completion tokens
+
+    Same verdict both ways. The 2,000 extra tokens are prose the extractor in
+    llm.py throws away when it slices `{`..`}` — so the ten-fold latency was
+    buying reasoning that NOTHING records: `reasoning_content` came back empty,
+    the ledger stores only the visible `reasoning` field, and the prompt hash
+    covers the input, not the trace. An audit cannot see it, which is the whole
+    argument for not paying for it.
+
+    It also decides whether the judge works at all. At 47s every call exceeded
+    `llm.timeout_seconds` (30) and returned a degradation, so the entries the
+    judge gates stayed blocked — switching provider WITHOUT this would have
+    looked like a fix and changed nothing.
+
+    Tri-state on purpose. `chat_template_kwargs` is a vLLM extension, and a
+    different OpenAI-compatible server may reject an unknown field outright:
+
+      None (default) -> send nothing, take the server's own default
+      False          -> ask for no reasoning trace
+      True           -> ask for one explicitly
+
+    Ignored by the keyed vendor path, which has no such knob.
+    """
+    raw = (cfg.get("llm") or {}).get("enable_thinking")
+    if raw is None:
+        return {}
+    return {"chat_template_kwargs": {"enable_thinking": bool(raw)}}
+
+
 def configured(cfg: dict) -> bool:
     """Judge switched on, and reachable.
 
@@ -203,9 +238,13 @@ class _Message:
 
 
 class _OpenAICompatMessages:
-    def __init__(self, base_url, timeout):
+    def __init__(self, base_url, timeout, extra_body=None):
         self._base = base_url.rstrip("/")
         self._timeout = timeout
+        # Server-specific request fields (see thinking_kwargs). Held here
+        # rather than threaded through create() so every caller — judge,
+        # news, learning — gets the same body without knowing it exists.
+        self._extra = dict(extra_body or {})
 
     def create(self, *, model, max_tokens, system, messages):
         """Same signature the Anthropic SDK is called with, above.
@@ -218,11 +257,17 @@ class _OpenAICompatMessages:
         import urllib.error
         import urllib.request
 
-        body = _json.dumps({
+        payload = {
             "model": model,
             "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}] + list(messages),
-        }).encode()
+        }
+        # Never let an extra field shadow one of the three above: a config
+        # typo must not be able to silently re-point the model or lift the
+        # token ceiling.
+        payload.update({k: v for k, v in self._extra.items()
+                        if k not in payload})
+        body = _json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{self._base}/chat/completions", data=body,
             headers={"Content-Type": "application/json"})
@@ -243,8 +288,8 @@ class _OpenAICompatMessages:
 class _OpenAICompatClient:
     """Minimal stand-in for the vendor client, for a server we host ourselves."""
 
-    def __init__(self, base_url, timeout):
-        self.messages = _OpenAICompatMessages(base_url, timeout)
+    def __init__(self, base_url, timeout, extra_body=None):
+        self.messages = _OpenAICompatMessages(base_url, timeout, extra_body)
 
 
 def base_url(cfg: dict) -> str:
@@ -271,7 +316,8 @@ def _create(cfg: dict):
             f"implemented; add it to llm_client.PROVIDERS and _create() "
             f"before configuring it")
     if not needs_key(cfg):
-        return _OpenAICompatClient(base_url(cfg), timeout_seconds(cfg))
+        return _OpenAICompatClient(base_url(cfg), timeout_seconds(cfg),
+                                   thinking_kwargs(cfg))
     import anthropic
     # Timeout is set on the CLIENT, not per request, so it covers the fallback
     # retry in `complete()` too. A timeout applied to only the first of two
