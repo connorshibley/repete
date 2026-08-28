@@ -109,16 +109,32 @@ def test_shipped_config_names_the_key_the_shorting_guard_keys_off(shipped):
 
 
 def test_a_configured_but_absent_judge_fails_preflight(shipped, monkeypatch):
-    """`llm.enabled: true` with no key approves every trade unjudged at full
-    size, and looks identical to a judged trade in the evidence pack. Claiming
-    to have a judge and not having one is a misconfiguration, not a degraded
-    mode."""
+    """`llm.enabled: true` with nothing behind it approves every trade unjudged
+    at full size, and looks identical to a judged trade in the evidence pack.
+    Claiming to have a judge and not having one is a misconfiguration, not a
+    degraded mode.
+
+    Asserted against whatever the shipped provider actually is. Until
+    2026-08-28 this only ever deleted ANTHROPIC_API_KEY, so the day the config
+    moved to a keyless local provider it failed — not because the property
+    broke, but because the test had encoded one provider's spelling of it. The
+    property is "the judge's reachability is a preflight failure"; the key and
+    the endpoint are two spellings of the same thing.
+    """
     monkeypatch.setenv("ALPACA_API_KEY", "k")
     monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     if not shipped.get("llm", {}).get("enabled"):
         pytest.skip("llm disabled in the shipped config")
-    assert any("ANTHROPIC_API_KEY" in f for f in preflight.run(shipped))
+
+    import llm_client
+    if llm_client.needs_key(shipped):
+        assert any("ANTHROPIC_API_KEY" in f for f in preflight.run(shipped))
+    else:
+        # A keyless provider has no key to withhold; what it cannot do without
+        # is an endpoint. Preflight must refuse rather than guess one.
+        blind = {**shipped, "llm": {**shipped["llm"], "base_url": None}}
+        assert any("base_url" in f for f in preflight.run(blind))
 
 
 def test_turning_the_judge_off_is_allowed(shipped, monkeypatch):

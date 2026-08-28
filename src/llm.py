@@ -38,8 +38,23 @@ def _clamp_scale(verdict: dict) -> dict:
 
 
 def _key_present(cfg: dict) -> bool:
-    """Is the configured provider's key set? Provider-aware since 2026-07-27 —
-    was a hard-coded ANTHROPIC_API_KEY lookup in four places."""
+    """Is the configured provider's credential set? Provider-aware since
+    2026-07-27 — was a hard-coded ANTHROPIC_API_KEY lookup in four places.
+
+    A KEYLESS provider has no credential, so there is none to be absent and the
+    honest answer is True. This mirrors `llm_client.configured()`, which has
+    made the same distinction since the local provider landed.
+
+    That duplication is exactly what broke: 2026-08-28, first end-to-end run
+    against the local judge, `key_env_var()` returned None for a provider with
+    `key_env: None` and `os.environ.get(None)` raised TypeError — crashing
+    EVERY judge call. All 2,766 unit tests passed, because each one exercised
+    `llm_client` and none drove `review_signal` on a keyless config. Same shape
+    as the mutation that survived in #151: the helper knew, the caller did not
+    ask.
+    """
+    if not llm_client.needs_key(cfg):
+        return True
     return bool(os.environ.get(llm_client.key_env_var(cfg)))
 
 _SYSTEM = """You are the risk-review layer of an automated PAPER trading bot.

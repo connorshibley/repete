@@ -1223,13 +1223,28 @@
       "key": "§77",
       "heading": "## §77 — THE EDGE CLAIM IS RETIRED; THE APPARATUS IS THE ASSET (DECISION, K closed at 16, 2026-08-23)",
       "start_line": 7196,
-      "body_sha256": "cd92fb561212447d5ee1bb5df60ad82c9c5ba98f44d93164a8225dbc6d15735b",
+      "body_sha256": "62d02960ea5c7d6d2dfaef8124327e7467d3a32e71bb98cd85c93c736caf3e18",
       "subheadings": [
         "### What was decided",
         "### Why the venue freezes were not enough",
         "### The evidence the decision rests on",
         "### What this is NOT",
         "### What the apparatus is, stated plainly"
+      ],
+      "specs": [],
+      "spec_source": "id+header+trailer"
+    },
+    {
+      "key": "§78",
+      "heading": "## §78 — the judge moved off Anthropic, and the slow part was not the model",
+      "start_line": 7273,
+      "body_sha256": "b2aae54ee051e229d9ac666eab5b8189f54c6572815ca549e55c5dc73dac0944",
+      "subheadings": [
+        "### What was actually broken",
+        "### The finding worth keeping",
+        "### What was NOT established",
+        "### The guard that nearly did not fire",
+        "### The honest summary"
       ],
       "specs": [],
       "spec_source": "id+header+trailer"

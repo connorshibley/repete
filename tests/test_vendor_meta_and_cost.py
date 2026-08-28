@@ -130,7 +130,20 @@ def test_the_shipped_price_table_is_dated_and_covers_the_shipped_models():
     src = open(os.path.join(root, "config.yaml")).read()
     pricing = cfg["llm"]["pricing"]
     assert re.search(r"VERIFIED \d{4}-\d{2}-\d{2}", src), "price table needs a verified-on date"
-    assert cfg["llm"]["model"] in pricing, "the judge's own model must be priced"
+    # The requirement is that the judge's cost is KNOWN, not that it appears in
+    # this table. Under a self-hosted provider it is known exactly and is not a
+    # vendor line item — adding a $0 row here would both break the >0 invariant
+    # below and dress a local model up as a priced vendor one. Asserted through
+    # estimate_cost_usd so "unpriced" cannot hide behind a provider switch.
+    if llm_client.needs_key(cfg):
+        assert cfg["llm"]["model"] in pricing, "the judge's own model must be priced"
+    else:
+        priced = llm_client.estimate_cost_usd(
+            cfg, {"model": cfg["llm"]["model"], "input_tokens": 1000,
+                  "output_tokens": 1000})
+        assert priced == 0.0, (
+            f"the shipped judge is self-hosted but its cost came back "
+            f"{priced!r} — a live row would be unpriced, not free")
     for m, row in pricing.items():
         assert row["input_per_mtok"] > 0 and row["output_per_mtok"] > 0, m
 

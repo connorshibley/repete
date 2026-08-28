@@ -4,17 +4,18 @@ Every gate verdict in `knowledge/backtest_candidates.md` rests on the simulator
 being a faithful model of the live bot. Where the two differ, a verdict measures
 a bot that does not exist.
 
-Twenty-four such differences have been found. Until 2026-07-28 they existed **only as
+Twenty-five such differences have been found. Until 2026-07-28 they existed **only as
 prose scattered across forty sections of the gate ledger** — there was no list,
 so "how many are open?" had no answer, and #8 could sit closed-on-paper and open
 in fact for three days without anyone noticing. This file is the list.
 
-**Open as of 2026-08-23: #13, #14, #15, #16, #18, #19, #21, #23 and #24.** Seven of the nine
+**Open as of 2026-08-28: #13, #14, #15, #16, #18, #19, #21, #23, #24 and #25.** Eight of the ten
 are open *by construction* rather than by defect — a sampling fact about the live
 record, two judge inputs the simulator has no mechanism to represent, a cost the
 paper broker does not charge, a fill-session hazard that only materialises when
-the cycle runs long, and a scanner that tests a live quote where the simulator
-tests a completed close. **#19 and #23 are not.** #19 is a plain
+the cycle runs long, a scanner that tests a live quote where the simulator
+tests a completed close, and a judge whose identity changed with no baseline
+left to compare it against. **#19 and #23 are not.** #19 is a plain
 omission, found 2026-08-09, in which a live entry filter has been silently
 switched off in every gate ever run because no spec supplies the data it needs.
 **#23 is a third kind again** — a live rail the simulator never modelled, whose
@@ -66,6 +67,7 @@ code" is not closed; the repo has been wrong about that before.
 | 22 | The test suite paged the operator — `watchdog.load_env()` fell back to the repo-root `.env`, so the alert-delivery negative control posted real alerts | closed | `tests/test_alert_delivery.py::test_load_env_NEVER_reaches_the_operators_real_dotenv` |
 | 23 | **The live kill retires a strategy's entries; the simulator has never modelled it** | **open** | found 2026-08-23; `tests/test_live_kill_is_live_only.py` pins the gap in both directions but does not close it — see the entry |
 | 24 | **The live judge reads a per-symbol research dossier; the simulator models the judge as a distribution and cannot represent one** | **open** | open by construction — registered 2026-08-23 by the change that caused it; the calibration refuses until re-fit |
+| 25 | **The judge is a different model (`qwen3.8-27b`, self-hosted) and no measurement compares it to the one whose record the bot carries** | **open** | open by construction — registered 2026-08-28 by the change that caused it; the shadow baseline needs the vendor that ran out, which is why the switch happened |
 
 > **Rows 13–16 were missing from this table until 2026-08-06**, and this is the
 > second time this file has been wrong in the direction that matters. The prose
@@ -1129,3 +1131,99 @@ live kill.
 `tests/test_judge_verdict_surface.py` pins that the dossier reaches **both**
 live entry paths, and that no field in it can redirect a trade —
 the judge may still only veto or shrink.
+
+---
+
+## #25 — the judge is a different model, and nothing has measured the difference
+
+**Opened 2026-08-28.** `llm.provider` moved from `anthropic` to `local`; the
+judge is now `qwen3.8-27b`, self-hosted on the Bizon's two A100s, reached over
+`ollama-net` with no API key.
+
+### Why the honest ordering was not followed
+
+The plan was shadow-first: `src/llm_shadow.py` runs the local model on the
+**same** real signals, logs the comparison, and touches no trade. Then, knowing
+whether the two agree, switch.
+
+That baseline requires Anthropic to answer. Anthropic running out of credits is
+the entire reason for the switch. So the measurement that would de-risk the
+change cannot be collected until the change is no longer needed — the ordering
+is not merely inconvenient, it is unreachable from here.
+
+The alternative was to keep waiting. `on_unavailable: block` had refused **every
+entry since 2026-08-21** — 53 signals — and the book had drained 22 → 15 on
+exits alone. Waiting is not the neutral option it looks like; it is a decision
+to keep not trading, taken by default rather than on the record.
+
+So: switched, unmeasured, and **declared here rather than discovered later.**
+
+### What is actually known
+
+Four probe calls on the real prompt, 2026-08-28, and nothing beyond them:
+
+| | |
+|---|---|
+| schema | valid 4/4 — verdict inside the allowed set, scale and confidence in range |
+| `<think>` leakage | none observed; `llm.py`'s `{`..`}` slice held |
+| disposition | `downsize` 4/4 at scale **0.3–0.5** |
+
+That last row is the one that matters. The fitted Claude distribution sits at
+`mean_scale 0.595`, `downsize_rate 0.858` over 250 buys. The local model appears
+to downsize *harder*. Four calls is not a distribution and this table must not
+be read as one — it is enough to establish that the calibration is describing
+someone else, and nothing more.
+
+### The calibration, and why this entry is not the dangerous kind
+
+`backtest.judge_model.context_version` went 2 → 3 in the same change, so
+`judge_model.load_calibration` **refuses** and no gate can be scored with
+`--judge-model`. `calibration_refit_pending` stays `true`.
+
+Note what nearly went wrong. That trigger was documented as "bump whenever what
+the judge READS changes". Read literally, swapping the model requires **no**
+bump — the inputs are untouched. The guard would have sat there looking healthy
+while describing a judge that no longer existed. The trigger now covers *who*
+reads too, including decoding settings, and
+`tests/test_local_provider.py::test_switching_provider_invalidates_the_judge_calibration`
+fails if a keyless provider is ever shipped against a calibration that claims to
+match it.
+
+`config.yaml` is inside `modelver`'s fingerprint, so the decision surface
+re-versions on this edit by itself and `review.py` segments the track record at
+the switch. Nothing has to remember.
+
+### The latency finding, recorded because it nearly hid
+
+Flipping the provider alone would have changed nothing observable except the
+error string. vLLM serves qwen3 with `--reasoning-parser=qwen3`, so the model
+generates a long reasoning trace by default:
+
+| | latency | completion tokens | verdict |
+|---|---|---|---|
+| default | 47.1s | 2,261 | `downsize` |
+| `enable_thinking: false` | **4.8s** | 224 | `downsize` |
+
+`llm.timeout_seconds` is 30. Every default-mode call exceeded it, returned a
+degradation, and left entries blocked — a bot configured with a working judge
+and still refusing to trade, for a reason no config line named.
+
+The 2,000 discarded tokens were also unauditable: `reasoning_content` came back
+empty, `llm.py` slices the JSON out of `content` and drops the prose, and the
+ledger stores only the visible `reasoning` field. The latency bought reasoning
+that no record retains.
+
+### What would close this
+
+Restored Anthropic credits, then `src/llm_shadow.py` run on live signals until
+the agreement rate between the two judges is measurable — the comparison this
+change had to skip. Short of that, a refit (`scripts/calibrate_judge.py
+--write`) at least replaces a calibration fitted to the wrong judge with one
+fitted to this judge; it says nothing about which judge is *better*, and must
+not be reported as if it did.
+
+### Not a claim of value
+
+The EDGE tally is unchanged. `knowledge/backtest_candidates.md` owns that count.
+A cheaper judge that trades is not evidence of an edge; it is evidence of a bot
+that is running.

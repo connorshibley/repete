@@ -1012,7 +1012,7 @@ risk:                  # ---- HARD RAILS: enforced in deterministic code ----
 
 llm:                   # optional judgment layer (Anthropic API)
   enabled: true        # if false (or no ANTHROPIC_API_KEY), signals execute rule-based only
-  provider: anthropic  # `anthropic` or `local`. Preflight refuses any other name
+  provider: local      # `anthropic` or `local`. Preflight refuses any other name
                        # outright rather than letting a typo reach the cycle.
                        #
                        # `local` (2026-08-23) talks to an OpenAI-compatible
@@ -1023,26 +1023,64 @@ llm:                   # optional judgment layer (Anthropic API)
                        # send the prompt, and guessing a default would send it
                        # somewhere nobody chose.
                        #
-                       # STILL ANTHROPIC HERE, deliberately. Switching changes
-                       # the judge's verdict DISTRIBUTION, which
-                       # knowledge/judge_calibration.json is fitted to
-                       # (downsize_rate 0.858, mean_scale 0.595 over 250 buys).
-                       # Flipping it should come with a context_version bump
-                       # and calibration_refit_pending, and ideally after
-                       # src/llm_shadow.py has measured whether the local model
-                       # agrees. This change makes the switch POSSIBLE, not
-                       # automatic.
-  base_url: null       # e.g. http://vllm-qwen38:8000/v1 — required when
-                       # provider is keyless, ignored otherwise.
+                       # SWITCHED 2026-08-28, and the honest ordering was not
+                       # followed. The plan was shadow-first: measure whether
+                       # the local model agrees with Claude on real signals
+                       # (src/llm_shadow.py), THEN switch. That comparison
+                       # needs Anthropic to answer, and Anthropic is exactly
+                       # what ran out — so the baseline cannot be collected
+                       # until the thing it was meant to de-risk is already
+                       # unnecessary. Waiting for it meant not trading at all:
+                       # `on_unavailable: block` had refused every entry since
+                       # 2026-08-21 and the book had drained 22 -> 15.
+                       #
+                       # So this judge is UNMEASURED against the one whose
+                       # record the bot carries. Divergence #25. What is known
+                       # is only what four probe calls showed: valid schema,
+                       # verdict inside the allowed set, and a visibly
+                       # different disposition — scale 0.3-0.5 where the
+                       # fitted Claude distribution sits at mean_scale 0.595.
+                       # That is a reason to distrust the calibration, which
+                       # backtest.judge_model.context_version now refuses, not
+                       # a measurement of agreement.
+  base_url: http://vllm-qwen38:8000/v1   # required when provider is
+                       # keyless, ignored otherwise. Container-to-container on
+                       # the Bizon's `ollama-net`; nothing leaves the host, so
+                       # there is no key here and nothing to rotate.
+  enable_thinking: false # vLLM serves qwen3 with --reasoning-parser=qwen3, so
+                       # the model will generate a long reasoning trace unless
+                       # told not to. Measured on the real judge prompt: 47.1s
+                       # / 2261 completion tokens with it, 4.8s / 224 without,
+                       # SAME VERDICT. The extra tokens are prose llm.py's
+                       # `{`..`}` slice discards, and no ledger field records
+                       # them — the latency bought something unauditable.
+                       #
+                       # It is also load-bearing, not a tuning nicety: at 47s
+                       # every call blew the 30s timeout_seconds below and came
+                       # back a degradation, which is the same blocked-entry
+                       # state this switch exists to end. null = send nothing
+                       # (any non-vLLM server); see llm_client.thinking_kwargs.
   fallback_model: null # retry ONCE on this model when the primary one errors.
                        # Unset on purpose: a quietly weaker judge is a trading
                        # behaviour change, and it does nothing about a bad key —
                        # which is the failure that actually happened 2026-07-27.
-  model: claude-sonnet-5  # judge/posts/journal. Right-sized 2026-07-18 from
-                          # claude-fable-5: contamination-controlled evals (arXiv
-                          # 2510.02209, 2511.03628) find no thinking/frontier edge
-                          # for trading-judge roles; weekly learning stays on Fable
-                          # via learning.model below.
+  model: qwen3.8-27b      # judge/posts/journal. The id vLLM SERVES, not an
+                          # alias — `provider: local` sends this string
+                          # straight to the endpoint above, and a name that
+                          # host does not serve is a 400, not a fallback.
+                          #
+                          # Was claude-sonnet-5, right-sized 2026-07-18 from
+                          # claude-fable-5 on contamination-controlled evals
+                          # (arXiv 2510.02209, 2511.03628), which find no
+                          # thinking/frontier edge for trading-judge roles.
+                          # That reasoning is about model CLASS and says
+                          # nothing about a 27B open-weight model; treat the
+                          # earlier finding as not transferred here.
+                          #
+                          # config.yaml is inside modelver's fingerprint, so
+                          # this line alone re-versions the decision surface
+                          # and review.py segments the record at the switch.
+                          # Nothing has to remember to mark it.
   max_tokens: 4000        # roomy — replies truncate otherwise
   timeout_seconds: 30     # wall-clock ceiling on ONE judge call. The SDK's own
                           # default is 600s, which inside a cycle means a hung
@@ -1139,8 +1177,18 @@ news:                  # market awareness (Alpaca News API + LLM distill),
                        # refreshed hourly 9:25-15:25 ET (com.repete.newsbrain)
                        # plus on-demand at the 9:35 plan post when missing
   enabled: true
-  model: claude-haiku-4-5  # distillation-only override (hourly cadence, ~$3/mo);
-                       # the trade judge and post copy stay on llm.model
+  model: null          # NULLED 2026-08-28 with the switch to `provider: local`.
+                       # llm_client resolves `model or llm.model`, so null
+                       # routes this at the one id the local server actually
+                       # serves. Left as claude-haiku-4-5 it would post a model
+                       # name vLLM does not have and take a 400 every hour —
+                       # a Claude name under a local provider is not a
+                       # cheaper model, it is a broken request.
+                       #
+                       # The cost argument this override existed for is moot:
+                       # a self-hosted model is $0/hour, so there is nothing
+                       # left to distill down to. Restore the override with
+                       # the provider if Anthropic comes back.
   max_headlines: 50    # TOTAL raw headlines fed to the distiller (last 24h).
                        # This is the budget, NOT the Alpaca request limit — it
                        # was both until 2026-07-29 (W6-A0) and that was a live
@@ -1391,7 +1439,7 @@ backtest:               # offline harness (src/backtest.py) — never touches th
   judge_model:            # SIMULATED JUDGE (§29, 2026-07-26) — closes the live
     enabled: false        # half of divergence #8. backtest.py never imports llm
     salt: judge-v1        # (by design), so the judge has been ABSENT from every
-    context_version: 2    # WHICH JUDGE THIS DISTRIBUTION DESCRIBES (2026-08-23).
+    context_version: 3    # WHICH JUDGE THIS DISTRIBUTION DESCRIBES.
                           # 1 -> 2 on 2026-08-23: the judge now reads a
                           # PER-SYMBOL RESEARCH DOSSIER (src/research.py) it
                           # has never had. knowledge/judge_calibration.json was
@@ -1399,6 +1447,21 @@ backtest:               # offline harness (src/backtest.py) — never touches th
                           # it and every gate run with --judge-model stops
                           # rather than sizing against a judge that no longer
                           # exists. That refusal is the feature.
+                          #
+                          # 2 -> 3 on 2026-08-28: the judge is a DIFFERENT
+                          # MODEL (claude-sonnet-5 -> qwen3.8-27b, self-hosted).
+                          # The fit describes a verdict distribution, and the
+                          # thing drawing from it was replaced — which is a
+                          # bigger break than any context edit, since not one
+                          # of the 250 buys behind the fit was judged by this
+                          # model.
+                          #
+                          # NOTE the trigger below said "whenever what the
+                          # judge READS changes". Read literally, swapping the
+                          # model would NOT have required a bump, because the
+                          # inputs were untouched — the guard would have sat
+                          # there looking healthy while describing a judge that
+                          # no longer existed. Widened to cover WHO reads too.
     calibration_refit_pending: true
                           # DECLARED, not inferred. The bump above outran the
                           # fit, and re-earning one needs new live decisions —
@@ -1412,8 +1475,12 @@ backtest:               # offline harness (src/backtest.py) — never touches th
                           # with --judge-model. That is correct and it is not a
                           # workaround: the alternative is a gate that reports
                           # numbers about a bot that does not exist.
-                          # Bump whenever what the judge READS changes — a new
-                          # context block, a changed budget, a different prompt.
+                          # Bump whenever the judge's verdict distribution
+                          # could move: what it READS (a new context block, a
+                          # changed budget, a different prompt) or WHO reads it
+                          # (a different model, provider, or decoding setting —
+                          # `llm.enable_thinking` counts, it changed scale on
+                          # the same prompt in the 2026-08-28 probe).
                           # knowledge/judge_calibration.json records the version
                           # it was fitted under and judge_model REFUSES on a
                           # mismatch.
@@ -1455,8 +1522,21 @@ backtest:               # offline harness (src/backtest.py) — never touches th
                           # one draw — not to shop for a favourable one.
 
 learning:                # the learning loop: hypothesis book + judge calibration
-  model: claude-fable-5  # weekly lesson generation/evaluation/merge stays on the
-                         # most capable model — low volume, highest-stakes reasoning
+  model: null            # NULLED 2026-08-28 with the switch to `provider:
+                         # local` — same reason as news.model: a Claude id
+                         # against the local endpoint is a 400, not a smarter
+                         # model. Resolves to llm.model (qwen3.8-27b).
+                         #
+                         # This IS a real downgrade, and it should be said
+                         # plainly rather than buried: weekly lesson
+                         # generation/evaluation/merge was on the most capable
+                         # model precisely because it is low-volume and
+                         # highest-stakes reasoning, and it is now on a 27B.
+                         # Lessons feed the judge's own context, so a weaker
+                         # lesson writer degrades the judge later, not now.
+                         # The honest comparison is not against Fable — it is
+                         # against the status quo, where this path has been
+                         # producing NOTHING since the credits ran out.
   lessons_path: memory/lessons.jsonl        # append-only hypothesis events
   judgments_path: memory/judgments.jsonl    # every LLM verdict + its later resolution
   promotion_min_supports: 3       # candidate->active: >=3 supports AND supports >= 2x contradicts
