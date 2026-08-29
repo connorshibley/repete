@@ -1160,19 +1160,49 @@ So: switched, unmeasured, and **declared here rather than discovered later.**
 
 ### What is actually known
 
-Four probe calls on the real prompt, 2026-08-28, and nothing beyond them:
+**First recorded, 2026-08-28 (superseded below, kept because the correction is
+the point).** Four probe calls: valid schema 4/4, no `<think>` leakage, and
+`downsize` 4/4 at scale 0.3–0.5. Read at the time as "downsizes harder than
+Claude", with the caveat that four calls is not a distribution.
 
-| | |
-|---|---|
-| schema | valid 4/4 — verdict inside the allowed set, scale and confidence in range |
-| `<think>` leakage | none observed; `llm.py`'s `{`..`}` slice held |
-| disposition | `downsize` 4/4 at scale **0.3–0.5** |
+**Measured the same day, and the caveat turned out to be the finding.**
+`scripts/judge_disposition.py` replays real past buy signals through the live
+judge. 20 distinct `(symbol, strategy)` signals, five passes over the *identical*
+set, n=100, zero degraded:
 
-That last row is the one that matters. The fitted Claude distribution sits at
-`mean_scale 0.595`, `downsize_rate 0.858` over 250 buys. The local model appears
-to downsize *harder*. Four calls is not a distribution and this table must not
-be read as one — it is enough to establish that the calibration is describing
-someone else, and nothing more.
+| | pooled | across the 5 passes | fitted Claude (n=250) |
+|---|---|---|---|
+| `veto_rate` | 0.220 | **0.100 – 0.300** | **0.044** |
+| `downsize_rate` | 0.760 | 0.700 – 0.900 | 0.858 |
+| `approve_rate` (full size) | 0.020 | 0.000 – 0.050 | ~0.142 |
+| mean scale, non-veto | 0.474 | 0.431 – 0.520 | 0.595 |
+| exposure per signal | 0.370 | 0.320 – 0.440 | 0.569 |
+
+Three things, in order of how badly each could be misread.
+
+**1. The spread is the headline.** Identical signals, identical context, same
+afternoon: `veto_rate` moved between 0.100 and 0.300. The judge samples, so any
+single pass is a draw. The first two runs of this script returned 0.300 and
+0.150 and *both were reported as "the veto rate"* before the third made it
+obvious. `--repeat` exists because of that, and a one-pass number from this
+script should not be quoted.
+
+**2. It vetoes far more than the fitted judge, and that survives the spread.**
+Even the most permissive pass (0.100) is more than twice `0.044`; pooled it is
+five times. It also almost never approves at full size — 2 of 100 against
+roughly 34 of 239. Net, ~**65%** of the exposure per signal.
+
+**3. It is not blocking the bot.** 78 of 100 signals passed the judge. That was
+the live question — `on_unavailable: block` had already produced a bot that
+could not enter, and a judge vetoing everything is the same bot with a
+healthier-looking config. It isn't that.
+
+**What this is NOT: an agreement rate.** Different judge *and* different context
+vintage — past signals under today's book, lessons and dossier. Nothing here
+pairs a local verdict with the Claude verdict on the same prompt, because those
+prompts were never stored (below). It characterizes a disposition. Anyone
+quoting it as "the models agree/disagree N% of the time" is quoting something
+that was not measured.
 
 ### The calibration, and why this entry is not the dangerous kind
 
@@ -1215,12 +1245,32 @@ that no record retains.
 
 ### What would close this
 
-Restored Anthropic credits, then `src/llm_shadow.py` run on live signals until
-the agreement rate between the two judges is measurable — the comparison this
-change had to skip. Short of that, a refit (`scripts/calibrate_judge.py
---write`) at least replaces a calibration fitted to the wrong judge with one
-fitted to this judge; it says nothing about which judge is *better*, and must
-not be reported as if it did.
+Restored Anthropic credits, then `src/llm_shadow.py` on live signals until the
+agreement rate is measurable — the comparison this change had to skip.
+
+**Why a replay cannot substitute, checked rather than assumed.** The obvious
+shortcut is to re-run the *recorded* Claude prompts through the local model, no
+credits required. It does not exist: `Ledger._store_prompt` writes prompt and
+context bodies to a sidecar, but that sidecar landed **2026-08-22, one day
+after the judge went down**, so it has never captured a single Claude decision.
+On the Bizon the `decision_prompts` stream is absent entirely and
+`memory/agent.db` holds no such rows. The 250 buys behind the calibration
+predate prompt storage, and their contexts — book, lessons, dossier as of that
+day — are unrecoverable. An approximate replay would compare the local model on
+a prompt Claude never saw, which is a new measurement wearing an agreement
+rate's name.
+
+**What the switch bought instead, in the other direction.** The judge works
+again, so the sidecar is now recording. Every decision from the first live
+cycle forward stores the exact prompt this judge saw. When credits return,
+Claude can be replayed against *those* — a real paired comparison, just
+oriented the opposite way to the one originally planned. It needs no new code.
+
+Short of any of that, a refit (`scripts/calibrate_judge.py --write`) replaces a
+calibration fitted to the wrong judge with one fitted to this judge. It says
+nothing about which judge is *better* and must not be reported as if it did —
+and per the table above it needs enough passes to survive the sampling spread,
+not one.
 
 ### Not a claim of value
 
