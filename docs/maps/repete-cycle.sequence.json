@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Repete Trading Cycle",
+    "output": "docs/maps/repete-cycle.html",
+    "viewBox": [
+      900,
+      880
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "guard",
+        "label": "Kill switch guard",
+        "focus": [
+          "cycle",
+          "rails"
+        ],
+        "note": "The kill switch is evaluated before reconciliation and can end the cycle."
+      },
+      {
+        "id": "reconciliation",
+        "label": "Position reconciliation",
+        "focus": [
+          "cycle",
+          "broker",
+          "ledger"
+        ],
+        "note": "Broker state is reconciled before any signal is computed."
+      },
+      {
+        "id": "data",
+        "label": "Market data and close-out",
+        "focus": [
+          "cycle",
+          "market",
+          "derived",
+          "ledger"
+        ],
+        "note": "Bars are validated before trailing stops and precompute run."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "cycle",
+      "type": "backend",
+      "label": "Run Cycle",
+      "sublabel": "_run_cycle"
+    },
+    {
+      "id": "rails",
+      "type": "security",
+      "label": "Kill Switch",
+      "sublabel": "abort guard"
+    },
+    {
+      "id": "broker",
+      "type": "external",
+      "label": "Broker",
+      "sublabel": "positions + fills"
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "Ledger",
+      "sublabel": "ledger + memory"
+    },
+    {
+      "id": "market",
+      "type": "external",
+      "label": "Market Data",
+      "sublabel": "news + bars"
+    },
+    {
+      "id": "derived",
+      "type": "backend",
+      "label": "Precompute",
+      "sublabel": "cross-sectional"
+    }
+  ],
+  "messages": [
+    {
+      "id": "bootstrap",
+      "from": "cycle",
+      "to": "ledger",
+      "y": 200,
+      "label": "_bootstrap_cycle \u00b7 L1303",
+      "variant": "default"
+    },
+    {
+      "id": "killswitch",
+      "from": "cycle",
+      "to": "rails",
+      "y": 229,
+      "label": "_kill_switch_fired \u00b7 L1340",
+      "variant": "security"
+    },
+    {
+      "id": "clear",
+      "from": "rails",
+      "to": "cycle",
+      "y": 258,
+      "label": "clear to trade",
+      "variant": "return"
+    },
+    {
+      "id": "reconcile",
+      "from": "cycle",
+      "to": "broker",
+      "y": 307,
+      "label": "reconcile_closed_positions \u00b7 L1345",
+      "variant": "default"
+    },
+    {
+      "id": "closedfills",
+      "from": "broker",
+      "to": "ledger",
+      "y": 336,
+      "label": "closed fills",
+      "variant": "return"
+    },
+    {
+      "id": "adopt",
+      "from": "cycle",
+      "to": "broker",
+      "y": 365,
+      "label": "adopt_untracked_positions \u00b7 L1349",
+      "variant": "default"
+    },
+    {
+      "id": "fillq",
+      "from": "cycle",
+      "to": "ledger",
+      "y": 394,
+      "label": "record_fill_quality \u00b7 L1350",
+      "variant": "default"
+    },
+    {
+      "id": "marketctx",
+      "from": "cycle",
+      "to": "market",
+      "y": 443,
+      "label": "_market_context \u00b7 L1373",
+      "variant": "default"
+    },
+    {
+      "id": "nominated",
+      "from": "market",
+      "to": "cycle",
+      "y": 472,
+      "label": "news + nominated",
+      "variant": "return"
+    },
+    {
+      "id": "fetchbars",
+      "from": "cycle",
+      "to": "market",
+      "y": 501,
+      "label": "_fetch_and_validate_bars \u00b7 L1822",
+      "variant": "default"
+    },
+    {
+      "id": "bars",
+      "from": "market",
+      "to": "cycle",
+      "y": 530,
+      "label": "validated bars",
+      "variant": "return"
+    },
+    {
+      "id": "trailing",
+      "from": "cycle",
+      "to": "broker",
+      "y": 579,
+      "label": "update_trailing_stops \u00b7 L1843",
+      "variant": "default"
+    },
+    {
+      "id": "precompute",
+      "from": "cycle",
+      "to": "derived",
+      "y": 608,
+      "label": "_precompute \u00b7 L1872",
+      "variant": "default"
+    },
+    {
+      "id": "xsctx",
+      "from": "derived",
+      "to": "cycle",
+      "y": 637,
+      "label": "xs_ctx + blackouts",
+      "variant": "return"
+    },
+    {
+      "id": "finalize",
+      "from": "cycle",
+      "to": "ledger",
+      "y": 666,
+      "label": "_finalize_cycle \u00b7 L2036",
+      "variant": "default"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "cycle",
+      "from": 195,
+      "to": 672,
+      "type": "backend"
+    },
+    {
+      "participant": "rails",
+      "from": 224,
+      "to": 263,
+      "type": "security"
+    },
+    {
+      "participant": "broker",
+      "from": 302,
+      "to": 370,
+      "type": "external"
+    },
+    {
+      "participant": "market",
+      "from": 438,
+      "to": 535,
+      "type": "external"
+    },
+    {
+      "participant": "derived",
+      "from": 603,
+      "to": 642,
+      "type": "backend"
+    },
+    {
+      "participant": "ledger",
+      "from": 661,
+      "to": 677,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "Source",
+      "items": [
+        "src/main.py::_run_cycle, lines 1303-2036",
+        "Call order read from the call sites, not inferred from imports"
+      ]
+    }
+  ]
+}

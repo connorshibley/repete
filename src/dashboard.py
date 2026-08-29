@@ -322,6 +322,12 @@ details>summary{cursor:pointer;color:var(--ink2);font-size:13px;
      border:1px solid var(--line);color:var(--ink);padding:6px 10px;
      border-radius:6px;font-size:12px;pointer-events:none;z-index:10;
      box-shadow:0 4px 14px rgba(20,26,34,.18);max-width:280px}
+/* Archify system map. Inlined for the same reason as the swing asset:
+   publish_dashboard.sh copies named files only, so a linked SVG could ship a
+   commit behind its page. The fragment carries its own namespaced palette
+   under .archify-map; only layout belongs here. */
+.archify-map{margin:10px 0;overflow-x:auto}
+.archify-map svg{width:100%;min-width:680px;height:auto;display:block}
 """
 
 # Handlers are DELEGATED to `document`, never bound per element.
@@ -870,6 +876,39 @@ def _swing_data_uri() -> str | None:
                   f"falling back to the SVG robot", file=sys.stderr)
             return None
     return f"data:image/webp;base64,{_SWING_CACHE}"
+
+
+SYSTEM_MAP_ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "assets", "system_map.svg")
+_SYSTEM_MAP_CACHE = None
+
+
+def _system_map() -> str:
+    """The Archify cycle map as an inline SVG section, or "" if unavailable.
+
+    Inlined rather than linked for the reason spelled out in _swing_data_uri:
+    publish_dashboard.sh copies four hardcoded names, so a linked artifact
+    would render as a broken image on the live site one commit out of date.
+
+    Regenerate with scripts/build_map_svg.py after editing the map source in
+    docs/maps/. A missing asset must never break a cycle, so this degrades to
+    an absent section rather than raising.
+    """
+    global _SYSTEM_MAP_CACHE
+    if _SYSTEM_MAP_CACHE is None:
+        try:
+            with open(SYSTEM_MAP_ASSET, encoding="utf-8") as fh:
+                _SYSTEM_MAP_CACHE = fh.read()
+        except OSError as e:                          # noqa: BLE001
+            print(f"dashboard: system map unavailable ({e})", file=sys.stderr)
+            _SYSTEM_MAP_CACHE = ""
+    if not _SYSTEM_MAP_CACHE:
+        return ""
+    return ("<h2>\U0001F5FA\uFE0F System map</h2>\n"
+            "<details><summary>the cycle this page reports on \u2014 every call "
+            "in <code>src/main.py::_run_cycle</code>, in order, with the line "
+            "it was read from</summary>\n"
+            f"{_SYSTEM_MAP_CACHE}</details>")
 
 
 def _swing(total: float) -> str:
@@ -1693,6 +1732,7 @@ happened — filter with the chips</summary>
 <details open><summary>falsifiable hypotheses the bot is testing from its
 own closed trades</summary>{_lessons_rows(states)}</details>
 <p class=small>{_esc(calib)}</p>
+{_system_map()}
 <p class=small>Paper trading. Generated from memory/ledger.jsonl — the
 append-only audit trail is the source of truth, this page is a view.
 The bot narrates every trade and its reasoning on its own
