@@ -7347,3 +7347,73 @@ availability fix. It is not a result.
 Trial count through §78: 241 arm runs. §78 runs no arms; K is closed at 16.
 
 <!-- recall: section=§78 specs= -->
+
+---
+
+## §79 — measuring the new judge, and the run that disagreed with itself
+
+**2026-08-28. Runs no arms. K stays closed at 16. Claims nothing about edge.**
+
+§78 switched the judge to a self-hosted model and said plainly that nothing
+about quality had been established. This measures the one property that decides
+whether §78 achieved anything: **does the new judge let trades through?**
+
+`scripts/judge_disposition.py` replays real past buy signals from the ledger
+through the live judge and reports the verdict distribution against the fitted
+one in `knowledge/judge_calibration.json`. 20 distinct `(symbol, strategy)`
+signals, five passes over the identical set, n=100, zero degraded.
+
+| | pooled | across the 5 passes | fitted Claude (n=250) |
+|---|---|---|---|
+| `veto_rate` | 0.220 | **0.100 – 0.300** | **0.044** |
+| `downsize_rate` | 0.760 | 0.700 – 0.900 | 0.858 |
+| `approve_rate` (full size) | 0.020 | 0.000 – 0.050 | ~0.142 |
+| mean scale, non-veto | 0.474 | 0.431 – 0.520 | 0.595 |
+| exposure per signal | 0.370 | 0.320 – 0.440 | 0.569 |
+
+**78 of 100 signals passed the judge.** §78's fix works: this is not a
+differently-blocked bot. It is a materially more conservative one — roughly
+**65%** of the prior exposure per signal, from a veto rate around five times the
+fitted one and a judge that almost never approves at full size.
+
+### The methodological finding, which is the part worth keeping
+
+**The first two runs of this script, over identical inputs, returned
+`veto_rate` 0.300 and 0.150. Both were reported as "the veto rate" before a
+third pass made the problem obvious.**
+
+The judge samples. A single pass is a draw, and at n=20 the draw moves further
+than the effect being measured. The instrument now takes `--repeat` and prints
+a range; a one-pass number from it should not be quoted.
+
+Same family as §76's decay reading, the 171 `noop` capture rows, and the
+mutation harness printing CAUGHT for a test file that did not exist — a
+measurement that cannot express its own uncertainty reads as a result. Here the
+uncertainty was 2× the headline number.
+
+The script is committed rather than run ad hoc, and
+`tests/test_judge_disposition.py` pins the three ways it could flatter the
+judge: counting a degraded call as a non-veto (understates the veto rate),
+reporting `0.0` where nothing was judged (makes "nothing got through"
+indistinguishable from "nothing vetoed"), and comparing against constants pasted
+into the script rather than read from the fit. That last test first fired on the
+script's own docstring, which quoted one of the fitted values as an example.
+
+### What this is NOT
+
+**Not an agreement rate.** Different judge and different context vintage. No
+local verdict here is paired with a Claude verdict on the same prompt.
+
+And no such pairing can be reconstructed: the prompt sidecar
+(`Ledger._store_prompt`) landed 2026-08-22, a day after the judge went down, so
+it never captured a Claude decision — the `decision_prompts` stream does not
+exist on the Bizon. Verified, not assumed. The contexts behind the 250-buy
+calibration are gone.
+
+What *is* now true is the reverse: with the judge working, every decision from
+the next live cycle forward records the exact prompt it saw. When credits
+return, Claude can be replayed against those. Divergence #25 carries it.
+
+Trial count through §79: 241 arm runs. §79 runs no arms; K is closed at 16.
+
+<!-- recall: section=§79 specs= -->

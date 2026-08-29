@@ -4,7 +4,7 @@
 `tests/test_research_index.py` regenerates this file and fails if the
 committed copy differs.
 
-One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **83 sections, 7,349 lines**.
+One line per section of [`../knowledge/backtest_candidates.md`](../knowledge/backtest_candidates.md) — **84 sections, 7,419 lines**.
 
 That file is chronological and append-only, and it is deliberately NOT
 split. The chronology is the evidence that nothing was retrofitted: a
@@ -105,6 +105,7 @@ column has been corrected — they are placed side by side.
 | §76 | THE DECAY MONITOR REACHED ITS THRESHOLD: INDISTINGUISHABLE FROM RANDOM, ON A … | DIAGNOSTIC | — | — | 2026-08-23 |
 | §77 | THE EDGE CLAIM IS RETIRED; THE APPARATUS IS THE ASSET | EDGE | closed | — | 2026-08-23 |
 | §78 | the judge moved off Anthropic, and the slow part was not the model | — | — | — | — |
+| §79 | measuring the new judge, and the run that disagreed with itself | — | — | — | — |
 
 A `gate result` of `—` means no spec was registered against that
 section; the first registered section is §35. And a ratio is not a section
