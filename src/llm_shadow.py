@@ -4,10 +4,23 @@ purely for comparison. Never affects trading.
 Why this file exists
 ---------------------
 The real judge is `llm.review_signal()`, and its provider is fixed by
-`cfg["llm"]["provider"]` — today, exclusively "anthropic" (llm_client.py
-refuses any other name outright). Swapping that provider to a local model
-without first knowing whether the local model agrees with Claude on real
-signals would be evaluating blind.
+`cfg["llm"]["provider"]`. When this was written (2026-08-20) that meant
+exclusively "anthropic", and the plan was shadow-first: measure whether a
+local model agrees with Claude on real signals BEFORE switching, because
+switching blind would be evaluating blind.
+
+CORRECTED 2026-08-30 — history went the other way. Anthropic ran out of
+credits on 2026-08-21, the judge was unreachable for seven days, and on
+2026-08-28 `llm.provider` was switched to the local model WITHOUT this
+baseline (divergence #25 records why waiting was not neutral). So the
+comparison this module was built for is now reversed: the LOCAL model is the
+live judge, and the missing measurement is how *Claude* would have judged the
+same prompts. This module only speaks OpenAI-compatible `/v1/chat/completions`
+(`_call_local`), so it cannot itself call Anthropic as the shadow — but the
+prompt sidecar (`Ledger._store_prompt`) records every live prompt from
+2026-08-31 forward, so when credits return, Claude can be replayed against
+those. Either way the scoring in scripts/score_llm_shadow.py applies
+unchanged; only which side is "live" flipped.
 
 This module makes a SEPARATE call to a local model server (Ollama / vLLM,
 OpenAI-compatible `/v1/chat/completions`) on the SAME signal, using the SAME
@@ -20,18 +33,17 @@ can never drift on the rules that matter). The result:
     does not touch the judgment-store schema or the calibration math in
     judgments.py at all.
 
-WHAT IS DUPLICATED, ON PURPOSE
--------------------------------
-`_user_message()` below is a deliberate copy of the f-string built inline in
-`llm.review_signal()`. This file does not edit llm.py, because llm.py's test
-suite (tests/test_llm_parsing.py, tests/test_llm_client.py) could not be run
-from the environment this file was written in, and a production judge module
-should not be modified by anyone who cannot verify the change against its own
-tests. If `review_signal()`'s user message changes, update `_user_message()`
-here to match — otherwise the shadow comparison silently starts scoring a
-different question than the real judge answers. Worth a regression test in
-tests/ once this lands (assert the two strings match for a shared fixture
-signal) — not added here for the same reason.
+THE PROMPT IS DELEGATED, NOT DUPLICATED (corrected 2026-08-30)
+---------------------------------------------------------------
+As written on 2026-08-20, `_user_message()` was a deliberate copy of the
+f-string then built inline in `llm.review_signal()` — copied because the
+author could not run llm.py's test suite from that environment, and flagged
+in this very docstring as a drift risk worth a regression test. Step 5a
+(2026-08-22) made `llm.review_user_message()` public precisely so a shadow
+could delegate, and this session CAN run the suite — so `_user_message` now
+delegates, the drift class is structurally gone, and
+tests/test_llm_shadow.py pins the delegation so a future copy-paste cannot
+quietly reintroduce it.
 
 HOW THIS GETS WIRED IN
 ------------------------
@@ -73,12 +85,13 @@ _LOG_PATH = "knowledge/llm_shadow_log.jsonl"  # matches the knowledge/ home
 
 
 def _user_message(signal, memory_context: str) -> str:
-    """MUST match the user message built inline in llm.review_signal().
-    Duplicated, not imported — see this module's docstring for why."""
-    return (f"SIGNAL: {signal.action.upper()} {signal.symbol}\n"
-            f"STRATEGY REASON: {signal.reason}\n"
-            f"INDICATORS: {json.dumps(signal.indicators)}\n\n"
-            f"{memory_context}\n\nReply with JSON only.")
+    """The exact user message the real judge is sent — BY DELEGATION.
+
+    Was a byte-identical copy until 2026-08-30 (see the module docstring); a
+    shadow scoring a different question than the live judge answers is the
+    silent failure this module exists to avoid, and delegation makes it
+    impossible rather than merely tested-for."""
+    return llm.review_user_message(signal, memory_context)
 
 
 def _call_local(base_url: str, model: str, system: str, user: str,

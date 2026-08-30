@@ -88,7 +88,7 @@ def score(rows: list[dict]) -> None:
         print(f"Latency             : p50={p50:.1f}s  p95={p95:.1f}s")
 
     if missed_vetoes:
-        print(f"\n--- Missed vetoes (read these by hand) ---")
+        print("\n--- Missed vetoes (read these by hand) ---")
         for r in missed_vetoes:
             print(f"  {r['ts']}  {r['symbol']} {r['action']}  "
                   f"live={r['live_verdict']} shadow={r['shadow_verdict']}  "
