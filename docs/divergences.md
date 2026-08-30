@@ -1272,6 +1272,18 @@ nothing about which judge is *better* and must not be reported as if it did —
 and per the table above it needs enough passes to survive the sampling spread,
 not one.
 
+### Meanwhile
+
+The dependency this switch created — a vLLM container outside repete's compose
+project — is monitored as of 2026-08-29: `llm_client.probe()` runs in the
+5-minute docker healthcheck, in `host_warnings` at the 09:35 open, in the
+watchdog's daily page, and in `run_cycle` itself, which alerts *before* the
+first signal is judged. A repeat of the 2026-08-21→28 shape (entries silently
+refused for a week) now announces itself the same hour.
+`tests/test_judge_reachability.py` pins that the probe can never become a
+`preflight.run()` failure — a dead judge degrades entries, never stops the
+cycle that manages the open book.
+
 ### Not a claim of value
 
 The EDGE tally is unchanged. `knowledge/backtest_candidates.md` owns that count.

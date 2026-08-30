@@ -29,6 +29,16 @@ from memory import Memory
 
 NOW = datetime(2026, 7, 30, 16, 0, tzinfo=timezone.utc)
 
+# For fixtures read back through Memory.context_for_llm, which reads the REAL
+# wall clock — there is no way to inject `now` through that path. Three tests
+# here used the frozen NOW for those writes, and on 2026-08-30 all three went
+# red at midnight with no code change: NOW had aged past retention_days=30 and
+# the rows silently expired, tripping their own vacuity guards. A frozen write
+# clock against a wall read clock is a time bomb with a fuse equal to the
+# retention window. Tests that inject `now=` on BOTH sides keep using NOW —
+# they are genuinely deterministic and should stay that way.
+FRESH = datetime.now(timezone.utc) - timedelta(hours=1)
+
 
 def _cfg(tmp_path, **over):
     mem = {"enabled": True, "path": str(tmp_path / "news_memory.jsonl"),
@@ -195,7 +205,7 @@ def test_disabled_gives_byte_identical_context(tmp_path, cfg):
                                 "path": str(tmp_path / "news_memory.jsonl"),
                                 "retention_days": 30, "max_context_chars": 600,
                                 "max_rows": 6, "min_mentions_to_show": 1}}}
-    news_memory.record_context(_ctx(SPY="in the headlines"), ncfg, now=NOW)
+    news_memory.record_context(_ctx(SPY="in the headlines"), ncfg, now=FRESH)
 
     off = _mem(tmp_path / "a", json.loads(json.dumps(cfg)), news_enabled=False)
     off.news_cfg["memory"]["path"] = str(tmp_path / "news_memory.jsonl")
@@ -219,7 +229,7 @@ def test_the_lesson_block_does_not_shrink_when_news_is_present(tmp_path, cfg):
                                 "max_rows": 6, "min_mentions_to_show": 1}}}
     for d in range(6):
         news_memory.record_context(_ctx(SPY="y" * 120), ncfg,
-                                   now=NOW - timedelta(days=d))
+                                   now=FRESH - timedelta(days=d))
     withnews = _mem(tmp_path / "y", json.loads(json.dumps(cfg)),
                     news_enabled=True)
     withnews.news_cfg["memory"]["path"] = str(tmp_path / "nm.jsonl")
@@ -245,7 +255,7 @@ def test_the_total_context_still_obeys_the_learning_cap(tmp_path, cfg):
                                 "max_rows": 6, "min_mentions_to_show": 1}}}
     for d in range(6):
         news_memory.record_context(_ctx(SPY="z" * 200), ncfg,
-                                   now=NOW - timedelta(days=d))
+                                   now=FRESH - timedelta(days=d))
     m = _mem(tmp_path / "z", cfg, news_enabled=True)
     m.news_cfg["memory"]["path"] = str(tmp_path / "nm2.jsonl")
     ctx = m.context_for_llm(symbol="SPY")

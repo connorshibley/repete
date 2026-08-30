@@ -158,10 +158,10 @@ def news_on(day: date, records=None) -> bool | None:
 def check(today: date | None = None,
           heartbeat_path: str = HEARTBEAT_FILE,
           halt_path: str = HALT_FILE,
-          records=None) -> list[str]:
+          records=None, cfg: dict | None = None) -> list[str]:
     """Return the list of problems found (empty = all clear).
 
-    Five different questions, deliberately kept apart:
+    Six different questions, deliberately kept apart:
 
       * did the PROCESS run?     -> the heartbeat file
       * did the CYCLE finish?    -> a `cycle_complete` record in the ledger
@@ -169,9 +169,14 @@ def check(today: date | None = None,
       * is trading halted?       -> the HALT file
       * is the book locked out?  -> the drawdown latch (§40), via
                                     `drawdown_latch()`
+      * can the JUDGE answer?    -> llm_client.probe() (2026-08-29, only when
+                                    cfg is passed and the provider is keyless)
 
-    The last two are the ones that cannot clear themselves, and both re-alert
-    daily for that reason.
+    The halt and the latch cannot clear themselves, and both re-alert daily
+    for that reason. The judge check re-alerts daily too, deliberately: the
+    2026-08-21→28 outage refused 53 entries over seven days precisely because
+    no repeated signal existed — a once-only alert for a persistent fault is
+    how that outage stayed invisible.
 
     Until 2026-07-26 only the first was asked, and `write_heartbeat()` runs in
     a `finally:` — so a cycle that crashed six seconds in still stamped a
@@ -225,6 +230,23 @@ def check(today: date | None = None,
         problems.append(f"drawdown circuit breaker ENGAGED — {_latch_detail(dd)}"
                         f". Entries are blocked; exits still run. "
                         f"{_reset_hint()}")
+
+    # The judge's endpoint, only when a config was passed (main() passes the
+    # real one; tests that predate this parameter keep their no-network
+    # contract). This is the check that actually PAGES — health.py flips the
+    # container unhealthy and host_warnings ledgers it, but only the watchdog
+    # calls alerting.send(). probe() never raises and answers None for a
+    # keyed provider, where None means "not applicable", not "healthy".
+    if cfg is not None and (cfg.get("llm") or {}).get("enabled"):
+        try:
+            import llm_client
+            reason = llm_client.probe(cfg)
+        except Exception as e:  # noqa: BLE001 — the alerter must not crash
+            reason = f"judge probe itself failed: {e}"
+        if reason:
+            problems.append(
+                f"{reason} — judged entries are being refused "
+                f"(on_unavailable) while it stays down; exits are unaffected")
     return problems
 
 
@@ -334,7 +356,7 @@ def main():
     # file than the one health reported on.
     cfg = _cfg_or_empty()
     problems = check(heartbeat_path=statepaths.heartbeat_path(cfg),
-                     halt_path=statepaths.halt_path(cfg))
+                     halt_path=statepaths.halt_path(cfg), cfg=cfg)
     if not problems:
         log.info("watchdog: all clear")
         return
