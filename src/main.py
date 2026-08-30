@@ -817,6 +817,35 @@ def _bootstrap_cycle():
         except Exception:  # noqa: BLE001 — observability never blocks a cycle
             pass
 
+    # A dead judge endpoint, ALERTED before the first signal is judged rather
+    # than counted afterwards. Everything else that watches this fires late:
+    # health.py flips the container unhealthy on its next 5-minute tick, the
+    # watchdog pages at 16:15 — both after the cycle already refused its
+    # entries. The 2026-08-21→28 outage ran seven days on exactly that gap.
+    # Once per cycle, re-alerting on every cycle while it stays down — a
+    # once-only alert for a persistent fault is how that outage stayed
+    # invisible. Never blocks: the cycle proceeds, entries degrade per
+    # on_unavailable, exits are untouched.
+    if cfg.get("llm", {}).get("enabled"):
+        try:
+            import llm_client
+            judge_down = llm_client.probe(cfg)
+        except Exception as e:  # noqa: BLE001 — instrumentation never blocks
+            judge_down = f"judge probe itself failed: {e}"
+        if judge_down:
+            log.critical("JUDGE UNREACHABLE: %s", judge_down)
+            try:
+                import alerting
+                alerting.send("Trading agent: judge unreachable",
+                              f"{judge_down} — entries will be refused this "
+                              f"cycle (on_unavailable); exits still run")
+            except Exception:  # noqa: BLE001 — alerting never blocks a cycle
+                pass
+            try:
+                ledger.log_event("judge_unreachable", str(judge_down)[:500])
+            except Exception:  # noqa: BLE001
+                pass
+
     # Two halts, two behaviours. `freeze` is the original: nothing runs, which is
     # what you want when the bot or the broker is itself suspect. `exits` runs
     # the cycle with entries blocked so open positions are still managed —

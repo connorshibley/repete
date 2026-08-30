@@ -637,6 +637,24 @@ def host_warnings(cfg: dict) -> list[str]:
             "no alert channel and no ops.incident_owner on this host — a "
             "failure would be written to a log file and NOBODY WOULD BE TOLD. "
             "Set ALERT_WEBHOOK_URL, or name an owner who checks the logs")
+
+    # A keyless judge whose endpoint is not answering. Host-convictable only
+    # (it is a network round-trip), hence this channel and not run() — and
+    # warn-only for the same reason on_unavailable exists: a dead judge must
+    # degrade entries, never stop the cycle that manages open positions. The
+    # 2026-08-21→28 outage blocked 53 entries before a human noticed; this
+    # line is the ~09:35 record of the same fault, hours before the main
+    # cycle. probe() gates on needs_key itself and never raises.
+    if (cfg.get("llm") or {}).get("enabled"):
+        try:
+            import llm_client
+            reason = llm_client.probe(cfg)
+        except Exception as e:  # noqa: BLE001 — a warning must never break startup
+            reason = f"judge probe itself failed: {e}"
+        if reason:
+            out.append(f"{reason} — judged entries will degrade and "
+                       f"on_unavailable={((cfg.get('llm') or {}).get('on_unavailable') or 'block')!r} "
+                       f"will refuse them; exits are unaffected")
     return out
 
 

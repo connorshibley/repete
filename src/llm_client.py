@@ -181,6 +181,45 @@ def thinking_kwargs(cfg: dict) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": bool(raw)}}
 
 
+def probe(cfg: dict, timeout: float = 3.0) -> str | None:
+    """Is the keyless judge's endpoint answering? None, or a short reason.
+
+    WHY. Between 2026-08-21 and -28 the judge was unreachable and it took
+    seven days and a human reading health output to notice: the heartbeat
+    stayed fresh, cycles completed, and 53 entries were refused by
+    `unavailable_block` before anyone looked. Moving the judge onto the box
+    (#152) swapped that unmonitored dependency for another one — a vLLM
+    container this compose project does not own, sharing two GPUs with three
+    other services. This is the cheap question ("is anything listening?")
+    asked BEFORE a cycle blocks on the expensive one.
+
+    None is TWO different answers, and the caller must not collapse them:
+    for a keyless provider it means "the endpoint answered"; for a keyed one
+    it means "not applicable" — probing a vendor costs tokens and its failure
+    already degrades loudly per call. A consumer treating keyed-None as
+    "verified healthy" would report health it never measured, so consumers
+    gate on needs_key() themselves before attributing meaning to None.
+
+    GET {base_url}/models with a short timeout, never a completion: the
+    question is reachability, not quality, and this runs inside health checks
+    where a 30s hang would itself be an outage. Never raises — a probe that
+    can take down the thing it monitors is a worse bug than the one it looks
+    for. No retry: the SDK-level retries exist for verdicts that matter; a
+    health probe that retries is just a slower probe.
+    """
+    if not needs_key(cfg):
+        try:
+            import urllib.request
+            url = f"{base_url(cfg).rstrip('/')}/models"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                if r.status != 200:
+                    return f"judge endpoint returned HTTP {r.status}"
+        except Exception as e:  # noqa: BLE001 — every failure is one answer: unreachable
+            return f"judge endpoint unreachable: {type(e).__name__}: {str(e)[:120]}"
+    return None
+
+
 def configured(cfg: dict) -> bool:
     """Judge switched on, and reachable.
 

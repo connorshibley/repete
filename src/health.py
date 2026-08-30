@@ -263,6 +263,9 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         "cycle_crashed_today": False,
         "open_positions": None,
         "degradations_today": 0,
+        # None = reachable OR keyed-provider-not-applicable; a string names
+        # the failure. Absent-vs-zero rule: never collapse these into False.
+        "judge_unreachable": None,
         "slo_breach_today": False,
         # The drawdown circuit breaker, reported because it cannot report
         # itself (2026-08-03). §40 showed it is a ONE-WAY LATCH with no
@@ -378,6 +381,25 @@ def status(cfg: dict | None = None, now: datetime | None = None,
                 f"— a weekday mirror was due and did not verify")
     if out["slo_breach_today"]:
         out["problems"].append("degradation SLO breached today")
+
+    # A keyless judge whose endpoint is dead. This runs inside the docker
+    # healthcheck every 5 minutes, so a dead vLLM flips the container
+    # UNHEALTHY within one interval instead of surfacing as a week of refused
+    # entries (2026-08-21→28: 53 signals, seven days, found by a human).
+    # probe() returns None for a keyed provider — "not applicable", not
+    # "healthy" — and never raises; the try covers importing llm_client on a
+    # host where even that fails, because a health check that crashes reports
+    # nothing at all.
+    if cfg.get("llm", {}).get("enabled"):
+        try:
+            import llm_client
+            out["judge_unreachable"] = llm_client.probe(cfg)
+        except Exception as e:  # noqa: BLE001 — health must degrade, not die
+            out["judge_unreachable"] = f"judge probe itself failed: {e}"
+        if out["judge_unreachable"]:
+            out["problems"].append(
+                f"{out['judge_unreachable']} — every judged entry will be "
+                f"refused while it stays down; exits are unaffected")
 
     # §40: the latch has no recovery path, so this problem is permanent until
     # a human acts. Saying only "entries blocked" would read as a transient
