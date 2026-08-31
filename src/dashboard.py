@@ -1668,8 +1668,11 @@ def render(cfg: dict | None = None, out_path: str | None = None,
 {now.strftime('%Y-%m-%d %H:%M UTC')}</span>
 &nbsp; <a class=x href="journal.html">trade journal →</a>
 &nbsp; <a class=x href="blog.html">blog →</a></h1>
-<p class=small><span class=livedot></span>live paper account · rebuilt
-after every cycle from the append-only ledger &nbsp;{badge}</p>
+<p class=small><span class=livedot></span>an autonomous swing-trading bot —
+buys stocks trending up for months, dips after a longer uptrend, or a short
+average crossing a longer one, and holds for days to weeks · live paper
+account · rebuilt after every cycle from the append-only ledger
+&nbsp;{badge}</p>
 {_how_it_works()}
 <div id=rgn-tape>{regions['tape']}</div>
 <div id=rgn-hero>{regions['hero']}</div>
