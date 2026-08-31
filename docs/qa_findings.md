@@ -37,9 +37,16 @@ F-02 are retro-documented below because they set the closure bar.
 | F-12 | `blog.html`/`journal.html` link to `index.html`, absent locally | dev | S3 | OPEN | — |
 | F-13 | `journal.html` renders every entry, unboundedly | journal | S3 | OPEN | — |
 | F-14 | `/healthz` measures the host's CWD, not the fixture | publisher | S2 | CLOSED | `test_state_paths_are_one_answer.py::test_the_writer_and_both_readers_use_the_same_file` |
+| F-15 | `SITE-DASH-DETAILS-01` asserted a page two PRs old; the sweep sat red on every profile with nobody running it | tooling | S2 | CLOSED | `qa_site_sweep.py` per-section criterion; 18/18 ×3 + 12/12 rerun 2026-08-30 |
+| F-16 | `/healthz` under the sweep inherited two live-host checks (mirror receipt, judge probe); PUB-04 red on every fixture | tooling | S2 | CLOSED | `qa_sweep.build_client` hermetic switches; 58/58 rerun 2026-08-30 |
+| F-17 | One unbroken token widens the whole blog page (40,316px measured); journal shared the gap latently | blog, journal | S2 | CLOSED | `test_page_contracts_browser_pinned.py::test_blog_and_journal_break_long_tokens` |
+| F-18 | No browser-native sign-in path: `/auth/request-link` is JSON-only and no page renders an email form | publisher | S3 | OPEN | — |
+| F-19 | `/account`, the post-login landing every magic link 303s to, renders raw JSON | publisher | S3 | OPEN | — |
 
-Open: **2** (F-12, F-13). Both S3, both recorded rather than fixed — see
-"Deliberately not fixed".
+Open: **4** (F-12, F-13, F-18, F-19). All S3, all recorded rather than fixed —
+see "Deliberately not fixed". F-18/F-19 are product decisions from the
+2026-08-30 browser audit: both flows WORK (verified end-to-end in a real
+browser), they are just not shaped for a human arriving without a link.
 
 ## Root-cause clusters
 
@@ -203,6 +210,80 @@ At the fixture's production scale (918 entries over 18 months) the page is
 three years it would be around 1.5 MB of HTML on every page load. Not a defect
 today, and any fix is a product decision about what the journal is for.
 
+## F-15 — the sweep asserted a page two PRs old (S2, tooling, CLOSED)
+
+**Found 2026-08-30, in the first minute of the audit's baseline gate.**
+`SITE-DASH-DETAILS-01` failed on **all four profiles**: it asserted "2
+details, both open", written for the page as of PR #111. PR #123 added the
+first-time-visitor explainer — a third `<details>`, deliberately collapsed —
+and the criterion was never updated.
+
+The finding is not the stale criterion; it is what the all-profiles failure
+proves: **nobody had run the static sweep since #123 merged.** The sweep is a
+script chain, not a pytest, so its own redness was invisible — the same shape
+as the 171 `noop` capture rows: an instrument nobody reads is not evidence.
+
+Closed by rewriting the criterion per-section (explainer closed, decisions
+and lessons open — a new details element is now a conscious edit, not a
+blanket pass/fail) and syncing the inventory row. Reruns: 18/18 ×3 + 12/12.
+
+## F-16 — the fixture healthz inherited the host (S2, tooling, CLOSED)
+
+**Found immediately after F-15**: PUB-04 red — `/healthz` 503 on every
+fixture. Two health checks added after the sweep last ran both read the HOST:
+`ops.require_offhost_mirror` (a receipt only production has) and the judge
+reachability probe of 2026-08-29 (a network round-trip to a Docker-network
+hostname only production resolves). F-14's exact lesson, learned twice more,
+which is why the fix sits beside F-14's in `build_client` with both switched
+off and a comment naming this entry.
+
+One more instrument lesson from the fix itself: the first patch set
+`ops.offhost_mirror_required` — a key `health.py` never reads — and **failed
+silently**. The criterion staying red is what caught the typo. A config key
+with no reader is indistinguishable from a fix.
+
+## F-17 — one unbroken token widens the whole blog (S2, blog+journal, CLOSED)
+
+**Found in the browser, hostile profile, 2026-08-30.** A 4,000-char unbroken
+string in a post's market-context line rendered `blog.html` at
+**40,316px wide** (viewport 1,280px — 39,036px of overflow, measured via
+`document.documentElement.scrollWidth`). Every post on the page becomes
+horizontally scrolling text. The realistic trigger is one long URL in a
+headline or post body — this does not need an attacker.
+
+The dashboard survives the same content class via per-table
+`overflow-x:auto` wrappers. The journal *looked* immune but only because the
+hostile fixture routes its long payload to a blog-only field — the CSS gap
+was identical. Closed with `overflow-wrap:anywhere` on `body` in both
+stylesheets, pinned by
+`test_page_contracts_browser_pinned.py::test_blog_and_journal_break_long_tokens`,
+which records the measured number so the next reader knows what it costs.
+
+## F-18 / F-19 — the publisher works, but only for a robot (S3, OPEN)
+
+From the first-ever browser session against the publisher (2026-08-30; every
+prior verification was an in-process TestClient). Both flows FUNCTION — these
+are shape observations, held open as product decisions in the F-12/F-13
+manner:
+
+- **F-18**: there is no way to sign in from a browser. `/auth/request-link`
+  accepts only a JSON POST and no rendered page contains an email form. A
+  human who lands on the marketing page cannot start the magic-link flow
+  without devtools.
+- **F-19**: `/account` — where every magic link 303s to — returns raw JSON.
+  The first thing a newly signed-in subscriber sees is
+  `{"email":...,"tier":"free","status":"active"}`.
+
+What WAS verified working end-to-end in the browser, for the record: verify →
+303 → HttpOnly cookie → tier-scoped dashboard (free: delay notice + reasoning
+withheld; paid: same-day + bull/bear + confidence); token single-use (reuse →
+400 undifferentiated); unsubscribe GET-peek idempotent, POST → 303 →
+tokenless done, spent token → undifferentiated page naming no address;
+checkout 403-with-reasons gate-closed / stub gate-open, with the 403's
+reasons matching the dashboard's gate-unmet list verbatim; rate limiter 200
+×5 then 429; zero JS console errors on every page at desktop and mobile
+widths; every page contained at 375px.
+
 ## Method notes
 
 Two failures of this sweep's own instrumentation are recorded because they
@@ -226,6 +307,21 @@ first called `watchdog.check()` with explicit paths — so the mutation revertin
 `watchdog.main()` to a bare `check()`, which is exactly half the bug, SURVIVED.
 Proving the seam works is not proving production uses it. Two tests against
 `main()` itself (one positive, one with a decoy in the cwd) now catch it.
+
+**A design report's claims are data until checked in the files.** The
+2026-08-30 audit's design pass reported the fixture emails as
+`@qa.example.invalid`; they are `@example.invalid`. The first paid-tier
+browser walk logged in as accounts that did not exist, the system quietly
+auto-provisioned them as new free subscribers (the unified passwordless
+signup path — working as designed), and the paid dashboard "failed" for two
+servers' worth of investigation before the DB query showed the audit was
+testing users it had invented. The generator had even printed the right
+domain during Phase A.
+
+**One pass of a sampled judge is a draw, not a rate** — recorded at §79 for
+the trading side, and it held here too: the count-up "frozen mid-animation"
+observation was browser rAF-throttling in a hidden pane, not a page bug, and
+would have been filed as one if the second look hadn't been taken.
 
 **`git status` does not tell you whether you touched anything.** `memory/`,
 `.site/` and the rendered artifacts are all gitignored. Two mutation runs wrote

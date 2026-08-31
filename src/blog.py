@@ -43,7 +43,7 @@ ET = ZoneInfo("America/New_York")
 
 CSS = """
 body{font-family:-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f6f8;
-     color:#1c1e21;line-height:1.6}
+     color:#1c1e21;line-height:1.6;overflow-wrap:anywhere}
 .wrap{max-width:720px;margin:0 auto;padding:24px 16px 60px}
 h1{font-size:22px}
 h2{font-size:16px;border-bottom:1px solid #d8dbe0;padding-bottom:4px;

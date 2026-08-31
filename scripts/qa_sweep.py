@@ -72,6 +72,24 @@ def build_client(fixture: str, *, gate_open: bool):
     # from a live checkout.
     cfg["memory"]["heartbeat_path"] = os.path.join(fixture, "heartbeat")
     cfg["memory"]["halt_path"] = os.path.join(fixture, "HALT")
+    # F-14's lesson, learned twice more (F-16, 2026-08-30). Two health checks
+    # added after this sweep last ran both read the HOST, not the fixture, so
+    # /healthz went 503 on every fixture and PUB-04 sat red with nobody
+    # looking:
+    #   * ops.offhost_mirror_required — the shipped config demands a verified
+    #     mirror RECEIPT on the production host; a fixture has none and never
+    #     will. health.py's own docstring calls the receipt-less state "normal
+    #     on a laptop, in CI, and in any fresh checkout".
+    #   * the judge reachability probe (2026-08-29) — a live network round-trip
+    #     to llm.base_url, which resolves only on the production Docker
+    #     network. The probe's own contract is pinned by
+    #     tests/test_judge_reachability.py; a hermetic sweep must not depend
+    #     on which machine it runs from.
+    # Both are LIVE-HOST properties. This function's contract is "wired to the
+    # fixture — never to live state", so both are switched off here, not
+    # worked around in the criteria.
+    cfg.setdefault("ops", {})["require_offhost_mirror"] = False
+    cfg.setdefault("llm", {})["enabled"] = False
     cfg["publisher"]["data_dir"] = os.path.join(fixture, "publisher_data")
     cfg["publisher"]["attorney_signoff"] = gate_open
     cfg["publisher"]["legal_pages_final"] = gate_open

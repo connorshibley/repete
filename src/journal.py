@@ -46,7 +46,7 @@ def permalink(base: str, trade_id: str) -> str:
 
 CSS = """
 body{font-family:Georgia,'Times New Roman',serif;margin:0;background:#f5f6f8;
-     color:#1c1e21;line-height:1.65}
+     color:#1c1e21;line-height:1.65;overflow-wrap:anywhere}
 .wrap{max-width:760px;margin:0 auto;padding:24px 16px 60px}
 h1{font-family:-apple-system,Segoe UI,sans-serif;font-size:22px}
 .small{color:#5f6673;font-size:13px;font-family:-apple-system,sans-serif}

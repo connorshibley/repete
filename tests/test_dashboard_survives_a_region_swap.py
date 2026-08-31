@@ -2,7 +2,7 @@
 
 The dashboard's premise is that it stays current without a reload: LIVE_JS
 polls its own sidecar every 60s and, on a changed hash, replaces the innerHTML
-of ten volatile regions. Every interactive element lives inside one of them —
+of eleven volatile regions. Every interactive element lives inside one of them —
 the filter chips in `decisions`, all the [data-tip] hover targets in the three
 chart regions, the [data-count] figure in `hero`.
 

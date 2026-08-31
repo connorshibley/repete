@@ -65,7 +65,7 @@ Seeded and anchored, so the same command reproduces the same bytes (excluding
 | `SITE-DASH-BIND-02` | dashboard | visitor | full/thin/hostile | a replaced hero figure gets re-animated after a swap | structural |
 | `SITE-DASH-CHIP-01` | dashboard | visitor | full/thin/hostile | exactly the six documented filter chips render, one marked on | python |
 | `SITE-DASH-CHIP-02` | dashboard | visitor | full/thin/hostile | a filter with no matches has something to say for itself | python |
-| `SITE-DASH-DETAILS-01` | dashboard | visitor | all | both collapsible sections render and start open | python |
+| `SITE-DASH-DETAILS-01` | dashboard | visitor | all | three collapsible sections render: the explainer starts closed, decisions and lessons start open | python |
 | `SITE-DASH-TBL-01` | dashboard | visitor | full/thin/hostile | every table's body rows carry as many cells as its header, counting colspans | python |
 | `SITE-PAPER-01` | all pages | visitor | all | every page discloses `[PAPER]` | python |
 | `SITE-DISC-01` | all pages | visitor | all | every page carries the disclaimer from `src/disclaimer.py` | python |
@@ -92,16 +92,16 @@ by driving a served copy; the reproduction is in `docs/qa_findings.md`.
 
 | ID | Criterion | Evidence |
 |---|---|---|
-| `SITE-BROWSER-01` | filter chips still filter after a poll replaces the decisions region | 8 rows → 1, chip takes `.on` |
-| `SITE-BROWSER-02` | chart tooltips still populate after a poll replaces the chart regions | `#tip` reads `2025-02-07 · +$0.00` |
-| `SITE-BROWSER-03` | the hero figure re-animates after the hero region is replaced | `data-counted` set on the new element |
-| `SITE-BROWSER-04` | the poll swaps changed regions in place without a reload | injected row appears, scroll position kept |
-| `SITE-BROWSER-05` | badge is green fresh, amber ≥8h, red ≥24h | `--age-hours 9` → amber, `25` → red |
-| `SITE-BROWSER-06` | a failed poll says so, and keeps saying so across repaints | 9/9 samples carry the note post-fix |
-| `SITE-BROWSER-07` | boot splash plays once per session, then never again | `sessionStorage.repete_boot` |
-| `SITE-BROWSER-08` | an empty filter result shows the no-match row | row visible, then hidden again on "All" |
-| `SITE-BROWSER-09` | no console errors on any page at any viewport | `read_console_messages(onlyErrors)` empty |
-| `SITE-BROWSER-10` | opened as `file:`, the page says auto-update is unavailable and fetches nothing | `location.protocol` branch |
+| `SITE-BROWSER-01` | filter chips still filter after a poll replaces the decisions region | 8 rows → 1, chip takes `.on` — re-run 2026-08-30: post-swap `Executed` → exactly the injected `f-exec` row, chip `.on`, real click |
+| `SITE-BROWSER-02` | chart tooltips still populate after a poll replaces the chart regions | `#tip` reads `2025-02-07 · +$0.00` — re-run 2026-08-30: post-swap hover reads `2025-03-03 · -$128.12` |
+| `SITE-BROWSER-03` | the hero figure re-animates after the hero region is replaced | `data-counted` set on the new element — re-run 2026-08-30: hero swapped to +$17,001.01, `data-counted=1`, and zero DOM mutations across a later unchanged poll (MutationObserver, 70s) |
+| `SITE-BROWSER-04` | the poll swaps changed regions in place without a reload | injected row appears, scroll position kept — re-run 2026-08-30 via `scripts/qa_mutate_sidecar.py`: row in place, `scrollY` unchanged, nav_type still `navigate`, only sidecar GETs on the wire |
+| `SITE-BROWSER-05` | badge is green fresh, amber ≥8h, red ≥24h | `--age-hours 9` → amber, `25` → red — re-run 2026-08-30: `stale · 9h old` amber / `stale · 25h old` red |
+| `SITE-BROWSER-06` | a failed poll says so, and keeps saying so across repaints | 9/9 samples carry the note post-fix — re-run 2026-08-30: 404 mode 3/3 samples across two repaints, malformed mode 2/2; age keeps ticking alongside the note |
+| `SITE-BROWSER-07` | boot splash plays once per session, then never again | `sessionStorage.repete_boot` — re-run 2026-08-30: plays, auto-dismisses ~4s, key `1`, absent from the DOM on reload |
+| `SITE-BROWSER-08` | an empty filter result shows the no-match row | row visible, then hidden again on "All" — re-run 2026-08-30 on an all-hold window: explains itself and restores |
+| `SITE-BROWSER-09` | no console errors on any page at any viewport | `read_console_messages(onlyErrors)` empty — re-run 2026-08-30: zero JS errors on full/thin/empty/hostile at desktop and mobile; only the deliberately-broken variants' own HTTP failures logged |
+| `SITE-BROWSER-10` | opened as `file:`, the page says auto-update is unavailable and fetches nothing | `location.protocol` branch — **NOT re-verified 2026-08-30**: both available browsers bridge or refuse `file:` (the pane serves it over http, so the branch cannot fire). Rests on the structural pin `test_the_local_file_note_is_still_shown`; do not cite http-served evidence for this row |
 
 ## Known coverage gaps
 
