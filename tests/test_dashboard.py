@@ -515,3 +515,25 @@ def test_an_unmarked_row_keeps_the_old_entry_column(tmp_path, cfg):
     html = open(dashboard.render(cfg, out_path=str(tmp_path / "d.html"))).read()
     assert "<th>Entry</th>" in html and "<th>Cost</th>" not in html
     assert "$689.30" in html
+
+
+def test_the_page_says_what_repete_is_without_opening_anything(tmp_path, cfg,
+                                                               monkeypatch):
+    """The subtitle names the style, the hunt, and the holding period.
+
+    Added 2026-08-31: until then the page BODY never said "swing" — only the
+    boot splash did, which plays once and is skippable, so a visitor who
+    skipped it learned the account was paper but not what the bot does. The
+    three patterns are the explainer's exact vocabulary (its own stated rule:
+    learned once, recognized later), and "days to weeks" is the strongest
+    claim the observed book supports — no tighter number is pinned here
+    because none is measured.
+    """
+    html = _render_html(tmp_path, cfg, monkeypatch)
+    # collapse whitespace the way a browser renders it: the source wraps the
+    # subtitle across lines, and a phrase must not fail on a line break
+    sub = " ".join(html.split("</h1>", 1)[1].split("</p>", 1)[0].split())
+    assert "swing-trading" in sub
+    for phrase in ("trending up for months", "dip", "average crossing",
+                   "days to weeks", "live paper account"):
+        assert phrase in sub, f"subtitle lost {phrase!r}"
