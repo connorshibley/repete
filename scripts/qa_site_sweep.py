@@ -331,12 +331,28 @@ def _empty_filter_state(s: Site):
 
 
 @criterion("SITE-DASH-DETAILS-01", "dashboard", "visitor",
-           "both collapsible sections render and start open",
-           profiles=("full", "thin", "empty", "hostile"))
+           "three collapsible sections render: the explainer starts closed, "
+           "decisions and lessons start open",
+           profiles=("full", "thin", "empty", "hostile"),
+           edge="was 'two, both open' until 2026-08-30 (F-15): PR #123 added "
+                "the deliberately-collapsed first-time-visitor explainer and "
+                "this criterion was never updated — it then failed on EVERY "
+                "profile, which is how the audit discovered the sweep had not "
+                "been run since #123 merged. The per-section assertion below "
+                "replaces the all-open one so a new details element is a "
+                "conscious edit here, not a silent pass or a blanket fail")
 def _details(s: Site):
     d = s.dash.find(tag="details")
-    return (len(d) == 2 and all("open" in n.attrs for n in d)), (
-        f"n={len(d)} open={[('open' in n.attrs) for n in d]}")
+    if len(d) != 3:
+        return False, f"n={len(d)} (expected 3)"
+    howworks = [n for n in d if "howworks" in (n.attrs.get("class") or "")]
+    others = [n for n in d if n not in howworks]
+    ok = (len(howworks) == 1
+          and "open" not in howworks[0].attrs
+          and len(others) == 2
+          and all("open" in n.attrs for n in others))
+    return ok, (f"howworks_closed={bool(howworks) and 'open' not in howworks[0].attrs} "
+                f"others_open={[('open' in n.attrs) for n in others]}")
 
 
 # ------------------------------------------------------------ the tables
