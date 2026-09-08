@@ -1,4 +1,30 @@
-# Wiring in the shadow judge — two edits, both for you to apply
+# Wiring in the shadow judge — DONE, 2026-09-08
+
+> **Both edits below are now applied.** The `llm_shadow:` block is in
+> `config.yaml` (shipping `enabled: false`) and the hook is in `src/main.py`
+> immediately after `review = llm.review_signal(...)`. This document is kept
+> as the record of what was wired and why; the sections below describe the
+> original hand-off and remain accurate about the shapes involved.
+>
+> Three things changed in the wiring versus what was written here:
+>
+> 1. **N-way.** `candidates:` is a list; every candidate scores the SAME
+>    signal and gets its own row. A signal happens once — running candidate B
+>    tomorrow compares two models on two market days, which measures the
+>    market.
+> 2. **`prompt_sha256` is carried**, so a shadow row joins to the decision and
+>    therefore to the trade's realized P&L. `scripts/score_llm_shadow.py`
+>    gained `join_outcomes()` and `score_against_outcomes()` for that;
+>    everything above them scores *agreement with the incumbent*, which is a
+>    different and much weaker question.
+> 3. **`enable_thinking: false` is sent**, via `llm_client.thinking_kwargs`
+>    rather than a second copy of that logic. Without it every call against
+>    the Bizon's vLLM takes ~47s instead of ~4.8s.
+>
+> Turning it on is now a one-line config flip, and the pre-flight checklist
+> below still applies.
+
+# (original hand-off, 2026-08-20) — two edits, both for you to apply
 
 > **CORRECTED 2026-08-30, read this first.** This document was written
 > 2026-08-20, when the live judge was Claude and the local model was the

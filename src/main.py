@@ -1466,11 +1466,31 @@ def _run_cycle(completed_bars_only: bool = False):
                 regime_label, kind="rails", executed=False,
                 reasoning=entries_blocked_reason[:200], strategy=sig.strategy)
             return "blocked"
-        review = llm.review_signal(
-            sig, memory.context_for_llm(symbol=symbol, regime=market_regime,
-                                        strategy=sig.strategy, signal=sig,
-                                        positions=positions, account=account)
-            + (f"\n\n{extra_context}" if extra_context else ""), cfg)
+        memory_context = (
+            memory.context_for_llm(symbol=symbol, regime=market_regime,
+                                   strategy=sig.strategy, signal=sig,
+                                   positions=positions, account=account)
+            + (f"\n\n{extra_context}" if extra_context else ""))
+        review = llm.review_signal(sig, memory_context, cfg)
+
+        # Shadow A/B: candidate judges score the SAME signal, log only. Runs
+        # BEFORE ledger.log_decision on purpose — that call pops `_prompt` off
+        # the review dict, and its prompt_sha256 is the key that joins a shadow
+        # row to the trade this signal became. Scoring a candidate on agreement
+        # with the incumbent only says which model resembles it; joining to the
+        # outcome is what makes "better" mean better.
+        #
+        # Inert unless llm_shadow.enabled. Two guard rails deep by design:
+        # log_comparison never raises, and this wraps it anyway — a comparison
+        # tool must not be able to touch the cycle it observes.
+        if cfg.get("llm_shadow", {}).get("enabled"):
+            try:
+                import llm_shadow
+                llm_shadow.log_comparison(sig, symbol, memory_context, review,
+                                          cfg)
+            except Exception as e:  # noqa: BLE001 — the shadow never blocks a cycle
+                log.warning("llm_shadow comparison failed (%s) — ignored", e)
+
         if review.get("degraded"):
             # The judge was UNREACHABLE, not permissive. Ledger it as a
             # degradation so the SLO counts it and review.py can distinguish

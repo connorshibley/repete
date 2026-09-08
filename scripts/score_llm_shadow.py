@@ -108,3 +108,75 @@ if __name__ == "__main__":
     ap.add_argument("--path", default="knowledge/llm_shadow_log.jsonl")
     args = ap.parse_args()
     score(load_rows(args.path))
+
+
+# --- scoring against OUTCOMES, not agreement (2026-09-08) -------------------
+#
+# Everything above measures whether a candidate RESEMBLES the incumbent. That
+# answers "is it a safe swap", not "is it better" — and if the incumbent is
+# the thing you are trying to improve on, agreement is the wrong direction.
+#
+# This joins each shadow row to the trade its signal became, via prompt_sha256
+# (written by llm_shadow.log_comparison, stamped on the decision row by
+# ledger.log_decision), and scores both judges against realized P&L.
+
+def join_outcomes(rows: list[dict], ledger_records: list[dict]) -> list[dict]:
+    """Attach realized pnl to each shadow row. Rows that never became a closed
+    trade are dropped — not counted as zero."""
+    by_hash = {}
+    for r in ledger_records:
+        h = r.get("prompt_sha256")
+        if r.get("type") == "decision" and h:
+            by_hash[h] = r
+    pnl = {r.get("trade_id"): r.get("pnl") for r in ledger_records
+           if r.get("type") == "outcome"}
+    out = []
+    for row in rows:
+        dec = by_hash.get(row.get("prompt_sha256"))
+        if not dec:
+            continue
+        p = pnl.get(dec.get("trade_id"))
+        if p is None:
+            continue          # open or blocked — no outcome yet, not a zero
+        out.append({**row, "pnl": p, "executed": bool(dec.get("executed"))})
+    return out
+
+
+def score_against_outcomes(joined: list[dict], min_n: int = 10) -> dict:
+    """Per candidate: did its scepticism track what actually happened?
+
+    `discrimination` is the honest headline — mean P&L of the trades the
+    candidate was MORE sceptical about, minus the mean of the ones it liked.
+    A judge with real signal makes this NEGATIVE (it disliked the losers). A
+    judge with none makes it noise around zero.
+
+    None below min_n, never 0.0: "not enough resolved" and "no discrimination"
+    are opposite findings and must not share a value.
+    """
+    import collections
+    import statistics
+    per = collections.defaultdict(list)
+    for j in joined:
+        per[j.get("candidate") or j.get("shadow_model")].append(j)
+
+    out = {}
+    for name, js in per.items():
+        sized = [(j["shadow_scale"], j["pnl"]) for j in js
+                 if isinstance(j.get("shadow_scale"), (int, float))]
+        entry = {"n": len(js), "n_sized": len(sized),
+                 "discrimination": None, "mean_pnl_disliked": None,
+                 "mean_pnl_liked": None,
+                 "veto_rate": (sum(1 for j in js
+                                   if j.get("shadow_verdict") == "veto")
+                               / len(js)) if js else None}
+        if len(sized) >= min_n:
+            med = statistics.median(s for s, _ in sized)
+            lo = [p for s, p in sized if s <= med]
+            hi = [p for s, p in sized if s > med]
+            if lo and hi:
+                entry["mean_pnl_disliked"] = round(statistics.mean(lo), 2)
+                entry["mean_pnl_liked"] = round(statistics.mean(hi), 2)
+                entry["discrimination"] = round(
+                    entry["mean_pnl_disliked"] - entry["mean_pnl_liked"], 2)
+        out[name] = entry
+    return out
