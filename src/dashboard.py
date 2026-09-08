@@ -1135,6 +1135,94 @@ def _how_it_works() -> str:
         'advice.</p></details>')
 
 
+def _handoff_panel(records: list[dict]) -> str:
+    """The latest cycle's handoff, as cards. Renders the RECORD, never a
+    recomputation.
+
+    The ledger is the source of truth and this page is a view — recomputing
+    these numbers here would create a second answer that can silently disagree
+    with the row `handoff.record()` wrote. So this reads the last `handoff`
+    event and formats it, nothing more.
+
+    WHAT IS DELIBERATELY WITHHELD. The record's `unresolved` list is operator
+    state — it currently reads "no verified off-host mirror — every backup is
+    on the same disk as the thing it protects". This page is public. Equity,
+    positions, P&L and every decision are already published here, so nothing
+    else in the handoff is newly exposed, but a backup weakness is a different
+    category from a trading result. It stays in the ledger, in health.py and
+    in the watchdog's alerts, where the operator sees it and the internet does
+    not. tests/test_handoff_panel.py pins that it never reaches this HTML.
+
+    ABSENT RENDERS AS ABSENT. No handoff row yet (or an unreadable one) says
+    so in words. A grid of zeros would claim the bot had a quiet cycle when in
+    fact nothing has reported — the exact confusion the handoff record was
+    added to end, reintroduced at the display layer.
+    """
+    row = None
+    for r in reversed(records):
+        if r.get("type") == "event" and r.get("event") == "handoff":
+            try:
+                row = json.loads(r.get("detail") or "{}")
+            except (TypeError, ValueError):
+                row = None
+            break
+    if not row:
+        return ('<p class=small>No handoff recorded yet — the next cycle '
+                'writes one.</p>')
+
+    ch = row.get("changed") or {}
+    out = row.get("outcomes") or {}
+    risk_ = row.get("remaining_risk") or {}
+    nxt = row.get("next_job")
+
+    def _num(v):
+        return "—" if v is None else v
+
+    realized = out.get("realized_today")
+    if realized is None:
+        # A quiet day and a day that netted exactly $0.00 are different facts.
+        realized_txt, realized_tone = "—", ""
+    else:
+        realized_txt = f"{'+' if realized >= 0 else '-'}${abs(realized):,.2f}"
+        realized_tone = "win" if realized >= 0 else "loss"
+
+    dd = risk_.get("drawdown_pct")
+    head = risk_.get("headroom_pp")
+    dd_txt = "—" if dd is None else f"{dd:.2f}%"
+    if head is not None:
+        dd_txt += f' <span class=small>({head:.2f}pp left)</span>'
+
+    if nxt:
+        nxt_txt = _esc(str(nxt.get("name")))
+        mins = nxt.get("in_minutes")
+        when = (f"in {mins}m" if isinstance(mins, int) and mins < 90
+                else _esc(str(nxt.get("at_et") or "")))
+        nxt_txt += f' <span class=small>{when}</span>'
+    else:
+        nxt_txt = "—"
+
+    items = [
+        ("entries today", _num(ch.get("entries")), ""),
+        ("exits today", _num(ch.get("exits")), ""),
+        ("refused today", _num(ch.get("refused")), ""),
+        ("closed today", _num(out.get("closed_today")), ""),
+        ("realized today", realized_txt, realized_tone),
+        ("drawdown", dd_txt, ""),
+        ("next job", nxt_txt, ""),
+    ]
+    # Entries blocked is the state that produced the 2026-08-21..28 outage —
+    # 53 refused signals over seven days while every other surface read
+    # "live". It gets a loud card, not a footnote.
+    if risk_.get("entries_blocked"):
+        items.insert(0, ("ENTRIES BLOCKED", "drawdown rail", "loss"))
+
+    return ('<section class=cardgroup><h3>This cycle</h3><div class=cards>'
+            + "".join(f'<div class="card {tone}"><div class=v>{v}</div>'
+                      f'<div class=k>{_esc(k)}</div></div>'
+                      for k, v, tone in items)
+            + "</div></section>")
+
+
 def _positions_rows(open_trades: dict, now: datetime,
                     mark: dict | None = None) -> str:
     """Open book. With a mark, each row also carries what it is worth now.
@@ -1610,6 +1698,7 @@ def render(cfg: dict | None = None, out_path: str | None = None,
                                     regime_now, n_symbols, card, mark)),
         "hero": _hero(total_pl, start, equity_now, realized_only, speech),
         "cards": cards,
+        "handoff": _handoff_panel(records),
         "positions": _positions_rows(ledger.open_buys(), now, mark),
         "closed": _closed_positions_rows(ledger.closed_trades()),
         "decisions": _decisions_rows(records),
@@ -1677,6 +1766,7 @@ account · rebuilt after every cycle from the append-only ledger
 <div id=rgn-tape>{regions['tape']}</div>
 <div id=rgn-hero>{regions['hero']}</div>
 <div id=rgn-cards>{regions['cards']}</div>
+<div id=rgn-handoff>{regions['handoff']}</div>
 <h2>💼 Open positions{_mark_age_note(mark_ts, now)}</h2>
 <div id=rgn-positions>{regions['positions']}</div>
 <h2>📉 Closed positions (last {N_CLOSED})</h2>
