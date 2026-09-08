@@ -1590,7 +1590,10 @@ def _run_cycle(completed_bars_only: bool = False):
                 memory.judgments.log_judgment(
                     tid, symbol, sig.action, "rails_reject", 1.0, price,
                     regime_label, kind="rails", executed=False, reasoning=why,
-                    stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                    stop_price=stop, tp_price=tp, strategy=sig.strategy,
+                    judge_verdict=review.get("verdict"),
+                    judge_scale=review.get("scale"),
+                    judge_confidence=review.get("confidence"))
                 log.warning("%s: %s", symbol, why)
                 return "blocked"
         else:
@@ -1636,7 +1639,10 @@ def _run_cycle(completed_bars_only: bool = False):
             memory.judgments.log_judgment(
                 tid, symbol, sig.action, "rails_reject", 1.0, price,
                 regime_label, kind="rails", executed=False, reasoning=str(e),
-                stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                stop_price=stop, tp_price=tp, strategy=sig.strategy,
+                judge_verdict=review.get("verdict"),
+                judge_scale=review.get("scale"),
+                judge_confidence=review.get("confidence"))
             log.warning("%s: %s REJECTED by risk rails — %s", symbol, sig.action, e)
             return "blocked"
 
@@ -1669,7 +1675,10 @@ def _run_cycle(completed_bars_only: bool = False):
                 memory.judgments.log_judgment(
                     tid, symbol, sig.action, "rails_reject", 1.0, price,
                     regime_label, kind="rails", executed=False, reasoning=msg,
-                    stop_price=stop, tp_price=tp, strategy=sig.strategy)
+                    stop_price=stop, tp_price=tp, strategy=sig.strategy,
+                    judge_verdict=review.get("verdict"),
+                    judge_scale=review.get("scale"),
+                    judge_confidence=review.get("confidence"))
                 log.warning("%s: %s REJECTED by drift guard — %s",
                             symbol, sig.action, msg)
                 return "blocked"

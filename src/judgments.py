@@ -10,6 +10,7 @@ kind="llm" (approve/downsize/veto) and kind="rails" (risk-rejections) are
 bucketed separately: rails rejections calibrate the deterministic rails, not
 the judge, and mixing them would corrupt veto precision.
 """
+import collections
 import uuid
 from datetime import datetime, timezone
 
@@ -40,7 +41,33 @@ class JudgmentStore:
                      tp_price: float | None = None,
                      strategy: str | None = None,
                      cited_lessons: list[str] | None = None,
-                     confidence: float | None = None) -> str:
+                     confidence: float | None = None,
+                     judge_verdict: str | None = None,
+                     judge_scale: float | None = None,
+                     judge_confidence: float | None = None) -> str:
+        """One row per decision. `verdict`/`kind` describe WHO DECIDED; the
+        three `judge_*` fields describe what the judge had said first.
+
+        WHY THE JUDGE FIELDS EXIST (2026-09-08). A rails rejection overwrote
+        the judge's verdict with `verdict="rails_reject", kind="rails"`, and
+        `calibration_metrics` filters on `kind == "llm"` — so a signal the
+        judge APPROVED and a rail then blocked was recorded, and scored, as
+        though the judge had never spoken.
+
+        Measured on the live ledger: of 250 judged buys the judge returned 34
+        full-size approves, and every one was killed by a rail (max trades per
+        day, max open positions, the down-regime cap, zero quantity, the heat
+        cap). Not one reached an outcome, and the store had forgotten they
+        were approves. The judge's approve arm was therefore invisible in
+        every calibration this project has ever computed — which makes "is
+        this judge any good" unanswerable, for any model.
+
+        Kept ALONGSIDE `verdict` rather than replacing it: the rail really did
+        make the decision, and the scoreboard that counts rails blocks must
+        keep counting them. These fields answer a different question — what
+        would have happened if the rail had not been there — and that is what
+        `counterfactual.py` already resolves for blocked entries.
+        """
         jid = f"jg-{uuid.uuid4().hex[:8]}"
         self._append({"event": "judgment", "id": jid, "trade_id": trade_id,
                       "symbol": symbol, "action": action, "verdict": verdict,
@@ -49,7 +76,13 @@ class JudgmentStore:
                       "executed": executed, "reasoning": reasoning,
                       "stop_price": stop_price, "tp_price": tp_price,
                       "cited_lessons": cited_lessons or [],
-                      "confidence": confidence})  # stated win-probability
+                      "confidence": confidence,  # stated win-probability
+                      # None means "the judge never spoke" (pre-judge rails
+                      # blocks, degraded blocks) — NOT "the judge said
+                      # nothing". Absent must never read as a verdict.
+                      "judge_verdict": judge_verdict,
+                      "judge_scale": judge_scale,
+                      "judge_confidence": judge_confidence})
         return jid
 
     def log_resolution(self, judgment_id: str, kind: str, pnl_pct: float,
@@ -198,6 +231,24 @@ def calibration_metrics(judgments: dict, min_n: int = 5) -> dict:
         return good / len(items)
 
     downsizes = [j for j in approves if j["verdict"] == "downsize"]
+
+    # THE UNCENSORED ARM (2026-09-08). A signal the judge APPROVED and a rail
+    # then blocked is a `kind="rails"` row, so every metric above is blind to
+    # it — and on the live ledger that was 34 of 34 approves. These rows carry
+    # `judge_verdict` since this change, and `counterfactual.py` resolves what
+    # the blocked entry would have done, so the approve arm finally has an
+    # outcome to be scored against.
+    #
+    # Read this as "would the judge's approve have been right, had the rail
+    # not fired" — a different question from `approve_accuracy`, which scores
+    # approves that actually traded. Kept separate for that reason.
+    blocked_approves = [j for j in judgments.values()
+                        if j.get("judge_verdict") == "approve"
+                        and j["kind"] == "rails" and j["resolution"]]
+    blocked_by_judge_verdict = collections.Counter(
+        j.get("judge_verdict") for j in judgments.values()
+        if j["kind"] == "rails" and j.get("judge_verdict"))
+
     return {
         "n_resolved": len(llm),
         "veto_precision": _rate(vetoes, "good_veto"),
@@ -207,6 +258,11 @@ def calibration_metrics(judgments: dict, min_n: int = 5) -> dict:
         "n_downsizes_resolved": len(downsizes),
         "rails_block_precision": _rate(rails, "good_veto"),
         "n_rails_resolved": len(rails),
+        # None below means "not enough resolved yet", never "zero" — the
+        # standing absent-vs-zero rule.
+        "blocked_approve_accuracy": _rate(blocked_approves, "good"),
+        "n_blocked_approves_resolved": len(blocked_approves),
+        "rails_overrode_judge": dict(blocked_by_judge_verdict),
     }
 
 
