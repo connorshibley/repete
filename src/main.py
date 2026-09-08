@@ -1286,6 +1286,15 @@ def _finalize_cycle(cfg: dict, ledger: Ledger, memory, broker, account: dict,
                                   "config_dirty": _deploy.get("config_dirty"),
                                   "behind": _deploy.get("behind")}))
 
+    # The handoff record: what changed, what it cost, what is still at risk,
+    # what is unresolved, and what runs next — one row, every cycle, including
+    # the quiet ones. AFTER cycle_complete on purpose: that event's position is
+    # load-bearing (_finalize_cycle, and the watchdog keys off it), so this
+    # sits outside its contract exactly as cycle_timing does. Never raises.
+    import handoff
+    handoff.record(ledger, cfg, equity=account["equity"],
+                   n_positions=len(positions))
+
     # Degradation SLO: too many fail-open events in one day means the ops
     # error budget is burned — escalate to a human (alert only; HALT stays
     # reserved for the daily-loss kill switch).
