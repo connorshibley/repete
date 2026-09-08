@@ -95,18 +95,33 @@ def _user_message(signal, memory_context: str) -> str:
 
 
 def _call_local(base_url: str, model: str, system: str, user: str,
-                max_tokens: int, timeout: float) -> str:
+                max_tokens: int, timeout: float,
+                extra_body: dict | None = None) -> str:
     """One OpenAI-compatible chat completion. stdlib only — no new dependency,
     matching llm_client.py's own choice to import its vendor SDK only inside
-    the function that calls out."""
+    the function that calls out.
+
+    `extra_body` carries server-specific fields, in practice
+    `chat_template_kwargs: {enable_thinking: false}`. Without it, a shadow
+    pointed at the Bizon's vLLM (served with --reasoning-parser=qwen3) spends
+    ~47s per call generating a reasoning trace the extractor then discards,
+    against ~4.8s with it — measured, llm_client.thinking_kwargs. At 8-13
+    signals a cycle that is the difference between a shadow that fits inside
+    the cycle and one that does not.
+    """
     url = base_url.rstrip("/") + "/chat/completions"
-    payload = json.dumps({
+    body = {
         "model": model,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "max_tokens": max_tokens,
         "temperature": 0,
-    }).encode()
+    }
+    # Never let an extra field shadow one of the four above: a config typo must
+    # not silently re-point the model or lift the token ceiling. Same rule as
+    # llm_client._OpenAICompatMessages.
+    body.update({k: v for k, v in (extra_body or {}).items() if k not in body})
+    payload = json.dumps(body).encode()
     req = urllib.request.Request(
         url, data=payload, method="POST",
         headers={"Content-Type": "application/json"})
@@ -139,6 +154,65 @@ def _parse_verdict(text: str) -> dict:
     return verdict
 
 
+def candidates(cfg: dict) -> list[dict]:
+    """The shadow judges to run, normalised to a list.
+
+    Accepts either shape. A `candidates:` list is the N-way form; a bare
+    `base_url`/`model` on the block itself is the original single-shadow form
+    that docs/llm_shadow_setup.md documents, kept working so wiring the doc
+    verbatim still does something sensible.
+
+    Why N-way at all: comparing two judges needs them scored on the SAME
+    signal, and a signal happens once. Re-running a candidate tomorrow
+    compares two models on two different market days, which measures the
+    market. One row per candidate per signal is the only shape that does not.
+    """
+    sh = (cfg.get("llm_shadow") or {})
+    listed = sh.get("candidates")
+    if listed:
+        out = []
+        for i, c in enumerate(listed):
+            merged = {k: v for k, v in sh.items() if k != "candidates"}
+            merged.update(c or {})
+            merged.setdefault("name", merged.get("model") or f"candidate{i}")
+            out.append(merged)
+        return out
+    if sh.get("base_url") and sh.get("model"):
+        single = dict(sh)
+        single.setdefault("name", sh["model"])
+        return [single]
+    return []
+
+
+def _thinking_body(candidate: dict) -> dict:
+    """Reuses llm_client's resolver so the shadow and the live judge cannot
+    disagree about what "thinking off" means on the wire."""
+    try:
+        import llm_client
+        return llm_client.thinking_kwargs({"llm": candidate})
+    except Exception:  # noqa: BLE001 — a shadow must never break on a helper
+        return {}
+
+
+def review_one(signal, memory_context: str,
+               candidate: dict) -> tuple[dict | None, str | None, float]:
+    """One candidate's opinion on one signal. Never raises."""
+    t0 = time.monotonic()
+    try:
+        text = _call_local(
+            candidate["base_url"], candidate["model"], llm._SYSTEM,
+            _user_message(signal, memory_context),
+            max_tokens=candidate.get("max_tokens", 4000),
+            timeout=candidate.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS),
+            extra_body=_thinking_body(candidate))
+    except Exception as e:  # noqa: BLE001 — vendor/network failure
+        return None, f"call_failed: {e}"[:200], time.monotonic() - t0
+    try:
+        return _parse_verdict(text), None, time.monotonic() - t0
+    except Exception as e:  # noqa: BLE001 — reply arrived, not a usable verdict
+        return None, f"parse_failed: {e}"[:200], time.monotonic() - t0
+
+
 def shadow_review(signal, memory_context: str, cfg: dict) -> tuple[dict | None, str | None, float]:
     """Best-effort second opinion from a local model.
 
@@ -151,23 +225,10 @@ def shadow_review(signal, memory_context: str, cfg: dict) -> tuple[dict | None, 
 
     Returns (verdict_or_None, error_or_None, latency_seconds).
     """
-    sh = (cfg.get("llm_shadow") or {})
-    t0 = time.monotonic()
-    try:
-        text = _call_local(
-            sh["base_url"], sh["model"], llm._SYSTEM,
-            _user_message(signal, memory_context),
-            max_tokens=sh.get("max_tokens", 4000),
-            timeout=sh.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
-    except Exception as e:  # noqa: BLE001 — vendor/network failure, mirrors llm.py's split
-        return None, f"call_failed: {e}"[:200], time.monotonic() - t0
-
-    try:
-        verdict = _parse_verdict(text)
-    except Exception as e:  # noqa: BLE001 — reply arrived, not a usable verdict
-        return None, f"parse_failed: {e}"[:200], time.monotonic() - t0
-
-    return verdict, None, time.monotonic() - t0
+    cands = candidates(cfg)
+    if not cands:
+        return None, "no shadow candidate configured", 0.0
+    return review_one(signal, memory_context, cands[0])
 
 
 def log_comparison(signal, symbol: str, memory_context: str, live_review: dict,
@@ -182,7 +243,28 @@ def log_comparison(signal, symbol: str, memory_context: str, live_review: dict,
     if not sh.get("enabled"):
         return
     try:
-        shadow, error, latency = shadow_review(signal, memory_context, cfg)
+        # THE JOIN KEY. Scoring a shadow against AGREEMENT only says which
+        # model resembles the incumbent; scoring it against OUTCOMES needs the
+        # trade this signal became. `llm.review_signal` puts `_prompt` on the
+        # review dict and `ledger.log_decision` pops it onto the decision row
+        # as `prompt_sha256` — and this hook runs before that pop, so the hash
+        # is still here. Same hash on both rows: shadow -> decision ->
+        # trade_id -> outcome, exactly, with no (symbol, timestamp) guessing.
+        pr = (live_review or {}).get("_prompt") or {}
+        prompt_sha = pr.get("prompt_sha256")
+        for candidate in candidates(cfg):
+            shadow, error, latency = review_one(signal, memory_context,
+                                                candidate)
+            _write_row(sh, candidate, signal, symbol, live_review, shadow,
+                       error, latency, prompt_sha)
+    except Exception as e:  # noqa: BLE001 — this function's entire contract is "never raise"
+        log.warning("llm_shadow.log_comparison failed (%s) — no row written", e)
+
+
+def _write_row(sh: dict, candidate: dict, signal, symbol: str,
+               live_review: dict, shadow: dict | None, error: str | None,
+               latency: float, prompt_sha: str | None) -> None:
+    try:
         row = {
             "event": "llm_shadow_comparison",
             # store.py's append() does not stamp a timestamp itself (unlike
@@ -192,7 +274,11 @@ def log_comparison(signal, symbol: str, memory_context: str, live_review: dict,
             "symbol": symbol,
             "action": signal.action,
             "signal_reason": signal.reason,
-            "shadow_model": sh.get("model"),
+            "candidate": candidate.get("name"),
+            "shadow_model": candidate.get("model"),
+            # None = this signal was never judged (a fallback verdict), so
+            # there is no decision row to join to. Not an empty string.
+            "prompt_sha256": prompt_sha,
             "shadow_ok": shadow is not None,
             "shadow_error": error,
             "shadow_latency_seconds": round(latency, 2),
@@ -206,5 +292,6 @@ def log_comparison(signal, symbol: str, memory_context: str, live_review: dict,
             "shadow_reasoning": (shadow or {}).get("reasoning", "")[:300] if shadow else None,
         }
         store_mod.open_store(sh.get("log_path", _LOG_PATH)).append(row)
-    except Exception as e:  # noqa: BLE001 — this function's entire contract is "never raise"
-        log.warning("llm_shadow.log_comparison failed (%s) — no row written", e)
+    except Exception as e:  # noqa: BLE001 — one bad row must not stop the rest
+        log.warning("llm_shadow row failed for %s (%s)",
+                    candidate.get("name"), e)

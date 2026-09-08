@@ -1521,6 +1521,35 @@ backtest:               # offline harness (src/backtest.py) — never touches th
                           # exists to test that a result is not an artifact of
                           # one draw — not to shop for a favourable one.
 
+llm_shadow:              # A/B rig: run candidate judges on the SAME live signal,
+                         # log only, never trades. Separate top-level block from
+                         # `llm:` on purpose — nothing here can reach an order.
+  enabled: false         # SHIPS OFF. Flipping this adds one model call per
+                         # candidate per judged signal to the cycle's critical
+                         # path (~5s each with enable_thinking false, ~47s
+                         # without). At 8-13 signals that is the difference
+                         # between fitting inside the cycle and pushing fills
+                         # toward the close.
+  log_path: knowledge/llm_shadow_log.jsonl
+  candidates:            # one row PER CANDIDATE per signal. Comparing two
+                         # judges needs them scored on the same signal, and a
+                         # signal happens once — re-running a candidate
+                         # tomorrow compares two models on two market days,
+                         # which measures the market.
+    - name: qwen-local
+      base_url: http://vllm-qwen38:8000/v1
+      model: qwen3.8-27b
+      enable_thinking: false   # 47.1s -> 4.8s, same verdict (measured, §78)
+      max_tokens: 4000
+      timeout_seconds: 60      # local inference is slower than the 30s the
+                               # LIVE judge is bounded at; do not shrink to
+                               # match, it just produces spurious timeouts
+    # A vendor candidate needs credits and llm_client's keyed path, which this
+    # module does not speak — it is OpenAI-compatible only. Closing divergence
+    # #25 (is qwen worse than the Sonnet it replaced?) runs the other way:
+    # replay Claude against the prompt sidecar, which has recorded every live
+    # prompt since 2026-09-08.
+
 learning:                # the learning loop: hypothesis book + judge calibration
   model: null            # NULLED 2026-08-28 with the switch to `provider:
                          # local` — same reason as news.model: a Claude id
