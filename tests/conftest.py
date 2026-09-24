@@ -105,6 +105,14 @@ def _no_real_offhost_backups(monkeypatch, tmp_path_factory):
     """
     monkeypatch.setenv("REPETE_OFFHOST_DIR",
                        str(tmp_path_factory.mktemp("offhost")))
+    # The remote branch too (B2 went live 2026-09-24). Modules that call
+    # load_dotenv() at import copy the host's real remote and passphrase into
+    # os.environ, and backup.sh would then encrypt fixture archives and upload
+    # them to the live bucket. Tests that exercise the remote set their own.
+    for key in ("REPETE_MIRROR_REMOTE", "REPETE_BACKUP_PASSPHRASE"):
+        monkeypatch.delenv(key, raising=False)
+    for key in [k for k in os.environ if k.startswith("RCLONE_CONFIG_")]:
+        monkeypatch.delenv(key)
 
 
 @pytest.fixture

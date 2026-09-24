@@ -184,3 +184,30 @@ def test_runners_do_not_trade():
     for f in ("run_backup.sh", "run_restore_drill.sh"):
         body = open(os.path.join(SCRIPTS, f)).read()
         assert "src/main.py" not in body, f"{f} must not run a trading cycle"
+
+
+def test_daily_post_jobs_pass_flags_daily_posts_accepts():
+    """The container port of run_daily_post.sh dropped the dashes: the
+    scheduler ran `daily_posts.py plan`, argparse only knows `--plan`, and
+    both X posts exited 2 every weekday from the Sep 8 build until
+    2026-09-24. Job names matched, so the parity tests above passed. This
+    pins the arguments too."""
+    import re
+    import shlex
+    spec = importlib.util.spec_from_file_location(
+        "sched_args", os.path.join(SCRIPTS, "scheduler.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    source = open(os.path.join(ROOT, "src", "daily_posts.py")).read()
+    accepted = set(re.findall(r'add_argument\(\s*"(--[a-z-]+)"', source))
+    assert {"--plan", "--review"} <= accepted
+    checked = 0
+    for name, *_, cmd in mod.JOBS:
+        words = shlex.split(" ".join(cmd))
+        for i, word in enumerate(words):
+            if word.endswith("src/daily_posts.py"):
+                assert words[i + 1] in accepted, (
+                    f"{name} runs daily_posts.py {words[i + 1]!r}; "
+                    f"it accepts only {sorted(accepted)}")
+                checked += 1
+    assert checked == 2, "expected the plan-post and review-post jobs"
