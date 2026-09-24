@@ -80,7 +80,13 @@ def agent(tmp_path):
         f.write_text(body)
         f.chmod(0o755)
 
-    env = dict(os.environ)
+    # Start from a clean mirror config: other tests load the host's real .env
+    # into os.environ, and once that .env carries the B2 remote and passphrase
+    # every case here would inherit them (the no-passphrase case stopped
+    # refusing on 2026-09-24, the day the real mirror was configured).
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("REPETE_MIRROR_REMOTE", "REPETE_BACKUP_PASSPHRASE")
+           and not k.startswith("RCLONE_CONFIG_")}
     env.update({
         "AGENT_ROOT": str(root),
         "STUB_DIR": str(stub),

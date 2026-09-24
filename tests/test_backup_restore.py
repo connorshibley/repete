@@ -26,9 +26,15 @@ def _fixture_root(tmp_path, n_records=5):
 
 
 def _run_backup(root, dest="backups"):
+    # Never inherit the host's real B2 mirror: other tests load the real .env
+    # into os.environ, and with it set every fixture backup here would try to
+    # encrypt and upload to the live bucket.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("REPETE_MIRROR_REMOTE", "REPETE_BACKUP_PASSPHRASE")
+           and not k.startswith("RCLONE_CONFIG_")}
     return subprocess.run(
         ["sh", os.path.join(ROOT, "scripts", "backup.sh"), dest],
-        env={**os.environ, "AGENT_ROOT": str(root)},
+        env={**env, "AGENT_ROOT": str(root)},
         capture_output=True, text=True)
 
 
