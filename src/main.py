@@ -239,6 +239,22 @@ def resolve_exit_price(broker, open_rec: dict) -> tuple[float | None, str]:
     return None, "unknown"
 
 
+# Alpaca statuses of an order that can still fill. Listed POSITIVELY, not as
+# "anything but a terminal state": an unknown status keeps the old behaviour
+# (written off as entry_unfilled), so this only changes what it names.
+# Matched EXACTLY after dropping any "OrderStatus." prefix — str(o.status) is
+# "OrderStatus.NEW" on some alpaca-py versions and "new" on others — because a
+# substring test would read "new" inside "pending_new" and "renewed" alike.
+_LIVE_ORDER_STATUSES = ("pending_new", "accepted_for_bidding", "accepted",
+                        "new", "held", "calculated", "pending_replace",
+                        "pending_cancel", "partially_filled")
+
+
+def _order_still_live(status: str) -> bool:
+    s = str(status or "").lower().rsplit(".", 1)[-1]
+    return s in _LIVE_ORDER_STATUSES
+
+
 def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict,
                                positions: dict):
     """Cycle-start sync: ledger-open trades whose symbol is gone from the broker
@@ -267,6 +283,18 @@ def reconcile_closed_positions(broker, ledger: Ledger, memory: Memory, cfg: dict
             if entry_order.get("id"):
                 try:
                     o = broker.get_order(entry_order["id"])
+                    if o["filled_qty"] == 0 and _order_still_live(o["status"]):
+                        # Queued, not dead. A market order sent while the
+                        # market is shut (the cycle does not read the clock —
+                        # see Broker.market_open) waits for the next open.
+                        # Writing it off here is what lost META on Labor Day
+                        # 2026-09-07: the order filled the next morning, came
+                        # back as an adopted ghost with no stop, and its 8%
+                        # heat fallback refused every entry for three weeks.
+                        ledger.log_event("entry_pending",
+                                         f"{symbol} trade {tid}: entry order "
+                                         f"{o['status']} — still live, kept open")
+                        continue
                     if o["filled_qty"] == 0 and "filled" not in o["status"].lower():
                         ledger.close_trade(tid, rec.get("entry_price") or 0.0, 0.0, 0.0,
                                            exit_reason="entry_unfilled")
@@ -322,6 +350,86 @@ def _recover_fill_ts(broker, symbol: str, action: str = "buy") -> str | None:
     return None
 
 
+def _resting_stops(broker) -> dict:
+    """symbol -> [open stop legs] at the broker. Fail-open: {} on any problem,
+    including no broker at all — a missing lookup leaves a record exactly as
+    it was before this existed, never with an invented stop."""
+    if broker is None:
+        return {}
+    try:
+        out: dict = {}
+        for o in broker.open_stop_orders():
+            if o.get("symbol") and o.get("stop_price"):
+                out.setdefault(o["symbol"], []).append(o)
+        return out
+    except Exception as e:  # noqa: BLE001 — a lookup must never crash a cycle
+        log.warning("resting-stop lookup failed: %s", e)
+        return {}
+
+
+def _adopted_stop_fields(legs: list | None, action: str) -> dict:
+    """The order fields a position protected by a resting broker stop should
+    carry: `stop_price` for the heat cap, `order_class` so a strategy exit
+    cancels the leg first (main.py's EXIT_ACTIONS path keys off it).
+
+    The TIGHTEST leg wins — highest for a long, lowest for a short — the same
+    rule update_trailing_stops uses, so a ratcheted leg counts as ratcheted.
+    `oto`, not `bracket`: there is no take-profit leg to assume, and
+    resolve_exit_price reads `oto` as "a filled leg can only be the stop"."""
+    if not legs:
+        return {}
+    pick = min if action == "short" else max
+    leg = pick(legs, key=lambda o: o["stop_price"])
+    return {"order_class": "oto", "stop_price": float(leg["stop_price"]),
+            "stop_leg_id": leg.get("id")}
+
+
+def attach_broker_stops(broker, ledger: Ledger, open_trades: dict) -> list[str]:
+    """Give every open record that has NO recorded stop the stop the broker is
+    actually holding for it — in memory, for this cycle only. The ledger is
+    append-only and is not rewritten; the repair is re-derived every cycle
+    from the broker, which is the source of truth for what is resting.
+
+    Exists for positions adopted before adoption learned to read the leg
+    (META, adopted 2026-09-08, stopless in the ledger with its $579.37 leg
+    live at the broker): the heat cap charged it 8% of equity against a 4%
+    budget and refused every entry for three weeks. Records that already
+    carry a stop are never touched — this fills a hole, it does not second-
+    guess a recorded number.
+
+    Returns the symbols still stopless afterwards — no recorded stop AND no
+    resting leg — which is the §41 trap armed for real; the caller records
+    it so health.py can say so."""
+    need = {tid: rec for tid, rec in open_trades.items()
+            if not (rec.get("order") or {}).get("stop_price")}
+    if not need:
+        return []
+    stops = _resting_stops(broker)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    logged = set()
+    if stops:
+        logged = {r.get("detail", "").split(" ", 1)[0]
+                  for r in ledger.all_records()
+                  if r.get("type") == "event" and r.get("event") == "stop_recovered"
+                  and (r.get("ts") or "")[:10] == today}
+    still = []
+    for tid, rec in need.items():
+        fields = _adopted_stop_fields(stops.get(rec["symbol"]),
+                                      rec.get("action", "buy"))
+        if not fields:
+            still.append(rec["symbol"])
+            continue
+        rec["order"] = {**(rec.get("order") or {}), **fields,
+                        "stop_source": "broker"}
+        if tid not in logged:
+            ledger.log_event("stop_recovered",
+                             f"{tid} {rec['symbol']}: no stop in the ledger; "
+                             f"using the resting broker stop "
+                             f"{fields['stop_price']:.2f} (leg "
+                             f"{fields['stop_leg_id']})")
+    return sorted(still)
+
+
 def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
                               positions: dict):
     """Complement to reconcile_closed_positions: a broker position with NO
@@ -333,6 +441,9 @@ def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
     (the source of truth); the strategy defaults to the owner fallback so the
     normal owner-only exit path routes it. Errors never crash the cycle."""
     tracked = {rec["symbol"] for rec in ledger.open_buys().values()}
+    untracked = [s for s, p in positions.items()
+                 if s not in tracked and int(p.get("qty") or 0) != 0]
+    stops = _resting_stops(broker) if untracked else {}
     for symbol, pos in positions.items():
         if symbol in tracked:
             continue
@@ -358,10 +469,17 @@ def adopt_untracked_positions(broker, ledger: Ledger, cfg: dict,
                 # number derived from it. Identity on a long.
                 entry = (abs(pos.get("market_value", 0.0)) / qty) if qty else 0.0
             fill_ts = _recover_fill_ts(broker, symbol, action)
+            order = {"id": None, "symbol": symbol, "adopted": True}
+            # A ghost is usually an order that DID go out as a bracket, so its
+            # protective leg is still resting at the broker. Record it: without
+            # a stop the heat cap charges this position risk_per_trade_pct
+            # (8%) against a 4% budget and refuses every entry (§41), and the
+            # exit path will not cancel the leg before selling.
+            order.update(_adopted_stop_fields(stops.get(symbol), action))
             tid = ledger.log_decision(
                 symbol, action, "adopted: broker position with no ledger record",
                 {}, None, executed=True,
-                order={"id": None, "symbol": symbol, "adopted": True},
+                order=order,
                 entry_price=float(entry), qty=qty,
                 strategy=strategies.DEFAULT_OWNER,
                 entry_ts=fill_ts,
@@ -1388,6 +1506,17 @@ def _run_cycle(completed_bars_only: bool = False):
     record_fill_quality(broker, ledger)
 
     open_trades = ledger.open_buys()    # trade_id -> record, for closing P&L
+    # Before anything reads a stop off these records (the heat cap, the exit
+    # path's leg cancel): fill any missing stop from the leg resting at the
+    # broker. What is STILL stopless is the §41 trap armed — every entry will
+    # be refused — so it is written down every cycle for health.py to report.
+    stopless = attach_broker_stops(broker, ledger, open_trades)
+    if stopless:
+        ledger.log_event("heat_trap_armed",
+                         f"{', '.join(stopless)}: open with no recorded stop "
+                         f"and no resting broker stop — the heat cap charges "
+                         f"each risk_per_trade_pct and refuses every entry")
+        log.error("heat trap armed: %s has no known stop", ", ".join(stopless))
 
     # --- Today's market context (news): judge context + validated watchlist
     # nominations, and the scan universe derived from them. ---
