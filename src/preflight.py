@@ -211,6 +211,16 @@ def run(cfg: dict) -> list[str]:
     # arm it silently — the bot would simply stop entering, exactly the §40
     # failure shape. So the trap is closed here rather than left documented:
     # a documented check is not a check.
+    #
+    # CORRECTION 2026-09-28: "latent" was true of stopless ENTRIES only. A
+    # stopless open POSITION has a second way in that this config check cannot
+    # see: an entry written off as unfilled while still queued, which then
+    # fills and comes back through adopt_untracked_positions with no stop.
+    # That happened (META, Labor Day 2026-09-07 → adopted 09-08) and refused
+    # every entry for three weeks. Closed at run time, not here: reconcile no
+    # longer writes off a live order, adoption reads the resting broker leg,
+    # main.attach_broker_stops repairs older records each cycle, and whatever
+    # is still stopless is logged `heat_trap_armed` and fails health.py.
     heat_cap = r.get("max_portfolio_heat_pct") or 0
     per_trade = r.get("risk_per_trade_pct") or 0
     brackets_on = (r.get("brackets") or {}).get("enabled")

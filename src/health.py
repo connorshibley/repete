@@ -267,6 +267,9 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         # the failure. Absent-vs-zero rule: never collapse these into False.
         "judge_unreachable": None,
         "slo_breach_today": False,
+        # None = no position without a known stop in the latest cycle; a string
+        # is main.py's `heat_trap_armed` detail naming the symbols.
+        "heat_trap_armed": None,
         # The drawdown circuit breaker, reported because it cannot report
         # itself (2026-08-03). §40 showed it is a ONE-WAY LATCH with no
         # recovery path — once engaged the book goes to cash, equity stops
@@ -325,10 +328,20 @@ def status(cfg: dict | None = None, now: datetime | None = None,
         # two disagreed for the four hours between 20:00 ET and midnight ET.
         today = _et_date(now.isoformat())
         last_equity = last_known_equity(records)
+        # The §41 heat trap, as the MOST RECENT cycle found it. main.py writes
+        # `heat_trap_armed` once per cycle while a position has no known stop,
+        # so "armed in the last cycle" is the live state: a trap that was
+        # cleared (a stop placed, the position closed) stops being reported
+        # at the next cycle instead of lingering until midnight.
+        armed_now: str | None = None
+        last_armed: str | None = None
         for r in records:
             if r.get("type") != "event":
                 continue
+            if r.get("event") == "heat_trap_armed":
+                armed_now = r.get("detail") or ""
             if r.get("event") == "cycle_complete":
+                last_armed, armed_now = armed_now, None
                 out["last_cycle"] = r.get("ts")
                 if _et_date(r.get("ts") or "") == today:
                     out["cycle_completed_today"] = True
@@ -339,6 +352,8 @@ def status(cfg: dict | None = None, now: datetime | None = None,
                     out["degradations_today"] += 1
                 elif r.get("event") == "slo_breach":
                     out["slo_breach_today"] = True
+        # A cycle that armed it and has not completed yet counts too.
+        out["heat_trap_armed"] = armed_now if armed_now is not None else last_armed
         out["open_positions"] = _open_buys_count(records)
     except Exception as e:  # noqa: BLE001
         out["problems"].append(f"ledger unreadable: {e}")
@@ -381,6 +396,14 @@ def status(cfg: dict | None = None, now: datetime | None = None,
                 f"— a weekday mirror was due and did not verify")
     if out["slo_breach_today"]:
         out["problems"].append("degradation SLO breached today")
+    # §41. Not a transient: until the position gets a stop or closes, the heat
+    # cap refuses every entry, and nothing else says so — it went unseen for
+    # three weeks from 2026-09-08 because each refusal looked like a normal
+    # risk rejection.
+    if out["heat_trap_armed"]:
+        out["problems"].append(
+            f"heat trap armed — {out['heat_trap_armed']}; place a stop or "
+            f"close the position (exits are unaffected)")
 
     # A keyless judge whose endpoint is dead. This runs inside the docker
     # healthcheck every 5 minutes, so a dead vLLM flips the container
